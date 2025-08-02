@@ -1,0 +1,17 @@
+[Unit]
+Description=Custom Telegram Bot Service
+After=network.target
+
+[Service]
+User=root
+Group=root
+
+WorkingDirectory=/opt/custom_bot
+Environment="PATH=/opt/custom_bot/custom_venv/bin"
+ExecStart=/opt/custom_bot/custom_venv/bin/python /opt/custom_bot/run_bot.py
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

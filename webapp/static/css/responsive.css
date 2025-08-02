@@ -1,0 +1,396 @@
+/* === استایل‌های دسکتاپ (بزرگتر از 992 پیکسل) === */
+@media (min-width: 992px) {
+    .mobile-menu-toggle {
+        display: none !important;
+    }
+}
+/* === استایل‌های تبلت و موبایل (کمتر از 992 پیکسل) === */
+@media (max-width: 991px) {
+    /* سایدبار از دید خارج شده و آماده نمایش با کلیک است */
+    .sidebar {
+        position: fixed;
+        right: -100%; /* کاملاً به بیرون از صفحه منتقل می‌شود */
+        top: 0;
+        height: 100%;
+        width: var(--sidebar-width-collapsed);
+        transition: right var(--transition-speed) ease;
+        z-index: 2000;
+        border-left: 1px solid var(--border-color);
+    }
+
+    /* کلاس برای نمایش سایدبار */
+    .sidebar.show-on-mobile {
+        right: 0; /* سایدبار از سمت راست وارد صفحه می‌شود */
+    }
+
+    /* دکمه منوی همبرگری در این اندازه‌ها نمایش داده می‌شود */
+    .mobile-menu-toggle {
+        display: flex !important;
+    }
+
+    /* دکمه فلش برای باز/بسته کردن سایدبار دسکتاپ مخفی می‌شود */
+    .sidebar-header .toggle-arrow {
+        display: none;
+    }
+
+    /* متن‌ها در سایدبار مخفی باقی می‌مانند (حالت بسته) */
+    .sidebar .logo-text,
+    .sidebar .nav-text {
+        opacity: 0;
+        width: 0;
+        margin: 0;
+    }
+    
+    .sidebar .sidebar-header,
+    .sidebar .sidebar-nav li a,
+    .sidebar .logout li a {
+        justify-content: center;
+    }
+
+    .sidebar .sidebar-nav li a .nav-icon,
+    .sidebar .logout li a .nav-icon {
+        margin-left: 0;
+    }
+    .guide-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .guide-steps-col, .guide-apps-col {
+        grid-column: span 1;
+    }
+    .apps-list-card {
+        position: static;
+        margin-top: 2rem;
+        margin-left: -83px;
+    }
+    #dailyUsageChart {
+        transform: translateX(-20px);
+    }
+   .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    .info-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    body, .container {
+        overflow: visible;
+        height: auto;
+    }
+    .main-content {
+        height: auto;
+        overflow-y: visible;
+        min-height: calc(100vh - 70px);
+    }
+}
+
+/* === استایل‌های اختصاصی موبایل (کمتر از 768 پیکسل) === */
+@media (max-width: 767px) {
+    .main-content {
+        padding: 15px;
+    }
+    .initial-step-card,
+    .app-item-main {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .step-details p { 
+        padding-left: 0; 
+    }
+    .app-item-actions { 
+        grid-template-columns: 1fr; 
+    }
+    .header h1 { 
+        font-size: 1.5rem; 
+    }
+    .page-wrapper { 
+        gap: 1.5rem; 
+    }
+    .tab-button { 
+        padding: .75rem 1rem; 
+    }
+    .dashboard-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .info-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 1rem;
+    }
+    .info-card {
+        overflow: hidden;
+    }
+    #usage-chart, #top-consumers-chart, #panel-distribution-chart {
+        min-width: 100% !important;
+        max-width: 100% !important;
+    }
+    .online-users-grid {
+        grid-template-columns: 1fr !important;
+        padding: 0;
+    }
+    .online-users-grid .user-list {
+        padding: 0 0.5rem;
+    }
+.user-list.multi-column {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem 1.5rem;
+}
+.user-list.multi-column .user-list-item {
+    border-bottom: none;
+}
+.user-list.multi-column .user-list-item:not(:nth-last-child(-n+2)) {
+    border-bottom: 1px solid var(--border-color);
+}
+.make-two-column {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+.make-two-column .user-list-item {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.make-two-column .user-list-item:nth-last-child(-n+2) {
+    border-bottom: none;
+    .sidebar-column .user-list-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+}
+.page-header,
+.table-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+}
+    .search-box-wrapper 
+    {
+        max-width: 100%;
+        padding: 0 10px;
+    }
+    #user-search-input 
+    {
+        width: 100%;
+        min-width: 0;
+        font-size: 0.95rem;
+    }
+
+
+.data-table thead {
+    display: none;
+}
+
+.data-table,
+.data-table tbody,
+.data-table tr,
+.data-table td {
+    display: block;
+}
+
+.data-table tr {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+}
+
+.data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 0.5rem;
+    border-bottom: 1px dashed var(--border-color);
+    text-align: left !important;
+}
+
+.data-table td:last-child {
+    border-bottom: none;
+    justify-content: center;
+    padding-top: 1rem;
+}
+.data-table td::before {
+    font-weight: bold;
+    color: var(--text-secondary);
+    text-align: right;
+}
+
+.data-table td:nth-of-type(1)::before { content: 'کاربر'; }
+.data-table td:nth-of-type(2)::before { content: 'پنل(ها)'; }
+.data-table td:nth-of-type(3)::before { content: 'مصرف روزانه'; }
+.data-table td:nth-of-type(4)::before { content: 'تاریخ انقضا'; }
+.data-table td:nth-of-type(5)::before { content: 'آخرین اتصال'; }
+.data-table td:nth-of-type(6)::before { content: 'عملیات'; }
+.modal-body {
+    padding: 1.5rem 1rem;
+}
+.form-grid {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+}
+.modal-footer {
+    padding: 1rem;
+}
+.pagination-container {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.pagination-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+.data-table thead {
+    display: none;
+}
+
+.data-table, .data-table tbody, .data-table tr, .data-table td {
+    display: block;
+}
+
+.data-table tr {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+}
+
+.data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 0.5rem;
+    border-bottom: 1px dashed var(--border-color);
+    text-align: left !important;
+}
+
+.data-table tbody tr:last-child td:last-child, .data-table td:last-child {
+    border-bottom: none;
+}
+.data-table td::before {
+    font-weight: bold;
+    color: var(--text-secondary);
+    text-align: right;
+    content: attr(data-label);
+}
+#tab-online-active .data-table td:nth-of-type(1)::before { content: 'نام'; }
+#tab-online-active .data-table td:nth-of-type(2)::before { content: 'پنل(ها)'; }
+#tab-online-active .data-table td:nth-of-type(3)::before { content: 'آخرین اتصال'; }
+#tab-online-active .data-table td:nth-of-type(4)::before { content: 'انقضا (روز)'; }
+#tab-expiring-soon .data-table td:nth-of-type(1)::before { content: 'نام'; }
+#tab-expiring-soon .data-table td:nth-of-type(2)::before { content: 'پنل(ها)'; }
+#tab-expiring-soon .data-table td:nth-of-type(3)::before { content: 'انقضای باقیمانده'; }
+#tab-expiring-soon .data-table td:nth-of-type(4)::before { content: 'مصرف کل (GB)'; }
+#tab-inactive .data-table td:nth-of-type(1)::before { content: 'نام'; }
+#tab-inactive .data-table td:nth-of-type(2)::before { content: 'پنل(ها)'; }
+#tab-inactive .data-table td:nth-of-type(3)::before { content: 'آخرین اتصال'; }
+#tab-inactive .data-table td:nth-of-type(4)::before { content: 'انقضا (روز)'; }
+#tab-inactive .data-table-card:nth-of-type(2) .data-table td:nth-of-type(3)::before { content: 'انقضا (روز)'; }
+#tab-top-consumers .data-table td:nth-of-type(1)::before { content: 'رتبه'; }
+#tab-top-consumers .data-table td:nth-of-type(2)::before { content: 'نام کاربری'; }
+#tab-top-consumers .data-table td:nth-of-type(3)::before { content: 'پنل(ها)'; }
+#tab-top-consumers .data-table td:nth-of-type(4)::before { content: 'مصرف / کل (GB)'; }
+#tab-payments .data-table td:nth-of-type(1)::before { content: 'نام تلگرام'; }
+#tab-payments .data-table td:nth-of-type(2)::before { content: 'نام کانفیگ'; }
+#tab-payments .data-table td:nth-of-type(3)::before { content: 'پنل(ها)'; }
+#tab-payments .data-table td:nth-of-type(4)::before { content: 'آخرین پرداخت'; }
+#tab-birthdays .data-table td:nth-of-type(1)::before { content: 'نام'; }
+#tab-birthdays .data-table td:nth-of-type(2)::before { content: 'پنل(ها)'; }
+#tab-birthdays .data-table td:nth-of-type(3)::before { content: 'تاریخ تولد'; }
+#tab-birthdays .data-table td:nth-of-type(4)::before { content: 'روز مانده'; }
+#tab-bot-users .data-table td:nth-of-type(1)::before { content: 'شناسه تلگرام'; }
+#tab-bot-users .data-table td:nth-of-type(2)::before { content: 'نام'; }
+#tab-bot-users .data-table td:nth-of-type(3)::before { content: 'نام کاربری تلگرام'; }
+.pagination-controls {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.pagination-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+}
+.stats-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 1rem;
+}
+.tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-bottom: 2px solid var(--border-color);
+    gap: 0.5rem;
+}
+.data-table thead {
+    display: none;
+}
+.data-table tr {
+    display: block;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+}
+.data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 0;
+    border-bottom: 1px dashed var(--border-color);
+}
+.data-table td:last-child {
+    border-bottom: none;
+}
+.data-table td::before {
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+.data-table td:nth-of-type(1)::before { content: 'ID'; }
+.data-table td:nth-of-type(2)::before { content: 'نام کانفیگ'; }
+.data-table td:nth-of-type(3)::before { content: 'وضعیت'; }
+.data-table td:nth-of-type(4)::before { display: none; }
+.data-table .config-protocol,
+.data-table .config-separator {
+    display: none;
+}
+.data-table .config-name {
+    font-weight: bold;
+    font-size: 0.95em;
+    color: var(--accent-color);
+    white-space: normal;
+    text-align: left;
+    direction: ltr;
+}
+.config-string-container {
+    justify-content: flex-end;
+}
+.data-table td:nth-of-type(4) {
+    justify-content: center;
+    padding-top: 1rem;
+}
+    .kpi-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 1rem;
+    }
+    
+    .kpi-card {
+        padding: 1rem;
+        flex-direction: column;
+        text-align: center;
+        gap: 0.5rem;
+    }
+    .kpi-card .card-content .value {
+        font-size: 1.5rem;
+    }
+    .charts-grid {
+        gap: 1rem;
+    }
+    .chart-card {
+        padding: 1rem;
+    }
+
+    /* ✅ **کد جدید برای صفحه تنظیمات** */
+    .settings-body {
+        grid-template-columns: 1fr; /* تک ستونه کردن در موبایل */
+    }
+}

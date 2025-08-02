@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+.page-wrapper { display: flex; flex-direction: column; gap: 2.5rem; }
+.initial-step-card { background: linear-gradient(135deg, rgba(var(--accent-rgb), .1), rgba(var(--accent-rgb), .05)); border: 1px solid rgba(var(--accent-rgb), .2); border-radius: var(--border-radius); padding: 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+.initial-step-card .icon { font-size: 2.5rem; color: var(--accent-color); }
+.initial-step-card h4 { margin: 0 0 .25rem 0; }
+.initial-step-card p { margin: 0; color: var(--text-secondary); }
+.initial-step-card a { font-weight: 700; }
+.tabs-container { width: 100%; }
+.tab-nav { display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 1.5rem; overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+.tab-nav::-webkit-scrollbar { display: none; }
+.tab-button { display: flex; align-items: center; gap: .5rem; padding: .75rem 1.5rem; cursor: pointer; border: none; background-color: transparent; color: var(--text-secondary); font-size: 1rem; font-weight: 600; white-space: nowrap; border-bottom: 3px solid transparent; transition: all .3s ease; margin-bottom: -2px; }
+.tab-button:hover { color: var(--accent-color); }
+.tab-button.active { color: var(--accent-color); border-bottom-color: var(--accent-color); }
+.tab-button i { font-size: 1.25rem; }
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeIn .5s ease-in-out; }
+@keyframes fadeIn { 0% { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: translateY(0) } }
+.guide-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2.5rem; }
+.guide-steps-col { grid-column: span 7; }
+.guide-apps-col { grid-column: span 5; }
+.section-title { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.5rem; }
+.apps-list-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 1.5rem; position: sticky; top: 2rem; }
+.app-item { display: flex; flex-direction: column; gap: 0.5rem; }
+.app-item:not(:last-child) { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); }
+.app-item-main { display: flex; align-items: center; gap: 1rem; }
+.app-item-icon { font-size: 2.5rem; color: var(--accent-color); background-color: var(--bg-color); border-radius: 12px; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+.app-item-details { flex-grow: 1; }
+.app-item-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .25rem; }
+.app-item-header h5 { margin: 0; font-size: 1.1rem; }
+.app-version-badge { background-color: var(--accent-color); color: #fff; font-size: .7rem; font-weight: 700; padding: 2px 6px; border-radius: 5px; }
+.app-item-desc { font-size: .9rem; color: var(--text-secondary); margin: 0; }
+.app-item-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.btn-download-app { display: flex; align-items: center; justify-content: center; gap: .5rem; width: 100%; text-align: center; padding: .75rem 0.35rem; border-radius: 8px; background-color: var(--accent-color); color: #fff; text-decoration: none; font-weight: 600; font-size: .9rem; transition: all .2s ease; border: none; cursor: pointer; }
+.btn-download-app:hover { background-color: #1d4ed8; transform: translateY(-2px); box-shadow: 0 4px 15px var(--shadow-color); }
+.steps-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 2rem; }
+.step-item { display: flex; align-items: flex-start; gap: 0.1rem; }
+.step-number { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--bg-color); color: var(--accent-color); display: flex; justify-content: center; align-items: center; font-weight: 700; font-size: 1.2rem; }
+.step-details h5 { margin: 0.3rem 0 .5rem 0; font-size: 1.1rem; }
+.step-details p { margin: 0; color: var(--text-secondary); line-height: 1.7; text-align: justify; }
+.step-details p code { background-color: var(--bg-color); border: 1px solid var(--border-color); padding: .2em .4em; border-radius: 4px; font-size: .9em; }
+.faq-container { margin-top: 2.5rem; }
+.faq-item { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1rem; overflow: hidden; transition: all .3s ease; }
+.faq-item.active { box-shadow: 0 10px 25px var(--shadow-color); border-color: rgba(var(--accent-rgb), .3); }
+.faq-question { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; cursor: pointer; font-weight: 600; font-size: 1rem; }
+.faq-question i { font-size: 1.5rem; transition: transform .3s ease; }
+.faq-item.active .faq-question i { transform: rotate(180deg); }
+.faq-answer { max-height: 0; transition: max-height 0.4s ease-out, padding 0.4s ease-out; }
+.faq-answer p { padding: 0 1.5rem 1.25rem; margin: 0; color: var(--text-secondary); line-height: 1.8; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'آموزش ها' %}
+    {% include 'partials/_header.html' %}
+    
+    <div class="page-wrapper">
+        <div class="initial-step-card">
+            <i class="ri-key-2-fill icon"></i>
+            <div>
+                <h4>نقطه شروع: لینک اشتراک شما</h4>
+                <p>مهم‌ترین قدم برای اتصال، کپی کردن **لینک اشتراک** از صفحه <a href="{{ url_for('user.subscription_links_page', uuid=uuid) }}">لینک‌های اتصال</a> است. این لینک کلید ورود شما به تمام سرورهاست.</p>
+            </div>
+        </div>
+
+        <div class="tabs-container">
+            <nav class="tab-nav">
+                <button class="tab-button active" data-target="#android-tab"><i class="ri-android-fill"></i><span>اندروید</span></button>
+                <button class="tab-button" data-target="#windows-tab"><i class="ri-windows-fill"></i><span>ویندوز</span></button>
+                <button class="tab-button" data-target="#ios-tab"><i class="ri-apple-fill"></i><span>iOS</span></button>
+                <button class="tab-button" data-target="#macos-tab"><i class="ri-mac-fill"></i><span>macOS</span></button>
+                <button class="tab-button" data-target="#linux-tab"><i class="ri-ubuntu-fill"></i><span>لینوکس</span></button>
+            </nav>
+
+            <div id="android-tab" class="tab-content active">
+                <div class="guide-grid">
+                    <div class="guide-steps-col">
+                        <h3 class="section-title">راهنمای کامل اتصال در اندروید (V2rayNG)</h3>
+                        <ul class="steps-list">
+                            <li class="step-item"><div class="step-number">1</div><div class="step-details"><h5>افزودن اشتراک</h5><p>در برنامه، روی آیکون سه خط در بالا سمت چپ بزنید و <code>Subscription group setting</code> را انتخاب کنید. سپس روی آیکون <code>+</code> در بالا سمت راست صفحه ضربه بزنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">2</div><div class="step-details"><h5>وارد کردن لینک</h5><p>در فیلد <code>Remarks</code> یک نام دلخواه (مثلاً نام سرویس ما) تایپ کنید. لینک اشتراکی که قبلاً کپی کرده‌اید را در فیلد <code>Optional URL</code> جای‌گذاری (Paste) کرده و آیکون تیک در بالا را بزنید تا ذخیره شود.</p></div></li>
+                            <li class="step-item"><div class="step-number">3</div><div class="step-details"><h5>بروزرسانی سرورها</h5><p>به صفحه اصلی برنامه بازگردید. روی آیکون سه نقطه در بالا سمت راست بزنید و گزینه <code>Update current group subscription</code> را انتخاب کنید تا لیست سرورها بارگذاری شود.</p></div></li>
+                            <li class="step-item"><div class="step-number">4</div><div class="step-details"><h5>اتصال نهایی</h5><p>از لیست سرورها، یکی را انتخاب کنید. سپس روی دکمه دایره‌ای بزرگ در پایین صفحه بزنید. وقتی سبز شد، شما متصل هستید!</p></div></li>
+                            <li class="step-item"><div class="step-number">5</div><div class="step-details"><h5>تست پینگ سرورها</h5><p>برای تست پینگ واقعی سرورها، روی آیکون سه نقطه بزنید و گزینه‌ی <code>Test all configurations (Real delay)</code> را انتخاب کنید تا بهترین سرور برای اینترنت خود را پیدا کنید.</p></div></li>                        </ul>
+                    </div>
+                    <div class="guide-apps-col">
+                        <h3 class="section-title">نرم‌افزارهای پیشنهادی</h3>
+                        <div class="apps-list-card">
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-rocket-2-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>V2rayNG</h5><span class="app-version-badge">پیشنهاد اصلی</span></div><p class="app-item-desc">کامل‌ترین و پایدارترین کلاینت برای اندروید.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-google-play-fill"></i> پلی استور</a>
+                                </div>
+                            </div>
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-leaf-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>HiddifyNext</h5></div><p class="app-item-desc">جایگزین: با رابط کاربری مدرن و امکانات بیشتر.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-google-play-fill"></i> پلی استور</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="windows-tab" class="tab-content">
+                <div class="guide-grid">
+                    <div class="guide-steps-col">
+                        <h3 class="section-title">راهنمای کامل اتصال در ویندوز (V2rayN)</h3>
+                        <ul class="steps-list">
+                            <li class="step-item"><div class="step-number">1</div><div class="step-details"><h5>دانلود و اجرا</h5><p>برنامه <code>V2rayN</code> را از گیت‌هاب دانلود کنید (فایل `v2rayn-core.zip`). آن را از حالت فشرده خارج کرده و فایل `v2rayN.exe` را اجرا نمایید.</p></div></li>
+                            <li class="step-item"><div class="step-number">2</div><div class="step-details"><h5>افزودن اشتراک</h5><p>از منوی بالای برنامه، روی <code>Subscription</code> کلیک کرده و <code>Subscription settings...</code> را انتخاب کنید. در پنجره باز شده روی دکمه `Add` کلیک کنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">3</div><div class="step-details"><h5>وارد کردن لینک</h5><p>یک نام دلخواه در فیلد <code>Remarks</code> وارد کنید و لینک اشتراک خود را در فیلد `URL` جای‌گذاری (Paste) نمایید. سپس دکمه `Confirm` را بزنید.</p></div></li>
+                             <li class="step-item"><div class="step-number">4</div><div class="step-details"><h5>بروزرسانی سرورها</h5><p>دوباره به منوی <code>Subscription</code> رفته و این بار گزینه <code>Update subscription</code> را بزنید تا لیست کامل سرورها دریافت شود.</p></div></li>
+                            <li class="step-item"><div class="step-number">5</div><div class="step-details"><h5>اتصال نهایی</h5><p>در نوار وظیفه (کنار ساعت)، روی آیکون برنامه کلیک راست کنید. به بخش `System proxy` رفته و `Set system proxy` را انتخاب کنید. اکنون از لیست سرورها، سرور مورد نظر خود را انتخاب کنید تا متصل شوید.</p></div></li>
+                        </ul>
+                    </div>
+                    <div class="guide-apps-col">
+                        <h3 class="section-title">نرم‌افزارهای پیشنهادی</h3>
+                        <div class="apps-list-card">
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-compass-3-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>V2rayN</h5><span class="app-version-badge">پیشنهاد اصلی</span></div><p class="app-item-desc">کلاینت کلاسیک، قدرتمند و بسیار محبوب برای ویندوز.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                </div>
+                            </div>
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-leaf-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>HiddifyNext</h5></div><p class="app-item-desc">یک کلاینت مدرن و چند پلتفرمی با کاربری آسان.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                     <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ios-tab" class="tab-content">
+                 <div class="guide-grid">
+                    <div class="guide-steps-col">
+                        <h3 class="section-title">راهنمای اتصال در iOS (Streisand)</h3>
+                        <ul class="steps-list">
+                            <li class="step-item"><div class="step-number">1</div><div class="step-details"><h5>کپی کردن لینک</h5><p>ابتدا لینک اشتراک (Subscription Link) خود را از پنل کاربری کپی کنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">2</div><div class="step-details"><h5>افزودن اشتراک</h5><p>برنامه Streisand را باز کرده و روی آیکون <code>+</code> در بالا سمت راست صفحه بزنید. سپس گزینه <code>Import from URL</code> را انتخاب کنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">3</div><div class="step-details"><h5>وارد کردن لینک</h5><p>لینکی که کپی کرده‌اید را در کادر مربوطه جای‌گذاری (Paste) کرده و دکمه `Import` را بزنید. اشتراک شما به لیست اضافه می‌شود.</p></div></li>
+                            <li class="step-item"><div class="step-number">4</div><div class="step-details"><h5>بروزرسانی و اتصال</h5><p>روی اشتراک اضافه شده بزنید تا وارد لیست سرورها شوید. سپس از پایین صفحه دکمه `Update` را بزنید. پس از آن، یک سرور را انتخاب کرده و دکمه اتصال در صفحه اصلی برنامه را فعال کنید.</p></div></li>
+                        </ul>
+                    </div>
+                    <div class="guide-apps-col">
+                        <h3 class="section-title">نرم‌افزارهای پیشنهادی</h3>
+                        <div class="apps-list-card">
+                             <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-flower-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>Streisand</h5><span class="app-version-badge">پیشنهاد اصلی</span></div><p class="app-item-desc">کلاینت قدرتمند و رایگان با رابط کاربری عالی.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-apple-fill"></i> اپ استور</a>
+                                </div>
+                            </div>
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-rocket-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>Shadowrocket</h5></div><p class="app-item-desc">محبوب‌ترین و کامل‌ترین کلاینت iOS (پولی).</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                     <a href="#" class="btn-download-app" target="_blank"><i class="ri-apple-fill"></i> اپ استور</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="macos-tab" class="tab-content">
+                <div class="guide-grid">
+                    <div class="guide-steps-col">
+                        <h3 class="section-title">راهنمای اتصال در macOS (V2Box)</h3>
+                        <ul class="steps-list">
+                            <li class="step-item"><div class="step-number">1</div><div class="step-details"><h5>افزودن پروفایل</h5><p>برنامه V2Box را اجرا کنید. از منوی سمت چپ، گزینه <code>Profiles</code> را انتخاب کرده و روی دکمه <code>New Profile</code> کلیک کنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">2</div><div class="step-details"><h5>وارد کردن لینک</h5><p>در پنجره باز شده، نوع (Type) را روی <code>URL</code> تنظیم کنید. لینک اشتراک خود را در فیلد `URL` وارد کرده و یک نام دلخواه در فیلد <code>Name</code> بنویسید. سپس `Create` را بزنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">3</div><div class="step-details"><h5>بروزرسانی سرورها</h5><p>پروفایل شما به لیست اضافه می‌شود. روی دکمه <code>Update</code> در کنار آن کلیک کنید تا لیست سرورها دریافت شود.</p></div></li>
+                            <li class="step-item"><div class="step-number">4</div><div class="step-details"><h5>اتصال نهایی</h5><p>از منوی سمت چپ به بخش <code>Routes</code> بروید تا سرورها را ببینید. روی آیکون برنامه در نوار منوی بالای صفحه کلیک کرده، یک سرور را انتخاب و `Turn V2Box On` را بزنید تا متصل شوید.</p></div></li>
+                        </ul>
+                    </div>
+                    <div class="guide-apps-col">
+                        <h3 class="section-title">نرم‌افزارهای پیشنهادی</h3>
+                        <div class="apps-list-card">
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-box-3-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>V2Box</h5><span class="app-version-badge">پیشنهاد اصلی</span></div><p class="app-item-desc">کلاینت مدرن و زیبا با پشتیبانی کامل از پروتکل‌ها.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-app-store-line"></i> اپ استور</a>
+                                </div>
+                            </div>
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-rocket-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>V2rayU</h5></div><p class="app-item-desc">یک کلاینت ساده، سبک و بسیار کارآمد مخصوص macOS.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                     <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="linux-tab" class="tab-content">
+                <div class="guide-grid">
+                    <div class="guide-steps-col">
+                        <h3 class="section-title">راهنمای اتصال در لینوکس (nekoray)</h3>
+                        <ul class="steps-list">
+                            <li class="step-item"><div class="step-number">1</div><div class="step-details"><h5>دانلود و اجرا</h5><p>نسخه <code>AppImage</code> برنامه nekoray را از گیت‌هاب دانلود کنید. به آن دسترسی اجرایی بدهید: <code>chmod +x nekoray-*.AppImage</code> و آن را اجرا کنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">2</div><div class="step-details"><h5>افزودن اشتراک</h5><p>از منوی برنامه، به <code>Program</code> -> <code>Subscription</code> -> <code>Add Subscription</code> بروید.</p></div></li>
+                            <li class="step-item"><div class="step-number">3</div><div class="step-details"><h5>وارد کردن لینک</h5><p>یک نام دلخواه در <code>Name</code> تایپ کرده و لینک اشتراک را در فیلد <code>URL</code> جای‌گذاری کنید. سپس <code>OK</code> را بزنید.</p></div></li>
+                            <li class="step-item"><div class="step-number">4</div><div class="step-details"><h5>بروزرسانی و اتصال</h5><p>از منوی <code>Subscription</code>، گزینه <code>Update subscription</code> را بزنید. پس از نمایش سرورها، روی یکی راست‌کلیک کرده و <code>Start</code> را انتخاب کنید. در نهایت <code>VPN Mode</code> را فعال کنید.</p></div></li>
+                        </ul>
+                    </div>
+                    <div class="guide-apps-col">
+                        <h3 class="section-title">نرم‌افزارهای پیشنهادی</h3>
+                        <div class="apps-list-card">
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-compass-3-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>nekoray</h5><span class="app-version-badge">پیشنهاد اصلی</span></div><p class="app-item-desc">کلاینت گرافیکی با فایل AppImage برای توزیع‌های مختلف.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                    <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                </div>
+                            </div>
+                            <div class="app-item">
+                                <div class="app-item-main">
+                                    <div class="app-item-icon"><i class="ri-terminal-box-line"></i></div>
+                                    <div class="app-item-details"><div class="app-item-header"><h5>v2ray (CLI)</h5></div><p class="app-item-desc">برای کاربران حرفه‌ای که اتصال از طریق ترمینال را ترجیح می‌دهند.</p></div>
+                                </div>
+                                <div class="app-item-actions">
+                                     <a href="#" class="btn-download-app" target="_blank"><i class="ri-github-fill"></i> گیت‌هاب</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="faq-container">
+                <h3 class="section-title">سوالات متداول (FAQ)</h3>
+                <div class="faq-item">
+                    <div class="faq-question"><span>چرا برخی سرورها برای من کار نمی‌کنند؟</span><i class="ri-arrow-down-s-line"></i></div>
+                    <div class="faq-answer"><p>سرعت و در دسترس بودن سرورها به وضعیت اینترنت شما و اپراتورتان بستگی دارد. همیشه پیشنهاد می‌شود قبل از اتصال، از سرورها یک تست پینگ (در صورت امکان در نرم‌افزار) بگیرید و سروری با کمترین پینگ (ms) را انتخاب کنید.</p></div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question"><span>هر چند وقت یکبار باید لینک اشتراک را بروزرسانی کنم؟</span><i class="ri-arrow-down-s-line"></i></div>
+                    <div class="faq-answer"><p>پیشنهاد می‌شود حداقل روزی یک‌بار اشتراک خود را در نرم‌افزار بروزرسانی (Update Subscription) کنید. این کار باعث می‌شود همیشه آخرین لیست سرورها و بهینه‌سازی‌ها را دریافت نمایید.</p></div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question"><span>آیا می‌توانم از یک اشتراک روی چند دستگاه استفاده کنم؟</span><i class="ri-arrow-down-s-line"></i></div>
+                    <div class="faq-answer"><p>بله، شما می‌توانید از لینک اشتراک خود به طور همزمان روی تمام دستگاه‌هایتان (موبایل، لپ‌تاپ و...) استفاده کنید. محدودیتی در تعداد دستگاه‌های متصل وجود ندارد.</p></div>
+                </div>
+                 <div class="faq-item">
+                    <div class="faq-question"><span>لینک اشتراک من آپدیت نمی‌شود یا خطا می‌دهد، مشکل چیست؟</span><i class="ri-arrow-down-s-line"></i></div>
+                    <div class="faq-answer"><p>ابتدا مطمئن شوید لینک را به درستی و به طور کامل کپی کرده‌اید. سپس بررسی کنید که آیا اشتراک شما منقضی نشده باشد. اگر همچنان مشکل پابرجاست، یکبار برنامه را بسته و باز کنید یا با پشتیبانی تماس بگیرید.</p></div>
+                </div>
+                 <div class="faq-item">
+                    <div class="faq-question"><span>تفاوت پروتکل‌های مختلف (Vless, Vmess) چیست؟</span><i class="ri-arrow-down-s-line"></i></div>
+                    <div class="faq-answer"><p>این‌ها تکنولوژی‌های مختلف برای اتصال هستند. به عنوان کاربر، نیازی نیست نگران تفاوت آن‌ها باشید. لینک اشتراک شما به طور هوشمند تمام پروتکل‌های لازم را در خود دارد. کافیست سرورها را تست کرده و به بهترین سرور برای اینترنت خود متصل شوید.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            button.classList.add('active');
+            const targetContent = document.querySelector(button.dataset.target);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+    });
+
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+        const question = item.querySelector('.faq-question');
+        question.addEventListener('click', () => {
+            const answer = item.querySelector('.faq-answer');
+            const isActive = item.classList.contains('active');
+            
+            faqItems.forEach(otherItem => {
+                if (otherItem !== item) {
+                    otherItem.classList.remove('active');
+                    otherItem.querySelector('.faq-answer').style.maxHeight = null;
+                }
+            });
+
+            if (isActive) {
+                item.classList.remove('active');
+                answer.style.maxHeight = null;
+            } else {
+                item.classList.add('active');
+                answer.style.maxHeight = answer.scrollHeight + 'px';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

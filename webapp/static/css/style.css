@@ -1,0 +1,477 @@
+/* --- Global Settings & Font Import --- */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
+
+:root {
+    --sidebar-width: 185px;
+    --sidebar-width-collapsed: 70px;
+    --border-radius: 10px;
+    --transition-speed: 0.3s;
+    --success-color: #22c55e;
+    --danger-color: #ef4444;
+    --warning-color: #f59e0b;
+    --accent-color: #3b82f6;
+    --accent-rgb: 59, 130, 246;
+}
+
+/* --- Theme Variables --- */
+body {
+    --bg-color: #f3f4f6;
+    --card-bg: #ffffff;
+    --text-color: #111827;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+    --sidebar-bg: #1f2937;
+    --sidebar-text: #d1d5db;
+    --sidebar-text-hover: #ffffff;
+    --input-bg: #fdfdff;
+    --shadow-color: rgba(0, 0, 0, 0.07);
+}
+
+body.dark-theme {
+    --bg-color: #111827;
+    --card-bg: #1f2937;
+    --text-color: #f9fafb;
+    --text-secondary: #9ca3af;
+    --border-color: #374151;
+    --input-bg: #2a2a2a;
+    --shadow-color: rgba(0, 0, 0, 0.2);
+}
+
+/* --- Base & Layout --- */
+body {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    font-size: 15px;
+    transition: background-color var(--transition-speed), color var(--transition-speed);
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    overflow-x: hidden;
+}
+
+.main-content {
+    flex-grow: 1;
+    padding: 25px;
+    overflow-y: auto;
+    min-width: 0;
+}
+/* --- Header --- */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+.header h1 {
+    font-size: 1.6rem;
+    margin: 0;
+}
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.header-actions .icon-btn {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all var(--transition-speed);
+}
+.header-actions .icon-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+/* --- Sidebar --- */
+.sidebar {
+    background-color: var(--sidebar-bg);
+    width: var(--sidebar-width);
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width var(--transition-speed) ease;
+}
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 5px;
+    margin-bottom: 20px;
+    color: var(--sidebar-text);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.sidebar-header .toggle-arrow {
+    font-size: 1.5rem;
+    transition: transform var(--transition-speed);
+}
+.logo-text {
+    transition: opacity 0.2s;
+}
+.sidebar-nav, .logout nav {
+    flex-grow: 1;
+}
+.sidebar-nav ul, .logout ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.sidebar-nav li a, .logout li a {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 12px;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    border-radius: var(--border-radius);
+    margin-bottom: 10px;
+    transition: all var(--transition-speed);
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.sidebar-nav li a .nav-icon, .logout li a .nav-icon {
+    font-size: 1.3rem;
+    margin-left: 12px;
+}
+.sidebar-nav li a:hover, .logout li a:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--sidebar-text-hover);
+}
+.sidebar-nav li a.active {
+    background-color: var(--accent-color);
+    color: var(--sidebar-text-hover);
+}
+.logout {
+    margin-top: auto;
+}
+/* Collapsed Sidebar State */
+.sidebar.collapsed {
+    width: var(--sidebar-width-collapsed);
+}
+.sidebar.collapsed .logo-text, .sidebar.collapsed .nav-text {
+    opacity: 0;
+    width: 0;
+    margin: 0;
+}
+.sidebar.collapsed .sidebar-header,
+.sidebar.collapsed .sidebar-nav li a,
+.sidebar.collapsed .logout li a {
+    justify-content: center;
+}
+.sidebar.collapsed .sidebar-header .toggle-arrow {
+    transform: rotate(180deg);
+}
+.sidebar.collapsed .sidebar-nav li a .nav-icon,
+.sidebar.collapsed .logout li a .nav-icon {
+    margin-left: 0;
+}
+
+/* --- Generic Components: Cards & Grids --- */
+h3.section-title {
+    font-size: 1.1rem;
+    margin-top: 25px;
+    margin-bottom: 15px;
+    color: var(--text-color);
+}
+.info-grid, .details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+.details-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.info-card {
+    background-color: var(--card-bg);
+    padding: 15px;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+/* ✅ **کلاس جدید برای فرم‌ها** */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+.card-header .icon {
+    font-size: 1.1rem;
+}
+.card-content {
+    font-size: 1rem;
+    font-weight: bold;
+}
+.panel-card .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+.panel-card .panel-header h4 {
+    margin: 0;
+}
+.panel-card .panel-header span.fi {
+    font-size: 1.5rem;
+}
+.server-stats {
+    list-style: none;
+    padding: 0;
+    margin-top: 15px;
+}
+.server-stats li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+}
+.server-stats .stat-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+}
+.server-stats .stat-value {
+    font-weight: bold;
+    color: var(--text-color);
+    direction: ltr;
+}
+.data-table-container {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.table-header h3 { margin: 0; font-size: 1.1rem; }
+
+.search-box {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    display: flex;
+    align-items: center;
+}
+
+.search-box input {
+    border: none; background: transparent; outline: none;
+    color: var(--text-color);
+}
+
+.table-responsive {
+    overflow-y: visible;
+    overflow-x: auto;
+}
+
+.data-table { width: 100%; border-collapse: collapse; }
+
+.data-table th, .data-table td {
+    padding: 0.8rem 1.25rem;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table thead th {
+    background-color: var(--bg-color);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+.status-badge {
+    padding: 0.3rem 0.8rem;
+    border-radius: 50px;
+    font-size: 0.85rem;
+    font-weight: normal;
+}
+
+.status-active {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.status-inactive {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+button, input, select, textarea {
+    font-family: 'Vazirmatn', sans-serif !important; /* اعمال فونت وزیرمتن به تمام این عناصر */
+}
+
+/* استایل پایه برای دکمه‌ها */
+.btn {
+    padding: 0.7rem 1.3rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+/* دکمه اصلی (آبی) */
+.btn-primary {
+    background-color: var(--accent-color);
+    color: white;
+}
+.btn-primary:hover {
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+}
+.btn-primary .icon {
+    font-size: 1.2rem;
+}
+
+/* دکمه اطلاعات (برای ویرایش) */
+.btn-info {
+    background-color: #0ea5e9; /* یک رنگ آبی متفاوت */
+    color: white;
+}
+.btn-info:hover {
+    background-color: #0284c7;
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+}
+
+/* دکمه خطر (قرمز) */
+.btn-danger {
+    background-color: var(--danger-color);
+    color: white;
+}
+.btn-danger:hover {
+    background-color: #dc2626;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+/* دکمه انصراف (خاکستری) */
+.btn-secondary {
+    background-color: var(--border-color);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary:hover {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+
+/* دکمه ثبت فرم در صفحه لاگین */
+.btn-submit {
+    background: var(--accent-color);
+    color: white;
+    padding: 0.8rem 2rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    margin-top: 1.5rem;
+    font-size: 1rem;
+}
+.btn-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.25);
+}
+/* --- استایل اصلاح‌شده برای دکمه خرید --- */
+.btn-action.full-width-btn {
+    display: block; /* این ویژگی برای کار کردن margin: auto ضروری است */
+    width: auto; /* عرض دکمه بر اساس محتوای داخلی آن تنظیم می‌شود */
+    max-width: 250px; /* حداکثر عرضی که دکمه می‌تواند داشته باشد */
+    min-width: 180px; /* حداقل عرض برای خوانایی بهتر */
+    padding: 0.75rem 1.5rem; /* پدینگ داخلی برای ایجاد فاصله */
+    margin: 1.5rem auto 0; /* فاصله از بالا، وسط‌چین شدن افقی، بدون فاصله از پایین */
+    background: var(--accent-color);
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    font-weight: bold;
+    border-radius: var(--border-radius);
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-action.full-width-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.25);
+    filter: brightness(1.1);
+}
+
+/* دکمه‌های عملیات کوچک (آیکون) */
+.actions-cell {
+    text-align: center;
+}
+.action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.3rem;
+    color: var(--text-secondary);
+    padding: 0.4rem;
+    margin: 0 0.2rem;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+.action-btn:hover {
+    color: var(--accent-color);
+    background-color: rgba(var(--accent-rgb), 0.1);
+}
+
+/* دکمه متنی (برای نام کاربر در جدول) */
+.text-btn {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-weight: bold;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 5px;
+    transition: background-color 0.2s;
+}
+.text-btn:hover {
+    background-color: rgba(var(--accent-rgb), 0.1);
+}

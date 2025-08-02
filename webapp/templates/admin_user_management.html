@@ -1,0 +1,570 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+    button, select, input { font-family: 'Vazirmatn', sans-serif !important; }
+    .btn-primary { background-color: var(--accent-color); color: white; padding: 0.7rem 1.3rem; border-radius: 8px; text-decoration: none; font-weight: bold; border: none; cursor: pointer; display: inline-flex; justify-content: center; align-items: center; gap: 0.5rem; transition: all 0.2s ease; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3); }
+    .btn-primary .icon { font-size: 1.2rem; }
+    .btn-info { background-color: var(--info-color); color: white; }
+    .btn-info:hover { background-color: #1a7bb9; }
+    .btn-danger { background-color: var(--danger-color); color: white; }
+    .btn-danger:hover { background-color: #d03838; }
+    .table-header {display: flex;justify-content: space-between;align-items: center;padding: 1rem 1.5rem;gap: 1.5rem;flex-wrap: wrap-reverse;}
+    .search-box-wrapper { position: relative; width: 100%; max-width: 350px; }
+    .search-box-wrapper .ri-search-line {position: absolute;left: -25px;top: 50%;transform: translateY(-50%);color: var(--text-secondary);z-index: 2;}
+    #user-search-input {width: 100%;background-color: var(--bg-color);border: 1px solid var(--border-color);border-radius: 8px;padding: 0.75rem 1rem 0.75rem 3rem;transition: border-color 0.2s, box-shadow 0.2s;margin-right: -25px;}
+    #user-search-input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2); outline: none; margin-right: -25px ; }
+    .table-filters {display: flex; gap: 1rem; align-items: center;margin-right: -25px; }
+    .table-filters .filter-group { display: flex; align-items: center; gap: 0.5rem; }
+    .table-filters label { font-size: 0.9rem; color: var(--text-secondary); white-space: nowrap; }
+    .table-filters select, .form-group select {padding: 0.75rem;border-radius: 8px;border: 1px solid var(--border-color);background-color: var(--bg-color);color: var(--text-color);-webkit-appearance: none;-moz-appearance: none;appearance: none;background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");background-position: left 0.5rem center;background-repeat: no-repeat;background-size: 1.5em 1.5em;padding-left: 2.5rem;}
+    body.dark-theme .table-filters select, body.dark-theme .form-group select {background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");}
+    .data-table thead { border-bottom: 2px solid var(--border-color); }
+    .data-table th, .data-table td { padding: 0.8rem 1rem; vertical-align: middle; }
+    .data-table th { font-weight: 600; color: var(--text-secondary); }
+    .data-table tr:hover { background-color: rgba(var(--accent-rgb), 0.05); }
+    .data-table th:nth-child(n+2), .data-table td:nth-child(n+2) { text-align: center; }
+    .data-table th:nth-child(1), .data-table td:nth-child(1) { text-align: right; }
+    .actions-cell { text-align: center; }
+    .action-btn { background: none; border: none; cursor: pointer; font-size: 1.3rem; color: var(--text-secondary); padding: 0.4rem; margin: 0 0.2rem; border-radius: 50%; transition: all 0.2s; }
+    .action-btn:hover { color: var(--accent-color); background-color: rgba(var(--accent-rgb), 0.1); }
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(10, 10, 10, 0.75); z-index: 1000; display: none; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s ease; backdrop-filter: blur(4px); }
+    .modal-overlay.active { display: flex; opacity: 1; }
+    .modal-content { background-color: var(--card-bg); border-radius: var(--border-radius); padding: 0; width: 90%; max-width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); transform: scale(0.95); transition: transform 0.3s ease; overflow: hidden; }
+    .modal-overlay.active .modal-content { transform: scale(1); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); }
+    .modal-header h4 { margin: 0; font-size: 1.25rem; display: flex; align-items: center; gap: 0.75rem; }
+    .close-btn { font-size: 1.8rem; cursor: pointer; color: var(--text-secondary); border: none; background: none; line-height: 1; padding: 0; }
+    .modal-body { padding: 2rem; max-height: 75vh; background-color: var(--bg-color); overflow-y: auto; }
+    .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.75rem; background-color: var(--card-bg); }
+    .modal-tabs { display: flex; border-bottom: 1px solid var(--border-color); padding: 0 1.5rem; background-color: var(--card-bg);}
+    .modal-tab-btn { padding: 0.8rem 1rem; cursor: pointer; border: none; background: none; font-size: 1rem; color: var(--text-secondary); border-bottom: 3px solid transparent; margin-bottom: -1px; transition: color 0.2s, border-color 0.2s; }
+    .modal-tab-btn.active { color: var(--accent-color); border-bottom-color: var(--accent-color); font-weight: bold; }
+    .tab-content { display: none; padding-top: 0.5rem; }
+    .tab-content.active { display: block; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.75rem; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-secondary); }
+    .form-group input, .form-group select { padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: var(--bg-color); color: var(--text-color); width: 100%; transition: border-color 0.2s, box-shadow 0.2s; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2); outline: none; }
+    #form-feedback, #edit-form-feedback, #payment-form-feedback { margin-top: 1.5rem; padding: 0.75rem; border-radius: 8px; font-weight: bold; min-height: 20px; text-align: center; display: none; }
+    #form-feedback.success, #edit-form-feedback.success, #payment-form-feedback.success { background-color: rgba(34, 197, 94, 0.1); color: var(--success-color); }
+    #form-feedback.error, #edit-form-feedback.error, #payment-form-feedback.error { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+    .details-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 1.5rem; margin-bottom: 1.5rem; }
+    .details-card h5 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.2rem; display: flex; align-items: center; gap: 0.75rem; }
+    .panel-details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; }
+    .detail-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem; padding: 0.8rem 0; border-bottom: 1px solid var(--border-color); }
+    .detail-item:last-child { border-bottom: none; }
+    .detail-item .label { color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem; }
+    .detail-item .label i { font-size: 1.2rem; color: var(--accent-color); opacity: 0.8; }
+    .detail-item .value { font-weight: 600; text-align: left; }
+    .uuid-text-details { font-family: monospace; font-size: 0.9rem; word-break: break-all; background-color: var(--bg-color); padding: 0.75rem; border-radius: 5px; margin-top: 1.5rem; border: 1px solid var(--border-color); text-align: center; }
+    .pagination-container {display: flex;justify-content: center;align-items: center;padding: 1.5rem 0;gap: 0.5rem;}
+    .pagination-btn {padding: 0.5rem 1rem;border: 1px solid var(--border-color);background-color: var(--card-bg);color: var(--text-color);border-radius: 6px;cursor: pointer;transition: all 0.2s ease;}
+    .pagination-btn:hover {background-color: rgba(var(--accent-rgb), 0.1);border-color: var(--accent-color);}
+    .pagination-btn.active {background-color: var(--accent-color);color: white;border-color: var(--accent-color);font-weight: bold;}
+    .pagination-btn:disabled {opacity: 0.6;cursor: not-allowed;}
+    .pagination-dots {padding: 0.5rem;color: var(--text-secondary);}
+    .action-btn.vip-btn.active {color: #f59e0b;background-color: rgba(245, 158, 11, 0.1);}
+    .action-btn.vip-btn.active i::before {content: "\F25C";}
+    .action-btn.panel-access-btn {font-size: 1.2rem;opacity: 0.4;filter: grayscale(100%);}
+    .action-btn.panel-access-btn.active {opacity: 1;filter: grayscale(0%);}
+    .action-separator {color: var(--border-color);margin: 0 0.3rem;}
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='مدیریت کاربران' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="page-header">
+        <h3>لیست کاربران</h3>
+        <button id="add-user-btn" class="btn btn-primary">
+            <i class="ri-user-add-line icon"></i>
+            <span>افزودن کاربر جدید</span>
+        </button>
+    </div>
+
+    <div class="info-card data-table-container">
+        <div class="table-header">
+            <div class="search-box-wrapper">
+                <i class="ri-search-line"></i>
+                <input type="text" id="user-search-input" placeholder="جستجو بر اساس نام یا UUID ...">
+            </div>
+            <div class="table-filters">
+                <div class="filter-group">
+                    <label for="main-filter">وضعیت:</label>
+                    <select id="main-filter">
+                        <option value="all">همه</option>
+                        <option value="active">فعال</option>
+                        <option value="online">آنلاین</option>
+                        <option value="expiring_soon">در آستانه انقضا</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="panel-filter">پنل:</label>
+                    <select id="panel-filter">
+                        <option value="all">همه</option>
+                        <option value="de">شامل آلمان 🇩🇪</option>
+                        <option value="fr">شامل فرانسه 🇫🇷</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>کاربر</th>
+                        <th>پنل(ها)</th>
+                        <th>مجموع مصرف روزانه</th>
+                        <th>پرداختی‌ها</th>
+                        <th>تاریخ انقضا (روز)</th>
+                        <th>آخرین اتصال</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body"></tbody>
+            </table>
+        </div>
+        <div id="pagination-container" class="pagination-container"></div>
+    </div>
+
+    <div id="user-details-modal" class="modal-overlay"></div>
+    <div id="add-user-modal" class="modal-overlay"></div>
+    <div id="edit-user-modal" class="modal-overlay"></div>
+    <div id="delete-confirm-modal" class="modal-overlay"></div>
+    <div id="add-payment-modal" class="modal-overlay"></div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Element Selectors ---
+    const tableBody = document.getElementById('users-table-body');
+    const searchInput = document.getElementById('user-search-input');
+    const panelFilter = document.getElementById('panel-filter');
+    const mainFilter = document.getElementById('main-filter');
+    const paginationContainer = document.getElementById('pagination-container');
+    const tableTitle = document.querySelector('.page-header h3');
+
+    // --- Initial State ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialUrlFilter = urlParams.get('filter') || 'all';
+    let currentPage = 1;
+
+    const filterTitles = {
+        'all': 'لیست کل کاربران',
+        'active': 'لیست کاربران فعال',
+        'online': 'لیست کاربران آنلاین',
+        'expiring_soon': 'لیست کاربران در آستانه انقضا'
+    };
+
+    // مقدار اولیه فیلتر را بر اساس پارامتر URL تنظیم می‌کند
+    if (mainFilter) {
+        mainFilter.value = initialUrlFilter;
+    }
+
+    // --- Core Function to Load Users ---
+    function loadUsers(page = 1) {
+        currentPage = page;
+
+        // کد امن: قبل از خواندن مقدار، وجود عنصر را بررسی می‌کند
+        const searchQuery = searchInput ? searchInput.value.trim() : '';
+        const panel = panelFilter ? panelFilter.value : 'all';
+        const filter = mainFilter ? mainFilter.value : initialUrlFilter;
+
+        // عنوان صفحه را به‌روزرسانی می‌کند
+        if (tableTitle && filterTitles[filter]) {
+            tableTitle.textContent = filterTitles[filter];
+        }
+
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center" style="padding: 2rem;">درحال بارگذاری اطلاعات... <i class="ri-loader-4-line ri-spin"></i></td></tr>`;
+
+        const url = `/admin/api/users?page=${page}&per_page=15&search=${encodeURIComponent(searchQuery)}&panel=${panel}&filter=${filter}`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                renderTable(data.users);
+                renderPagination(data.pagination);
+            }).catch(error => {
+                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger" style="padding: 2rem;">خطا در بارگذاری کاربران: ${error.message}</td></tr>`;
+                if(paginationContainer) paginationContainer.innerHTML = '';
+            });
+    }
+
+    // --- Modal Functions ---
+    const getModal = (id) => document.getElementById(id);
+    const showModal = (modal) => { modal.style.display = 'flex'; setTimeout(() => modal.classList.add('active'), 10); };
+    const hideModal = (modal) => { 
+        if (!modal) return;
+        modal.classList.remove('active'); 
+        setTimeout(() => { 
+            modal.style.display = 'none'; 
+            modal.innerHTML = ''; 
+        }, 300); 
+    };
+
+    function renderTable(users) {
+        if (!tableBody) return;
+        tableBody.innerHTML = '';
+        if (!users || users.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding: 2rem;">هیچ کاربری با این مشخصات یافت نشد.</td></tr>';
+            return;
+        }
+        users.forEach(user => {
+            const dailyDE = user.breakdown?.hiddify?.daily_usage_formatted || '0 GB';
+            const dailyFR = user.breakdown?.marzban?.daily_usage_formatted || '0 GB';
+            let panelIcons = (user.on_hiddify ? '🇩🇪 ' : '') + (user.on_marzban ? '🇫🇷' : '');
+            const statusEmoji = user.is_active ? '🟢' : '🔴';
+            
+            const actions = `
+                <button class="action-btn vip-btn ${user.is_vip ? 'active' : ''}" title="تغییر وضعیت VIP"><i class="ri-vip-crown-line"></i></button>
+                <button class="action-btn add-payment-btn" title="ثبت رکورد پرداخت"><i class="ri-money-dollar-circle-line"></i></button>
+                <button class="action-btn edit-btn" title="ویرایش کاربر"><i class="ri-pencil-line"></i></button>
+                <button class="action-btn delete-btn" title="حذف کاربر"><i class="ri-delete-bin-line"></i></button>
+                <a href="/user/${user.uuid}" target="_blank" class="action-btn" title="مشاهده پنل کاربر"><i class="ri-external-link-line"></i></a>
+            `;
+            
+            const expiryText = user.expire_shamsi ? `${user.expire_shamsi} <small class='text-secondary'>(${user.expire} روز)</small>` : 'نامحدود';
+            const row = document.createElement('tr');
+            row.dataset.uuid = user.uuid;
+            
+            row.innerHTML = `
+                <td><button class="text-btn user-details-btn">${statusEmoji} ${user.name || 'ناشناس'}</button></td>
+                <td>${panelIcons.trim()}</td>
+                <td><span title="مصرف روزانه آلمان">🇩🇪 ${dailyDE}</span> / <span title="مصرف روزانه فرانسه">🇫🇷 ${dailyFR}</span></td>
+                <td>${user.payment_count || 0}</td>
+                <td>${expiryText}</td>
+                <td>${user.last_online_relative || 'هرگز'}</td>
+                <td class="actions-cell">${actions}</td>
+            `;
+
+            // افزودن شنونده رویدادها
+            row.querySelector('.user-details-btn').addEventListener('click', () => populateDetailsModal(user));
+            row.querySelector('.edit-btn').addEventListener('click', () => openEditModal(user));
+            row.querySelector('.delete-btn').addEventListener('click', () => openDeleteModal(user));
+            row.querySelector('.add-payment-btn').addEventListener('click', () => openAddPaymentModal(user));
+            
+            // منطق کلیک دکمه VIP
+            row.querySelector('.vip-btn').addEventListener('click', (e) => {
+                const button = e.currentTarget;
+                button.disabled = true;
+                fetch(`/admin/api/users/toggle_vip/${user.uuid}`, { method: 'POST' })
+                    .then(res => res.json())
+                    .then(result => {
+                        if (result.success) {
+                            button.classList.toggle('active');
+                            showToast(result.message, true);
+                            user.is_vip = !user.is_vip; 
+                        } else {
+                            showToast(result.message || 'خطا در تغییر وضعیت VIP.', false);
+                        }
+                    }).finally(() => { button.disabled = false; });
+            });
+            tableBody.appendChild(row);
+        });
+    }
+    // =========================================================================
+    // END: پایان بخشی که باید جایگزین شود
+    // =========================================================================
+
+    function renderPagination(pagination) {
+        paginationContainer.innerHTML = '';
+        if (pagination.total_pages <= 1) return;
+
+        const { page: current, total_pages: total } = pagination;
+        
+        const createBtn = (p, text, disabled = false) => {
+            const btn = document.createElement('button');
+            btn.className = 'pagination-btn';
+            btn.textContent = text || p;
+            if (p === current) btn.classList.add('active');
+            if (disabled) btn.disabled = true;
+            btn.addEventListener('click', () => {
+                if(p !== currentPage) loadUsers(p);
+            });
+            return btn;
+        };
+
+        paginationContainer.appendChild(createBtn(current - 1, 'قبلی', current === 1));
+
+        const pagesToShow = [];
+        if (total <= 7) {
+            for (let i = 1; i <= total; i++) pagesToShow.push(i);
+        } else {
+            pagesToShow.push(1);
+            if (current > 3) pagesToShow.push('...');
+            for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pagesToShow.push(i);
+            if (current < total - 2) pagesToShow.push('...');
+            pagesToShow.push(total);
+        }
+
+        pagesToShow.forEach(p => {
+            if (p === '...') {
+                const dots = document.createElement('span');
+                dots.className = 'pagination-dots';
+                dots.textContent = '...';
+                paginationContainer.appendChild(dots);
+            } else {
+                paginationContainer.appendChild(createBtn(p));
+            }
+        });
+        
+        paginationContainer.appendChild(createBtn(current + 1, 'بعدی', current === total));
+    }
+
+    function populateDetailsModal(user) {
+        const modal = getModal('user-details-modal');
+        const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
+        let hiddifyHtml = '', marzbanHtml = '';
+        if (user.on_hiddify) {
+            const h = user.breakdown.hiddify;
+            hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
+                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${h.current_usage_GB.toFixed(2)} / ${h.usage_limit_GB.toFixed(2)} GB</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted}</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
+            </div>`;
+        }
+        if (user.on_marzban) {
+            const m = user.breakdown.marzban;
+            marzbanHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل فرانسه 🇫🇷</h5>
+                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${m.current_usage_GB.toFixed(2)} / ${m.usage_limit_GB.toFixed(2)} GB</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted}</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
+            </div>`;
+        }
+        const totalDaily = (user.breakdown?.hiddify?.daily_usage || 0) + (user.breakdown?.marzban?.daily_usage || 0);
+        const formattedTotalDaily = totalDaily < 1 ? `${(totalDaily * 1024).toFixed(0)} MB` : `${totalDaily.toFixed(2)} GB`;
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header"><h4><i class="ri-information-line"></i>${user.name} <small class='text-secondary'>(${statusText} ${statusIcon})</small></h4><button class="close-btn">&times;</button></div>
+                <div class="modal-body" style="background-color:var(--bg-color)">
+                    <div class="details-card">
+                        <h5><i class="ri-dashboard-line"></i> خلاصه وضعیت</h5>
+                        <div class="panel-details-grid">
+                            <div class="detail-item"><span class="label"><i class="ri-hard-drive-2-line"></i>مجموع مصرف:</span><span class="value">${user.current_usage_GB.toFixed(2)} GB</span></div>
+                            <div class="detail-item"><span class="label"><i class="ri-bar-chart-box-line"></i>مجموع حجم:</span><span class="value">${user.usage_limit_GB.toFixed(2)} GB</span></div>
+                            <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف کل امروز:</span><span class="value">${formattedTotalDaily}</span></div>
+                            <div class="detail-item"><span class="label"><i class="ri-calendar-todo-line"></i>اعتبار باقیمانده:</span><span class="value">${user.expire_shamsi} (${user.expire} روز)</span></div>
+                        </div>
+                    </div>
+                    <div class="panel-details-grid">${hiddifyHtml}${marzbanHtml}</div>
+                    <div class="uuid-text-details">${user.uuid}</div>
+                </div>
+            </div>`;
+        modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
+        showModal(modal);
+    }
+    // ... ادامه توابع openAddUserModal, openEditModal, etc.
+    function openAddUserModal() {
+        const modal = getModal('add-user-modal');
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 650px;">
+                <form id="add-user-form">
+                    <div class="modal-header"><h4><i class="ri-user-add-line"></i> افزودن کاربر جدید</h4><button type="button" class="close-btn">&times;</button></div>
+                    <div class="modal-tabs" style="padding: 0 1.5rem; background-color: var(--card-bg);">
+                        <button type="button" class="modal-tab-btn active" data-tab="hiddify">پنل آلمان 🇩🇪</button>
+                        <button type="button" class="modal-tab-btn" data-tab="marzban">پنل فرانسه 🇫🇷</button>
+                    </div>
+                    <div class="modal-body" style="background-color:var(--bg-color)">
+                        <div id="hiddify-tab" class="tab-content active"><div class="form-grid">
+                            <div class="form-group"><label for="h-name">نام کاربر</label><input type="text" id="h-name" name="name" required placeholder="مثلا: user_test1"></div>
+                            <div class="form-group"><label for="h-usage">حجم (GB)</label><input type="number" id="h-usage" name="usage_limit_GB" value="30" required></div>
+                            <div class="form-group"><label for="h-days">مدت (روز)</label><input type="number" id="h-days" name="package_days" value="30" required></div>
+                            <div class="form-group"><label for="h-mode">حالت</label><select id="h-mode" name="mode"><option value="no_reset">no_reset</option><option value="daily">daily</option><option value="weekly">weekly</option><option value="monthly">monthly</option></select></div>
+                        </div></div>
+                        <div id="marzban-tab" class="tab-content"><div class="form-grid">
+                            <div class="form-group"><label for="m-username">نام کاربری</label><input type="text" id="m-username" name="username" required placeholder="مثلا: user_test2"></div>
+                            <div class="form-group"><label for="m-usage">حجم (GB)</label><input type="number" id="m-usage" name="usage_limit_GB" value="30" required></div>
+                            <div class="form-group"><label for="m-days">مدت (روز)</label><input type="number" id="m-days" name="package_days" value="30" required></div>
+                        </div></div>
+                        <div id="form-feedback"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn close-btn-footer">انصراف</button>
+                        <button type="submit" class="btn btn-primary" id="submit-add-user-btn"><span class="btn-text">ساخت کاربر</span><i class="ri-loader-4-line ri-spin" style="display: none;"></i></button>
+                    </div>
+                </form>
+            </div>`;
+        attachFormModalListeners(modal, 'add-user-form', handleAddUserSubmit);
+        showModal(modal);
+    }
+    
+    function openEditModal(user) {
+        const modal = getModal('edit-user-modal');
+        const h = user.breakdown.hiddify || {};
+        const m = user.breakdown.marzban || {};
+        let hiddifyTab = user.on_hiddify ? `<button type="button" class="modal-tab-btn active" data-tab="hiddify-edit">پنل آلمان 🇩🇪</button>` : '';
+        let marzbanTab = user.on_marzban ? `<button type="button" class="modal-tab-btn ${!user.on_hiddify ? 'active' : ''}" data-tab="marzban-edit">پنل فرانسه 🇫🇷</button>` : '';
+        let hiddifyContent = user.on_hiddify ? `
+            <div id="hiddify-edit-tab" class="tab-content active"><div class="form-grid">
+                <div class="form-group"><label for="edit-h-name">نام کاربر</label><input type="text" id="edit-h-name" name="common_name" value="${user.name || ''}" required></div>
+                <div class="form-group"><label for="edit-h-usage">حجم (GB)</label><input type="number" step="any" id="edit-h-usage" name="h_usage_limit_GB" value="${h.usage_limit_GB || 0}"></div>
+                <div class="form-group"><label for="edit-h-days">مدت (روز)</label><input type="number" id="edit-h-days" name="h_package_days" value="${user.expire || 0}"></div>
+            </div></div>` : '';
+        let marzbanContent = user.on_marzban ? `
+            <div id="marzban-edit-tab" class="tab-content ${!user.on_hiddify ? 'active' : ''}"><div class="form-grid">
+                <div class="form-group"><label for="edit-m-username">نام کاربر</label><input type="text" id="edit-m-username" name="m_username" value="${m.username || ''}" readonly disabled><small>نام کاربری مرزبان قابل تغییر نیست.</small></div>
+                <div class="form-group"><label for="edit-m-usage">حجم (GB)</label><input type="number" step="any" id="edit-m-usage" name="m_usage_limit_GB" value="${(m.usage_limit_GB || 0)}"></div>
+                <div class="form-group"><label for="edit-m-days">مدت (روز)</label><input type="number" id="edit-m-days" name="m_expire_days" value="${user.expire || 0}"></div>
+            </div></div>` : '';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 650px;">
+                <form id="edit-user-form" data-uuid="${user.uuid}">
+                    <div class="modal-header"><h4><i class="ri-pencil-line"></i> ویرایش کاربر: ${user.name}</h4><button type="button" class="close-btn">&times;</button></div>
+                    <div class="modal-tabs" style="padding: 0 1.5rem; background-color: var(--card-bg);">${hiddifyTab}${marzbanTab}</div>
+                    <div class="modal-body" style="background-color:var(--bg-color)">
+                        ${hiddifyContent}${marzbanContent}
+                        <div id="edit-form-feedback"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn close-btn-footer">انصراف</button>
+                        <button type="submit" class="btn btn-info" id="submit-edit-user-btn"><span class="btn-text">ذخیره تغییرات</span><i class="ri-loader-4-line ri-spin" style="display: none;"></i></button>
+                    </div>
+                </form>
+            </div>`;
+        attachFormModalListeners(modal, 'edit-user-form', (e) => handleUpdateUserSubmit(e, user));
+        showModal(modal);
+    }
+
+    function openDeleteModal(user) {
+        const modal = getModal('delete-confirm-modal');
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header"><h4><i class="ri-error-warning-line" style="color: var(--danger-color);"></i> تایید حذف</h4><button class="close-btn">&times;</button></div>
+            <div class="modal-body" style="text-align: center; background-color:var(--bg-color)">
+                <p>آیا از حذف کاربر <strong>${user.name}</strong> مطمئن هستید؟</p>
+                <p class="text-secondary" style="font-size: 0.9rem;">این عملیات غیرقابل بازگشت است و کاربر از تمام پنل‌ها حذف می‌شود.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn close-btn-footer">انصراف</button>
+                <button type="button" id="confirm-delete-btn" class="btn btn-danger">بله، حذف کن</button>
+            </div>
+        </div>`;
+        modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
+        modal.querySelector('.close-btn-footer').addEventListener('click', () => hideModal(modal));
+        modal.querySelector('#confirm-delete-btn').addEventListener('click', async () => {
+             try {
+                const response = await fetch(`/admin/api/users/delete/${user.uuid}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('خطا در حذف کاربر');
+                hideModal(modal);
+                loadUsers(currentPage);
+             } catch(error) {
+                showToast(error.message, 'error');
+             }
+        });
+        showModal(modal);
+    }
+
+    function attachFormModalListeners(modal, formId, submitHandler) {
+        modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
+        const footerCloseBtn = modal.querySelector('.close-btn-footer');
+        if (footerCloseBtn) footerCloseBtn.addEventListener('click', () => hideModal(modal));
+        modal.querySelectorAll('.modal-tab-btn').forEach(tab => {
+            tab.addEventListener('click', () => {
+                modal.querySelectorAll('.modal-tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
+                tab.classList.add('active');
+                const activeContent = modal.querySelector(`#${tab.dataset.tab.replace('-edit','')}-tab`);
+                if(activeContent) activeContent.classList.add('active');
+                modal.querySelectorAll('.tab-content').forEach(content => {
+                    const isContentActive = content.classList.contains('active');
+                    content.querySelectorAll('input, select').forEach(input => {
+                        if (input.name !== 'username') input.disabled = !isContentActive;
+                    });
+                });
+            });
+        });
+        const firstActiveTab = modal.querySelector('.modal-tab-btn.active');
+        if(firstActiveTab) firstActiveTab.click();
+        const form = modal.querySelector(`#${formId}`);
+        if(form) form.addEventListener('submit', submitHandler);
+    }
+
+    async function handleAddUserSubmit(e) {
+        e.preventDefault();
+        const form = e.target, feedbackEl = form.querySelector('#form-feedback'), submitBtn = form.querySelector('#submit-add-user-btn');
+        const btnText = submitBtn.querySelector('.btn-text'), btnSpinner = submitBtn.querySelector('.ri-loader-4-line');
+        feedbackEl.style.display = 'none'; btnText.style.display = 'none'; btnSpinner.style.display = 'inline-block'; submitBtn.disabled = true;
+        const activeTab = form.querySelector('.modal-tab-btn.active'), activePanel = activeTab.dataset.tab;
+        const data = { panel: activePanel };
+        form.querySelector(`.tab-content.active`).querySelectorAll('input, select').forEach(input => { if (input.name) data[input.name] = input.value; });
+        try {
+            const response = await fetch(`/admin/api/users/create`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'خطای سرور');
+            feedbackEl.className = 'success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
+            loadUsers(1);
+            setTimeout(() => hideModal(getModal('add-user-modal')), 1500);
+        } catch (error) {
+            feedbackEl.className = 'error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
+        } finally {
+            btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
+        }
+    }
+    
+    async function handleUpdateUserSubmit(e, user) {
+        e.preventDefault();
+        const form = e.target, feedbackEl = form.querySelector('#edit-form-feedback'), submitBtn = form.querySelector('#submit-edit-user-btn');
+        const btnText = submitBtn.querySelector('.btn-text'), btnSpinner = submitBtn.querySelector('.ri-loader-4-line');
+        feedbackEl.style.display = 'none'; btnText.style.display = 'none'; btnSpinner.style.display = 'inline-block'; submitBtn.disabled = true;
+        const data = { uuid: user.uuid };
+        form.querySelectorAll('input:not([disabled]), select:not([disabled])').forEach(input => { if (input.name && input.value) data[input.name] = input.value; });
+        try {
+            const response = await fetch(`/admin/api/users/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'خطای سرور');
+            feedbackEl.className = 'success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
+            loadUsers(currentPage);
+        } catch (error) {
+            feedbackEl.className = 'error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
+        } finally {
+            btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
+        }
+    }
+
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 10);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+    
+    // --- Event Listeners ---
+    let searchDebounceTimer;
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            loadUsers(1); // Reset to page 1 on new search
+        }, 500);
+    });
+
+    panelFilter.addEventListener('change', () => loadUsers(1));
+    
+    // <-- شنونده رویداد برای فیلتر جدید اضافه شد
+    if (mainFilter) {
+        mainFilter.addEventListener('change', () => loadUsers(1));
+    }
+    
+    document.addEventListener('click', (e) => { 
+        if (e.target.matches('.modal-overlay')) {
+            hideModal(e.target);
+        }
+    });
+    getModal('add-user-btn').addEventListener('click', openAddUserModal);
+    
+    // --- Initial Load ---
+    loadUsers(); 
+});
+</script>
+{% endblock %}

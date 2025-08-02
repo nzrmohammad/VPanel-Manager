@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .status-badge { padding: 0.3rem 0.8rem; border-radius: 50px; font-size: 0.85rem; font-weight: 500; display: inline-block; }
+    .status-active { background-color: #dcfce7; color: #166534; }
+    .status-inactive { background-color: #fee2e2; color: #991b1b; }
+    .status-warning { background-color: #fef3c7; color: #92400e; }    
+    .dash-progress-wrapper { background: var(--border-color, #e5e7eb); border-radius: 8px; height: 18px; overflow: hidden; margin-top: 8px;position: relative;display: flex;align-items: center;}
+    .dash-progress-bar { height: 100%; transition: width 0.3s ease; border-radius: 8px;display: flex;justify-content: center;align-items: center;}
+    .progress-text {position: absolute;width: 100%;text-align: center;color: var(--text-color); font-size: 0.75rem;}
+    .progress-success { background-color: #10b981; }
+    .progress-warning { background-color: #f59e0b; }
+    .progress-danger { background-color: #ef4444; }
+    .server-stats li > .dash-progress-wrapper { width: 100%; }
+    .chart-container { position: relative; height: 280px; padding: 10px; }
+    .chart-container canvas { width: 100% !important; height: 100% !important; }
+    .btn-renew { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; padding: 8px 16px; border-radius: 8px; font-weight: 500; transition: all 0.2s; text-decoration: none; }
+    .btn-renew:hover { background: #1d4ed8; }
+    .user-card { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 15px; }
+    .user-info { font-size: 1.1rem; font-weight: 600; }
+    .birthday-card { background: linear-gradient(135deg, #fceabb, #f8b500); color: #3d2f00; box-shadow: 0 4px 15px rgba(248, 181, 0, 0.2); }
+    .birthday-card .icon { color: #c69100; }
+    .connection-status { display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; animation: pulse 2s infinite; }
+    .status-dot.online { background: #10b981; }
+    .status-dot.offline { background: #ef4444; }
+    .status-dot.recent { background: #f59e0b; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'داشبورد' %}
+    {% include 'partials/_header.html' %}
+    
+    <div class="user-card">
+        <div class="user-info"><i class="ri-user-line"></i> {{ user.username }}</div>
+        <a href="{{ url_for('user.buy_service_page', uuid=uuid) }}" class="btn-renew"><i class="ri-shopping-cart-line"></i> تمدید سرویس</a>
+    </div>
+    
+    {% macro format_date_numeric(shamsi_date_str) -%}
+        {% set month_map = {'فروردین': '01', 'اردیبهشت': '02', 'خرداد': '03', 'تیر': '04', 'مرداد': '05', 'شهریور': '06', 'مهر': '07', 'آبان': '08', 'آذر': '09', 'دی': '10', 'بهمن': '11', 'اسفند': '12'} %}
+        {% set parts = shamsi_date_str.split(' ') %}
+        {% if parts|length >= 3 %}{{ parts[2] }}/{{ month_map.get(parts[1], '') }}/{{ parts[0].zfill(2) }}{% else %}{{ shamsi_date_str }}{% endif %}
+    {%- endmacro %}
+
+    <section class="info-grid">
+        <div class="info-card">
+            <div class="card-header"><i class="ri-shield-check-line icon"></i><span>وضعیت کلی</span></div>
+            <div class="card-content"><span class="status-badge {{ user.general_status.class }}">{{ user.general_status.text }}</span></div>
+        </div>
+        <div class="info-card">
+            <div class="card-header"><i class="ri-signal-wifi-line icon"></i><span>وضعیت اتصال</span></div>
+            <div class="card-content">
+                <span class="connection-status">
+                    <span class="status-dot {{ user.online_class }}"></span>
+                    {{ user.online_status }}
+                </span>
+            </div>
+        </div>
+        <div class="info-card">
+            <div class="card-header"><i class="ri-calendar-event-line icon"></i><span>تاریخ انقضا</span></div>
+            <div class="card-content"><span>{{ format_date_numeric(user.expire_shamsi) }}</span>{% if user.expire != "" and user.expire > 0 %}<small> ({{ user.expire }} روز)</small>{% endif %}</div>
+        </div>
+        <div class="info-card">
+            <div class="card-header"><i class="ri-battery-2-charge-line icon"></i><span>پیش‌بینی اتمام حجم</span></div>
+            <div class="card-content">
+                {% if user.days_to_depletion > 0 and user.days_to_depletion < 500 %}
+                    <span>حدود {{ user.days_to_depletion|round|int }} روز دیگر</span>
+                {% elif user.usage_limit_GB > 0 and user.current_usage_GB >= user.usage_limit_GB %}
+                    <small>حجم تمام شده</small>
+                {% else %}
+                    <small>مصرفی ثبت نشده</small>
+                {% endif %}
+            </div>
+        </div>
+        <div class="info-card">
+            <div class="card-header"><i class="ri-user-add-line icon"></i><span>تاریخ عضویت</span></div>
+            <div class="card-content"><span>{{ format_date_numeric(user.created_at_shamsi) }}</span></div>
+        </div>
+        <div class="info-card">
+            <div class="card-header">
+                <i class="ri-wallet-3-line icon"></i>
+                <span>آخرین پرداخت</span>
+                {% if user.payment_count > 0 %}
+                    <span class="status-badge" style="background-color: #e0e7ff; color: #4338ca; margin-right: auto; font-size: 0.75rem;">{{ user.payment_count }} پرداخت</span>
+                {% endif %}
+            </div>
+            <div class="card-content"><span>{{ user.last_payment_shamsi or 'ثبت نشده' }}</span></div>
+        </div>
+        <div class="info-card">
+            <div class="card-header"><i class="ri-line-chart-line icon"></i><span>میانگین مصرف</span></div>
+            <div class="card-content"><span>{{ "%.2f" | format(user.avg_daily_usage_GB) }} <small>GB / روز</small></span></div>
+        </div>
+        <div class="info-card {% if user.birthday_message %}birthday-card{% endif %}">
+            <div class="card-header"><i class="ri-cake-2-line icon"></i><span>تولد</span></div>
+            <div class="card-content">{% if user.has_birthday %}{% if user.birthday_message %}<div>{{ user.birthday_message }}</div>{% else %}<span>{{ user.days_until_birthday }}<small> روز مانده</small></span>{% endif %}{% else %}<small>ثبت نشده</small>{% endif %}</div>
+        </div>
+    </section>
+
+    <div class="info-card" style="margin-top: 15px;">
+        <div class="card-header"><i class="ri-database-2-line icon"></i><span>حجم کل</span></div>
+        <div class="card-content">
+            <span>{{ "%.2f" | format(user.current_usage_GB) }} / {% if user.usage_limit_GB > 0 %}{{ "%.2f" | format(user.usage_limit_GB) }}{% else %}∞{% endif %} <small>GB</small></span>
+            <div class="dash-progress-wrapper">
+                <div class="dash-progress-bar {% if user.usage_percentage >= 90 %}progress-danger{% elif user.usage_percentage >= 75 %}progress-warning{% else %}progress-success{% endif %}" style="width: {{ user.usage_percentage }}%"></div>
+                <span class="progress-text">{{ user.usage_percentage|round(1) }}%</span>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="section-title">جزئیات سرورها</h3>
+    <section class="details-grid">
+        {% if user.breakdown and 'hiddify' in user.breakdown %}
+        {% set hiddify_percentage = user.breakdown.hiddify.get('usage_percentage', 0) %}
+        <div class="info-card panel-card">
+            <div class="panel-header"><h4>آلمان</h4><span class="fi fi-de"></span></div>
+            <ul class="server-stats">
+                <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if user.breakdown.hiddify.online_status == 'آنلاین' else 'recent' if user.breakdown.hiddify.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ user.breakdown.hiddify.online_status }}</span></li>
+                <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ user.breakdown.hiddify.last_online_shamsi }}</span></li>
+                <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.hiddify.get('today_usage_GB', 0)) }} GB</span></li>
+                <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(user.breakdown.hiddify.expire_shamsi) }}</span></li>
+                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم پنل</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.hiddify.get('current_usage_GB', 0)) }} / {% if user.breakdown.hiddify.get('usage_limit_GB', 0) > 0 %}{{ "%.2f" | format(user.breakdown.hiddify.get('usage_limit_GB', 0)) }}{% else %}∞{% endif %} GB</span></li>
+                <li>
+                    <div class="dash-progress-wrapper">
+                        <div class="dash-progress-bar {% if hiddify_percentage >= 90 %}progress-danger{% elif hiddify_percentage >= 75 %}progress-warning{% else %}progress-success{% endif %}" style="width: {{ hiddify_percentage }}%"></div>
+                        <span class="progress-text">{{ hiddify_percentage|round(1) }}%</span>
+                    </div>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+        
+        {% if user.breakdown and 'marzban' in user.breakdown %}
+        {% set marzban_percentage = user.breakdown.marzban.get('usage_percentage', 0) %}
+        <div class="info-card panel-card">
+            <div class="panel-header"><h4>فرانسه</h4><span class="fi fi-fr"></span></div>
+            <ul class="server-stats">
+                <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if user.breakdown.marzban.online_status == 'آنلاین' else 'recent' if user.breakdown.marzban.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ user.breakdown.marzban.online_status }}</span></li>
+                <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ user.breakdown.marzban.last_online_shamsi }}</span></li>
+                <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.marzban.get('today_usage_GB', 0)) }} GB</span></li>
+                <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(user.breakdown.marzban.expire_shamsi) }}</span></li>
+                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم پنل</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.marzban.get('current_usage_GB', 0)) }} / {% if user.breakdown.marzban.get('usage_limit_GB', 0) > 0 %}{{ "%.2f" | format(user.breakdown.marzban.get('usage_limit_GB', 0)) }}{% else %}∞{% endif %} GB</span></li>
+                <li>
+                    <div class="dash-progress-wrapper">
+                        <div class="dash-progress-bar {% if marzban_percentage >= 90 %}progress-danger{% elif marzban_percentage >= 75 %}progress-warning{% else %}progress-success{% endif %}" style="width: {{ marzban_percentage }}%"></div>
+                        <span class="progress-text">{{ marzban_percentage|round(1) }}%</span>
+                    </div>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </section>
+
+    <div class="info-card chart-container" style="margin-top: 20px;">
+        <div class="card-header"><i class="ri-bar-chart-grouped-line icon"></i><span>نمودار مصرف هفتگی</span></div>
+        <canvas id="weeklyChart"></canvas>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('weeklyChart');
+    if (ctx) {
+        const themeToggle = document.getElementById('theme-toggle');
+        let weeklyChart;
+
+        const renderOrUpdateChart = () => {
+            const isDarkTheme = document.body.classList.contains('dark-theme');
+            const chartColors = { 
+                textColor: isDarkTheme ? '#f9fafb' : '#111827',
+                gridColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            };
+
+            const chartOptions = {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6, font: { size: 12 }, color: chartColors.textColor } } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { font: { size: 10 }, color: chartColors.textColor }, grid: { color: chartColors.gridColor } },
+                    x: { ticks: { font: { size: 10 }, color: chartColors.textColor }, grid: { color: chartColors.gridColor } }
+                }
+            };
+            
+            if (weeklyChart) {
+                weeklyChart.options = chartOptions;
+                weeklyChart.update();
+            } else {
+                weeklyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: {{ user.usage_chart_data.labels|tojson }},
+                        datasets: [{
+                            label: '🇩🇪', data: {{ user.usage_chart_data.hiddify_data|tojson }},
+                            borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.3, pointRadius: 2, borderWidth: 1.5
+                        }, {
+                            label: '🇫🇷', data: {{ user.usage_chart_data.marzban_data|tojson }},
+                            borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.3, pointRadius: 2, borderWidth: 1.5
+                        }]
+                    },
+                    options: chartOptions
+                });
+            }
+        };
+        renderOrUpdateChart();
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                setTimeout(renderOrUpdateChart, 50);
+            });
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    /* استایل‌های اختصاصی فقط برای صفحه پروفایل */
+    .form-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+    }
+    .form-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .form-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+    .form-body {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .form-group label {
+        font-weight: 500;
+        font-size: 0.9rem;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+    .form-group small {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-top: 0.3rem;
+        display: block;
+    }
+    /* --- استایل مدرن برای Input ها --- */
+    .form-control {
+        width: 100%;
+        padding: 0.8rem 1rem;
+        border: 1px solid var(--border-color);
+        background-color: var(--input-bg, var(--bg-color));
+        color: var(--text-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+        /* <<<<<<<<<<<<<<<< این خط مشکل را حل می‌کند >>>>>>>>>>>>>>>> */
+        box-sizing: border-box; 
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+    }
+    .form-control[disabled] {
+        background-color: var(--border-color);
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    /* --- استایل مدرن برای بخش اعلان‌ها --- */
+    .switch-group {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .switch-group:last-child {
+        border-bottom: none;
+    }
+    .switch-group label:first-child {
+        margin-left: 1rem;
+    }
+    .switch { 
+        position: relative; 
+        display: inline-block; 
+        width: 44px; 
+        height: 24px; 
+        flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--accent-color); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* --- استایل دکمه ذخیره با فاصله مناسب --- */
+    .form-footer {
+        text-align: center;
+        padding-bottom: 1rem;
+        margin-top: 1rem;
+    }
+    .btn-submit {
+        background: var(--accent-color);
+        color: white;
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        width: 100%;
+        max-width: 300px;
+    }
+    .btn-submit:hover {
+        background-color: var(--accent-dark, #1d4ed8);
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'پروفایل و تنظیمات' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="profile-form-container">
+        <form method="POST" action="{{ url_for('user.user_profile_page', uuid=uuid) }}">
+            
+            <div class="form-card">
+                <div class="form-header">
+                    <i class="ri-user-settings-line icon"></i>
+                    <h3>تنظیمات اصلی</h3>
+                </div>
+                <div class="form-body">
+                    <div class="form-group">
+                        <label for="config_name">نام نمایشی کانفیگ</label>
+                        <input type="text" id="config_name" name="config_name" class="form-control" value="{{ user.username }}" placeholder="یک نام دلخواه وارد کنید">
+                        <small>این نام در اپلیکیشن‌های شما نمایش داده می‌شود.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="birthday">تاریخ تولد (برای دریافت هدیه)</label>
+                        {% if user_basic.birthday %}
+                            <input type="text" class="form-control" value="{{ user_basic.birthday | to_shamsi }}" disabled>
+                            <small>تاریخ تولد فقط یک بار قابل ثبت است.</small>
+                        {% else %}
+                            <input type="date" id="birthday" name="birthday" class="form-control">
+                            <small>فرمت تاریخ باید میلادی باشد (YYYY-MM-DD).</small>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-header">
+                    <i class="ri-notification-3-line icon"></i>
+                    <h3>تنظیمات اعلان‌ها</h3>
+                </div>
+                <div class="form-body" style="gap: 0.5rem; padding-top: 0.5rem; padding-bottom: 0.5rem;">
+                    <div class="switch-group">
+                        <label for="daily_reports">دریافت گزارش مصرف روزانه</label>
+                        <label class="switch">
+                            <input type="checkbox" id="daily_reports" name="daily_reports" {% if settings.daily_reports %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-group">
+                        <label for="expiry_warnings">دریافت هشدار نزدیک شدن به انقضا</label>
+                        <label class="switch">
+                            <input type="checkbox" id="expiry_warnings" name="expiry_warnings" {% if settings.expiry_warnings %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-group">
+                        <label for="data_warning_hiddify">هشدار اتمام حجم (آلمان 🇩🇪)</label>
+                        <label class="switch">
+                            <input type="checkbox" id="data_warning_hiddify" name="data_warning_hiddify" {% if settings.data_warning_hiddify %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-group">
+                        <label for="data_warning_marzban">هشدار اتمام حجم (فرانسه 🇫🇷)</label>
+                        <label class="switch">
+                            <input type="checkbox" id="data_warning_marzban" name="data_warning_marzban" {% if settings.data_warning_marzban %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-footer">
+                <button type="submit" class="btn-submit"><i class="ri-save-line"></i> ذخیره تغییرات</button>
+            </div>
+        </form>
+    </div>
+{% endblock %}

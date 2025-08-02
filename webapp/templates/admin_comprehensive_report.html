@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .report-container { display: flex; flex-direction: column; gap: 1.5rem; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+    .stat-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 1rem 1.25rem; }
+    .stat-card-header { display: flex; align-items: center; gap: 0.75rem; color: var(--text-secondary); font-size: 0.9rem; }
+    .stat-card-header .icon { font-size: 1.5rem; }
+    .stat-card-main { font-size: 1.75rem; font-weight: 700; margin-top: 0.5rem; }
+    .stat-card-footer { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .badge { font-size: 0.8rem; padding: 0.2rem 0.5rem; border-radius: 5px; margin: 0 0.2rem; }
+    .badge-de { background-color: #ffc10730; color: #ffc107; }
+    .badge-fr { background-color: #007bff30; color: #007bff; }
+    .tabs-nav { display: flex; flex-wrap: wrap; border-bottom: 2px solid var(--border-color); margin-bottom: 1.5rem; }
+    .tab-btn { padding: 0.8rem 1.5rem; cursor: pointer; border: none; background: none; color: var(--text-secondary); font-size: 1rem; position: relative; white-space: nowrap;}
+    .tab-btn.active { color: var(--accent-color); font-weight: bold; }
+    .tab-btn.active::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2px; background-color: var(--accent-color); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .data-table-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; }
+    .table-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); }
+    .table-header h3 { margin: 0; font-size: 1.1rem; }
+    .table-responsive-paginated { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: 0.8rem 1.25rem; text-align: right; border-bottom: 1px solid var(--border-color); }
+    .data-table thead th { background-color: var(--bg-color); position: sticky; top: 0; z-index: 1; }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .pagination-controls { display: flex; justify-content: center; align-items: center; padding: 1rem; gap: 0.5rem; border-top: 1px solid var(--border-color); }
+    .pagination-btn { padding: 0.5rem 1rem; border: 1px solid var(--border-color); background-color: var(--card-bg); color: var(--text-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; }
+    .pagination-btn:hover { background-color: rgba(var(--accent-rgb), 0.1); }
+    .pagination-btn.active { background-color: var(--accent-color); color: white; border-color: var(--accent-color); }
+    .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='گزارش گیری' %}
+    {% include 'partials/_header.html' %}
+<div class="report-container">
+    <div class="table-header" style="border-bottom: none; padding: 0;"><h3>👑 گزارش جامع - {{ report_data.today_shamsi }}</h3></div>
+    <section class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-card-header"><i class="ri-group-line icon"></i><span>تعداد کل اکانت‌ها</span></div>
+            <div class="stat-card-main">{{ report_data.summary.total_users }}</div>
+            <div class="stat-card-footer"><span class="badge badge-de">🇩🇪 {{ report_data.summary.total_de }}</span><span class="badge badge-fr">🇫🇷 {{ report_data.summary.total_fr }}</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-header"><i class="ri-check-double-line icon"></i><span>اکانت‌های فعال</span></div>
+            <div class="stat-card-main">{{ report_data.summary.active_users }}</div>
+            <div class="stat-card-footer"><span class="badge badge-de">🇩🇪 {{ report_data.summary.active_de }}</span><span class="badge badge-fr">🇫🇷 {{ report_data.summary.active_fr }}</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-header"><i class="ri-wifi-line icon"></i><span>کاربران آنلاین</span></div>
+            <div class="stat-card-main">{{ report_data.summary.online_users }}</div>
+            <div class="stat-card-footer"><span>در ۳ دقیقه اخیر</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-header"><i class="ri-download-cloud-2-line icon"></i><span>مصرف کل امروز</span></div>
+            <div class="stat-card-main">{{ report_data.summary.total_usage }}</div>
+        </div>
+    </section>
+
+    <div class="tabs-nav">
+        <button class="tab-btn active" data-tab="tab-online-active">آنلاین و فعال</button>
+        <button class="tab-btn" data-tab="tab-expiring-soon">در آستانه انقضا</button>
+        <button class="tab-btn" data-tab="tab-inactive">غیرفعال و متصل نشده</button>
+        <button class="tab-btn" data-tab="tab-top-consumers">پرمصرف‌ترین‌ها</button>
+        <button class="tab-btn" data-tab="tab-payments">پرداخت‌ها</button>
+        <button class="tab-btn" data-tab="tab-birthdays">تولدها</button>
+        <button class="tab-btn" data-tab="tab-bot-users">کاربران ربات</button>
+    </div>
+    
+    <div id="tab-online-active" class="tab-pane active">
+        <div class="data-table-card"><div class="table-header"><h3>فعال در ۲۴ ساعت اخیر ({{ report_data.active_last_24h|length }} نفر)</h3></div>
+            <div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>نام</th><th>پنل(ها)</th><th>آخرین اتصال</th><th>انقضا (روز)</th></tr></thead><tbody class="paginated-tbody">
+                {% for user in report_data.active_last_24h %}<tr><td>{{ user.name }}</td><td>{{ user.panel_display }}</td><td>{{ user.last_online_relative }}</td><td>{{ user.expire if user.expire is not none else '∞' }}</td></tr>
+                {% else %}<tr><td colspan="4" style="text-align: center;">-</td></tr>{% endfor %}
+            </tbody></table></div><div class="pagination-controls"></div>
+        </div>
+    </div>
+    
+    <div id="tab-expiring-soon" class="tab-pane">
+        <div class="data-table-card"><div class="table-header"><h3>⚠️ کاربران در آستانه انقضا (۷ روز آینده) ({{ report_data.expiring_soon_users|length }} نفر)</h3></div>
+            <div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>نام</th><th>پنل(ها)</th><th>انقضا (روز)</th><th>مصرف کل (GB)</th></tr></thead><tbody class="paginated-tbody">
+                {% for user in report_data.expiring_soon_users %}
+                <tr><td>{{ user.name }}</td><td>{{ user.panel_display }}</td><td><span class="badge" style="background-color: #ef444420; color: var(--danger-color);">{{ user.expire }} روز</span></td><td>{{ "%.2f"|format(user.usage.total_usage_GB) }} / {{ "%.2f"|format(user.usage.data_limit_GB) }}</td></tr>
+                {% else %}<tr><td colspan="4" style="text-align: center;">کاربری در آستانه انقضا نیست.</td></tr>{% endfor %}
+            </tbody></table></div><div class="pagination-controls"></div>
+        </div>
+    </div>
+
+    <div id="tab-inactive" class="tab-pane">
+        <div class="data-table-card" style="margin-bottom: 1.5rem;"><div class="table-header"><h3>غیرفعال ۱ تا ۷ روز گذشته ({{ report_data.inactive_1_to_7_days|length }} نفر)</h3></div>
+            <div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>نام</th><th>پنل(ها)</th><th>آخرین اتصال</th><th>انقضا (روز)</th></tr></thead><tbody class="paginated-tbody">
+                {% for user in report_data.inactive_1_to_7_days %}<tr><td>{{ user.name }}</td><td>{{ user.panel_display }}</td><td>{{ user.last_online_relative }}</td><td>{{ user.expire if user.expire is not none else '∞' }}</td></tr>
+                {% else %}<tr><td colspan="4" style="text-align: center;">-</td></tr>{% endfor %}
+            </tbody></table></div><div class="pagination-controls"></div>
+        </div>
+        <div class="data-table-card"><div class="table-header"><h3>هرگز متصل نشده ({{ report_data.never_connected|length }} نفر)</h3></div>
+            <div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>نام</th><th>پنل(ها)</th><th>انقضا (روز)</th></tr></thead><tbody class="paginated-tbody">
+                {% for user in report_data.never_connected %}<tr><td>{{ user.name }}</td><td>{{ user.panel_display }}</td><td>{{ user.expire if user.expire is not none else '∞' }}</td></tr>
+                {% else %}<tr><td colspan="3" style="text-align: center;">-</td></tr>{% endfor %}
+            </tbody></table></div><div class="pagination-controls"></div>
+        </div>
+    </div>
+
+    <div id="tab-top-consumers" class="tab-pane">
+        <div class="data-table-card"><div class="table-header"><h3>🏆 ۱۰ کاربر پرمصرف کل</h3></div><div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>رتبه</th><th>نام کاربری</th><th>پنل(ها)</th><th>مصرف / کل (GB)</th></tr></thead><tbody class="paginated-tbody">
+            {% for user in report_data.top_consumers %}
+            <tr><td>{{ loop.index }}</td><td>{{ user.name }}</td><td>{{ user.panel_display }}</td><td>{{ "%.2f"|format(user.usage.total_usage_GB) }} / {{ "%.2f"|format(user.usage.data_limit_GB) }}</td></tr>
+            {% else %}<tr><td colspan="4" style="text-align: center;">کاربری برای نمایش وجود ندارد.</td></tr>{% endfor %}
+        </tbody></table></div><div class="pagination-controls"></div></div>
+    </div>
+
+<div id="tab-payments" class="tab-pane">
+    <div class="data-table-card">
+        <div class="table-header">
+            <h3>لیست پرداخت‌های ثبت‌شده ({{ report_data.users_with_payments|length }} مورد)</h3>
+        </div>
+        <div class="table-responsive-paginated">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>شناسه تلگرام</th>
+                        <th>نام تلگرام</th>
+                        <th>نام کاربر</th>
+                        <th>پنل(ها)</th>
+                        <th>آخرین پرداخت</th>
+                    </tr>
+                </thead>
+                <tbody class="paginated-tbody">
+                    {% for payment in report_data.users_with_payments %}
+                    <tr>
+                        <td><code>{{ payment.user_id or '?' }}</code></td>
+                        <td>{{ payment.first_name or 'کاربر' }}</td>
+                        <td>{{ payment.name }}</td>
+                        <td>{{ payment.panel_display }}</td>
+                        <td>{{ payment.payment_date_shamsi }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center;">هیچ پرداختی ثبت نشده است.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination-controls"></div>
+    </div>
+</div>
+
+    <div id="tab-birthdays" class="tab-pane">
+        <div class="data-table-card"><div class="table-header"><h3>🎂 کاربران با تاریخ تولد ثبت‌شده ({{ report_data.users_with_birthdays|length }} نفر)</h3></div>
+            <div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>نام</th><th>پنل(ها)</th><th>تاریخ تولد</th><th>روز مانده</th></tr></thead><tbody class="paginated-tbody">
+                {% for user in report_data.users_with_birthdays %}
+                <tr>
+                    <td>{{ user.first_name or '' }} {{ user.last_name or '' }}</td>
+                    <td>{{ user.panel_display }}</td>
+                    <td>{{ user.birthday_shamsi }}</td>
+                    <td>
+                        {% if user.days_remaining == 0 %}
+                            <span class="badge" style="background-color: #22c55e30; color: #166534;">🎉 امروز</span>
+                        {% else %}
+                            {{ user.days_remaining }} روز
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}<tr><td colspan="4" style="text-align: center;">هیچ تاریخ تولدی ثبت نشده است.</td></tr>{% endfor %}
+            </tbody></table></div><div class="pagination-controls"></div>
+        </div>
+    </div>
+    
+    <div id="tab-bot-users" class="tab-pane">
+        <div class="data-table-card"><div class="table-header"><h3>👥 لیست کاربران ربات تلگرام ({{ report_data.bot_users|length }} نفر)</h3></div>
+            <div class="table-responsive-paginated"><table class="data-table"><thead><tr><th>شناسه تلگرام</th><th>نام اکانت تلگرام</th><th>نام کاربری تلگرام</th></tr></thead><tbody class="paginated-tbody">
+                {% for user in report_data.bot_users %}<tr><td><code>{{ user.user_id }}</code></td><td>{{ user.first_name or '' }} {{ user.last_name or '' }}</td><td>{{ '@' + user.username if user.username else '-' }}</td></tr>
+                {% else %}<tr><td colspan="3" style="text-align: center;">-</td></tr>{% endfor %}
+            </tbody></table></div><div class="pagination-controls"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+            button.classList.add('active');
+            document.getElementById(button.dataset.tab).classList.add('active');
+        });
+    });
+
+    const tablesToPaginate = document.querySelectorAll('.table-responsive-paginated');
+    const rowsPerPage = 15;
+
+    tablesToPaginate.forEach(tableContainer => {
+        const tbody = tableContainer.querySelector('.paginated-tbody');
+        if (!tbody) return;
+        const paginationControls = tableContainer.parentElement.querySelector('.pagination-controls');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const pageCount = Math.ceil(rows.length / rowsPerPage);
+
+        if (pageCount <= 1) {
+            if(paginationControls) paginationControls.style.display = 'none';
+            return;
+        }
+
+        let currentPage = 1;
+        function displayPage(page) {
+            currentPage = page;
+            const start = (page - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            rows.forEach((row, index) => {
+                row.style.display = (index >= start && index < end) ? '' : 'none';
+            });
+            renderControls();
+        }
+
+        function renderControls() {
+            paginationControls.innerHTML = '';
+            const createBtn = (page, text, disabled = false, isActive = false) => {
+                const btn = document.createElement('button');
+                btn.className = 'pagination-btn';
+                btn.textContent = text || page;
+                if (isActive) btn.classList.add('active');
+                if (disabled) btn.disabled = true;
+                btn.addEventListener('click', () => displayPage(page));
+                return btn;
+            };
+
+            paginationControls.appendChild(createBtn(currentPage - 1, 'قبلی', currentPage === 1));
+            for (let i = 1; i <= pageCount; i++) {
+                paginationControls.appendChild(createBtn(i, i, false, i === currentPage));
+            }
+            paginationControls.appendChild(createBtn(currentPage + 1, 'بعدی', currentPage === pageCount));
+        }
+        displayPage(1);
+    });
+});
+</script>
+{% endblock %}

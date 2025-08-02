@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .config-card {background-color: var(--card-bg); border: 1px solid var(--border-color);border-radius: var(--border-radius); margin-top: 1.5rem;}
+    .config-header {display: flex; align-items: center; gap: 0.75rem;padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color);}
+    .config-header i { font-size: 1.2rem; color: var(--accent-color); }
+    .config-header h3 { margin: 0; font-size: 1rem; }
+    .config-list { list-style: none; padding: 0; margin: 0; }
+    .config-item {display: flex; align-items: center; justify-content: space-between; gap: 1rem;padding: 0.8rem 1rem; border-bottom: 1px solid var(--border-color);}
+    .config-list li:last-child .config-item { border-bottom: none; }
+    .config-details {display: flex; align-items: center; gap: 0.75rem;flex-grow: 1; min-width: 0;}
+    .config-details .fi { font-size: 1.2rem; }
+    .config-name {white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+    .config-item {position: relative;overflow: hidden;}
+    .config-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+    .action-btn {display: flex; align-items: center; justify-content: center;width: 36px; height: 36px; border-radius: 8px; cursor: pointer;font-size: 1.1rem; border: 1px solid var(--border-color);background-color: transparent; color: var(--text-secondary);transition: all 0.2s ease;}
+    .action-btn:hover { background-color: var(--accent-color); color: white; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center;backdrop-filter: blur(4px);}
+    .modal-overlay.show { display: flex; }
+    .modal-content { background-color: var(--card-bg); padding: 1.5rem; border-radius: var(--border-radius); text-align: center; width: 90%; max-width: 320px;}
+    #modal-qr-container {padding: 10px;background-color: white;border-radius: 8px;margin-top: 1rem;display: inline-block;color: var(--text-color);}
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'کانفیگ‌ها' %}
+    {% include 'partials/_header.html' %}
+
+    <div id="qr-modal" class="modal-overlay" onclick="closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h4 id="modal-title" style="margin-bottom: 1rem; word-break: break-all;"></h4>
+            <div id="modal-qr-container"></div>
+        </div>
+    </div>
+
+    <div class="config-card">
+        <div class="config-header"><i class="ri-links-line"></i><h3>لینک‌های اشتراک</h3></div>
+        <ul class="config-list">
+            {% for link in subscription_links %}
+            <li>
+                <div class="config-item">
+                    <div class="config-details"><span class="config-name">{{ link.type }}</span></div>
+                    <input type="text" value="{{ link.url }}" id="sub-link-{{ loop.index }}" style="position:absolute; left:-9999px;">
+                    <div class="config-actions">
+                        <button class="action-btn" title="نمایش QR Code" onclick="showQRCode('{{ link.url }}', '{{ link.type }}')"><i class="ri-qr-code-line"></i></button>
+                        <button class="action-btn" title="کپی کردن لینک" onclick="copyToClipboard('#sub-link-{{ loop.index }}', this)"><i class="ri-file-copy-line"></i></button>
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="config-card">
+        <div class="config-header"><i class="ri-server-line"></i><h3>همه کانفیگ‌ها</h3></div>
+        <ul class="config-list">
+            {% for config in individual_configs %}
+            <li>
+                <div class="config-item">
+                    <div class="config-details" title="{{ config.name }}">
+                        {% if config.country_code %}
+                            <span class="fi fi-{{ config.country_code }}"></span>
+                        {% endif %}
+                        <span class="config-name">{{ config.name }}</span>
+                    </div>
+                    <input type="text" value="{{ config.url }}" id="config-link-{{ loop.index }}" style="position:absolute; left:-9999px;">
+                    <div class="config-actions">
+                        <button class="action-btn" title="نمایش QR Code" onclick="showQRCode('{{ config.url }}', '{{ config.name }}')"><i class="ri-qr-code-line"></i></button>
+                        <button class="action-btn" title="کپی کردن کانفیگ" onclick="copyToClipboard('#config-link-{{ loop.index }}', this)"><i class="ri-file-copy-line"></i></button>
+                    </div>
+                </div>
+            </li>
+            {% else %}
+            <li><div class="config-item"><span class="config-name">هیچ کانفیگ فعالی یافت نشد.</span></div></li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {    
+    window.showQRCode = function(url, title) {
+        const modal = document.getElementById('qr-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const qrcodeContainer = document.getElementById('modal-qr-container');
+        if (!modal || !modalTitle || !qrcodeContainer) return;
+
+        modalTitle.textContent = title;
+        qrcodeContainer.innerHTML = '';
+
+        if (url.length > 2000) {
+            qrcodeContainer.innerHTML = '<p style="color: var(--text-secondary);">لینک طولانی است. لطفاً آن را مستقیماً کپی کنید.</p>';
+        } else {
+            new QRCode(qrcodeContainer, {
+                text: url, width: 256, height: 256,
+                colorDark: "#000000", colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+        modal.classList.add('show');
+    }
+
+    window.closeModal = function() {
+        const modal = document.getElementById('qr-modal');
+        if (modal) modal.classList.remove('show');
+    }
+
+    window.copyToClipboard = function(elementId, button) {
+        const copyText = document.querySelector(elementId);
+        if (!copyText) return;
+        
+        const originalIcon = button.innerHTML;
+        const showSuccess = () => {
+            button.innerHTML = '<i class="ri-check-line"></i>';
+            button.style.backgroundColor = 'var(--success-color)';
+            button.style.color = 'white';
+            setTimeout(() => {
+                button.innerHTML = originalIcon;
+                button.style.backgroundColor = '';
+                button.style.color = '';
+            }, 2000);
+        };
+        
+        navigator.clipboard.writeText(copyText.value).then(showSuccess).catch(err => {
+            alert('خطا در کپی کردن.');
+        });
+    }
+});
+</script>
+{% endblock %}

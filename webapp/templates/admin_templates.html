@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    /* --- Layout & Forms --- */
+    .content-wrapper { width: 100%; }
+    #add-templates-form textarea { width: 100%; padding: 0.75rem; direction: ltr; text-align: left; margin-top: 0.5rem; font-family: monospace; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: var(--bg-color); color: var(--text-color); transition: border-color 0.2s, box-shadow 0.2s; }
+    #add-templates-form textarea:focus { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2); outline: none; }
+    
+    /* --- Table Styles --- */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: 1rem 1.25rem; text-align: right; vertical-align: middle; border-bottom: 1px solid var(--border-color); }
+    .data-table thead th { font-weight: bold; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; }
+    .config-string-container { display: flex; align-items: center; direction: ltr; font-family: monospace; font-size: 0.9em; }
+    .config-protocol { color: var(--text-secondary); }
+    .config-separator { margin: 0 0.5ch; color: var(--accent-color); font-weight: bold; }
+    .config-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* --- Action Buttons --- */
+    .action-btn { background: none; border: none; cursor: pointer; font-size: 1.3rem; color: var(--text-secondary); padding: 0.4rem; margin: 0 0.2rem; border-radius: 50%; transition: all 0.2s; }
+    .action-btn:hover { background-color: rgba(var(--accent-rgb), 0.1); }
+    .toggle-btn:hover { color: var(--accent-color); }
+    .edit-btn:hover { color: #f59e0b; }
+    .delete-btn:hover { color: var(--danger-color); }
+    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* --- Special (VIP) Button Style --- */
+    .action-btn.special-btn.active {
+        color: #f59e0b;
+        background-color: rgba(245, 158, 11, 0.1);
+    }
+    .action-btn.special-btn.active i::before {
+        content: "\F1AC"; /* Remixicon filled star */
+    }
+
+    /* --- Server Type Selector Styles --- */
+    .server-type-selector .action-btn {
+        opacity: 0.3;
+        font-size: 1.2rem;
+    }
+    .server-type-selector .action-btn.active {
+        opacity: 1;
+        background-color: rgba(var(--accent-rgb), 0.1);
+    }
+
+    /* --- Feedback & Modals --- */
+    .form-feedback { padding: 0.8rem 1.2rem; border-radius: 8px; margin-bottom: 1.5rem; font-weight: bold; display: none; }
+    .form-feedback.success { background-color: rgba(34, 197, 94, 0.1); color: var(--success-color); }
+    .form-feedback.error { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+    .modal-overlay.show { display: flex; }
+    .modal-content { background-color: var(--card-bg); padding: 1.5rem; border-radius: var(--border-radius); width: 90%; max-width: 600px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    #edit-template-form textarea { width: 100%; min-height: 150px; direction: ltr; text-align: left; }
+    .modal-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='مدیریت سرورها' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="content-wrapper">
+        <div id="form-feedback" class="form-feedback"></div>
+
+        <section class="info-card">
+            <div class="table-header" style="padding: 1rem 1.5rem;"><h3><i class="ri-add-box-line" style="vertical-align: middle;"></i> افزودن کانفیگ‌های جدید</h3></div>
+            <form id="add-templates-form" style="padding: 1.5rem; border-top: 1px solid var(--border-color);">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div style="margin-bottom: 1rem;"><label for="templates_str">لیست کانفیگ‌ها (هر کدام در یک خط)</label><textarea id="templates_str" name="templates_str" rows="8" placeholder="vless://...&#10;vmess://...&#10;trojan://..." required></textarea></div>
+                <button type="submit" class="btn btn-primary">افزودن همه به سیستم</button>
+            </form>
+        </section>
+
+        <section class="info-card data-table-container" style="margin-top: 2rem;">
+            <div class="table-header">
+                <h3><i class="ri-list-settings-line" style="vertical-align: middle;"></i> لیست کانفیگ‌های موجود</h3>
+                <button id="reset-templates-btn" class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+                    <i class="ri-restart-line"></i> ریست کردن ID ها
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align: center;">ID</th>
+                            <th style="text-align: center;">رشته کانفیگ</th>
+                            <th style="text-align: center;">وضعیت</th>
+                            <th style="text-align: center;">نوع سرور</th>
+                            <th style="text-align: center;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="templates-table-body">
+                        {% for tpl in templates %}
+                            <tr data-template-id="{{ tpl.id }}">
+                                <td style="text-align: center;">{{ tpl.id }}</td>
+                            <td class="config-cell" title="{{ tpl.template_str }}">
+                                {% set parts = tpl.template_str.split('#', 1) %}
+                                <div class="config-string-container">
+                                    {# نمایش ۱۵ کاراکتر اول رشته کانفیگ #}
+                                    <span class="config-protocol" style="color: var(--text-secondary);">{{ parts[0][:40] }}</span>
+                                    
+                                    <span class="config-separator">...</span>
+                                    
+                                    {# نمایش کامل نام کانفیگ (هرچیزی بعد از #) #}
+                                    {% if parts|length > 1 %}
+                                        <span class="config-name">#{{ parts[1] }}</span>
+                                    {% endif %}
+                                </div>
+                                <span class="full-template-str" style="display: none;">{{ tpl.template_str }}</span>
+                            </td>
+                                <td style="text-align: center;"><span class="status-badge {{ 'status-active' if tpl.is_active else 'status-inactive' }}">{{ 'فعال' if tpl.is_active else 'غیرفعال' }}</span></td>
+                                
+                                <td class="server-type-selector" style="text-align: center;">
+                                    <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'de'}}" data-type="de" title="سرور آلمان">🇩🇪</button>
+                                    <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'fr'}}" data-type="fr" title="سرور فرانسه">🇫🇷</button>
+                                    <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'none'}}" data-type="none" title="عمومی/بدون سرور">🚫</button>
+                                </td>
+                                
+                                <td style="text-align: center;">
+                                    <button class="action-btn special-btn {% if tpl.is_special %}active{% endif %}" data-id="{{ tpl.id }}" title="تغییر وضعیت ویژه (VIP)"><i class="ri-star-line"></i></button>
+                                    <button class="action-btn toggle-btn" data-id="{{ tpl.id }}" title="تغییر وضعیت فعال/غیرفعال"><i class="ri-loop-left-line"></i></button>
+                                    <button class="action-btn edit-btn" data-id="{{ tpl.id }}" title="ویرایش"><i class="ri-pencil-line"></i></button>
+                                    <button class="action-btn delete-btn" data-id="{{ tpl.id }}" title="حذف"><i class="ri-delete-bin-line"></i></button>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr id="no-templates-row"><td colspan="5" style="text-align: center; padding: 2rem;">هیچ کانفیگی در سیستم تعریف نشده است.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div id="edit-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>ویرایش کانفیگ</h3>
+            <form id="edit-template-form" style="margin-top: 1rem;">
+                <input type="hidden" id="edit-template-id">
+                <textarea id="edit-template-str" name="template_str" rows="8" required></textarea>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-modal').classList.remove('show')">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Element Selectors ---
+    const addForm = document.getElementById('add-templates-form');
+    const tableBody = document.getElementById('templates-table-body');
+    const feedbackEl = document.getElementById('form-feedback');
+    const editModal = document.getElementById('edit-modal');
+    const editForm = document.getElementById('edit-template-form');
+    const editIdInput = document.getElementById('edit-template-id');
+    const editStrTextarea = document.getElementById('edit-template-str');
+    const resetBtn = document.getElementById('reset-templates-btn');
+
+    // --- Helper Functions ---
+    function showFeedback(message, isSuccess) {
+        feedbackEl.textContent = message;
+        feedbackEl.className = `form-feedback ${isSuccess ? 'success' : 'error'}`;
+        feedbackEl.style.display = 'block';
+        window.scrollTo(0, 0);
+        setTimeout(() => { feedbackEl.style.display = 'none'; }, 4000);
+    }
+
+    // --- Event Listeners ---
+    addForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const templatesStr = e.target.elements.templates_str.value;
+        const submitBtn = addForm.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'در حال افزودن...';
+        fetch(`/admin/api/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates_str: templatesStr }) })
+            .then(res => res.json()).then(result => {
+                showFeedback(result.message, result.success);
+                if (result.success) setTimeout(() => window.location.reload(), 1500);
+            }).finally(() => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'افزودن همه به سیستم';
+            });
+    });
+
+    tableBody.addEventListener('click', function(e) {
+        const button = e.target.closest('.action-btn');
+        if (!button) return;
+        
+        const row = button.closest('tr');
+        const templateId = button.dataset.id || row.dataset.templateId;
+        if (!templateId) return;
+
+        // --- Action Handlers ---
+        if (button.classList.contains('toggle-btn')) {
+            // ... (Toggle active/inactive logic) ...
+        } else if (button.classList.contains('special-btn')) {
+            button.disabled = true;
+            fetch(`/admin/api/templates/toggle_special/${templateId}`, { method: 'POST' })
+                .then(res => res.json()).then(result => {
+                    if (result.success) {
+                        button.classList.toggle('active');
+                        showFeedback(result.message, true);
+                    } else { showFeedback('خطا در تغییر وضعیت ویژه.', false); }
+                }).finally(() => { button.disabled = false; });
+        } else if (button.classList.contains('edit-btn')) {
+            const fullTemplateStr = row.querySelector('.full-template-str').textContent;
+            editIdInput.value = templateId;
+            editStrTextarea.value = fullTemplateStr;
+            editModal.classList.add('show');
+        } else if (button.classList.contains('delete-btn')) {
+            if (!confirm('آیا از حذف این کانفیگ مطمئن هستید؟')) return;
+            fetch(`/admin/api/templates/${templateId}`, { method: 'DELETE' })
+                .then(res => res.json()).then(result => {
+                    showFeedback(result.message, result.success);
+                    if (result.success) { row.remove(); }
+                });
+        } else if (button.classList.contains('server-type-btn')) {
+            const type = button.dataset.type;
+            row.querySelectorAll('.server-type-btn').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            fetch(`/admin/api/templates/set_server_type/${templateId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ server_type: type }) })
+                .then(res => res.json()).then(result => {
+                    if (result.success) { showFeedback(result.message, true); } 
+                    else { showFeedback(result.message, false); }
+                });
+        }
+    });
+
+    // رویداد: ثبت فرم ویرایش
+    editForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const templateId = editIdInput.value;
+        const newTemplateStr = editStrTextarea.value;
+        const submitBtn = editForm.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'در حال ذخیره...';
+
+        fetch(`/admin/api/templates/update/${templateId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template_str: newTemplateStr })
+        })
+        .then(res => res.json())
+        .then(result => {
+            showFeedback(result.message, result.success);
+            if (result.success) {
+                editModal.classList.remove('show');
+                const rowToUpdate = tableBody.querySelector(`tr[data-template-id="${templateId}"]`);
+                if(rowToUpdate) {
+                    const configCell = rowToUpdate.querySelector('.config-cell');
+                    const fullStrSpan = rowToUpdate.querySelector('.full-template-str');
+                    
+                    // آپدیت کردن مقادیر در جدول
+                    configCell.title = newTemplateStr;
+                    fullStrSpan.textContent = newTemplateStr;
+                    
+                    const parts = newTemplateStr.split('#');
+                    const url_part = parts[0];
+                    const name_part = parts.length > 1 ? '#' + parts[1] : '';
+                    
+                    const container = configCell.querySelector('.config-string-container');
+                    container.innerHTML = `
+                        <span class="config-protocol">${url_part.substring(0, 60)}</span>
+                        <span class="config-separator">...</span>
+                        <span class="config-name">${name_part}</span>
+                    `;
+                }
+            }
+        }).finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'ذخیره تغییرات';
+        });
+    });
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            if (!confirm('آیا مطمئن هستید؟ این عمل تمام کانفیگ‌ها را حذف کرده و شماره‌گذاری را از ۱ شروع می‌کند. این عمل غیرقابل بازگشت است.')) return;
+            resetBtn.disabled = true;
+            resetBtn.textContent = 'در حال ریست...';
+            fetch('/admin/api/templates/reset', { method: 'POST' })
+                .then(res => res.json()).then(result => {
+                    showFeedback(result.message, result.success);
+                    if (result.success) { setTimeout(() => window.location.reload(), 2000); }
+                }).finally(() => {
+                    resetBtn.disabled = false;
+                    resetBtn.innerHTML = '<i class="ri-restart-line"></i> ریست کردن ID ها';
+                });
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .search-box-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 400px; /* حداکثر عرض کادر */
+}
+
+.search-box-wrapper .search-icon {
+    position: absolute;
+    right: 1rem; /* آیکون در سمت راست */
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    pointer-events: none; /* جلوگیری از کلیک روی آیکون */
+}
+
+.search-input {
+    width: 100%;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.8rem 2.7rem 0.8rem 1rem; /* پدینگ برای آیکون و متن */
+    font-family: inherit; /* ارث‌بری فونت از body */
+    font-size: 0.95rem;
+    color: var(--text-color);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.search-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2); /* افکت زیبا هنگام فوکوس */
+}
+
+    /* استایل‌های جزئی برای خوانایی بهتر جدول */
+    .data-table .telegram-username a {
+        color: var(--accent-color);
+        text-decoration: none;
+        font-weight: 500;
+        direction: ltr; /* برای نمایش صحیح یوزرنیم انگلیسی */
+        display: inline-block;
+    }
+    .data-table .telegram-username a:hover {
+        text-decoration: underline;
+    }
+    .empty-row td {
+        text-align: center !important;
+        padding: 2rem;
+        color: var(--text-secondary);
+    }
+
+    /* <<<<<<<<<<<<<<<< استایل جدید برای هدر >>>>>>>>>>>>>>>> */
+    .table-header {
+        display: flex;
+        justify-content: space-between; /* آیتم‌ها را در دو طرف قرار می‌دهد */
+        align-items: center;
+        flex-wrap: wrap; /* در صورت کمبود جا، آیتم‌ها زیر هم می‌روند */
+        gap: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='لیست پرداخت‌ها' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="info-card data-table-container">
+        <div class="table-header">
+            <h3><i class="ri-history-line"></i> تاریخچه تمام پرداخت‌ها</h3>
+            <div class="search-box-wrapper">
+                <i class="ri-search-line search-icon"></i>
+                <input type="text" id="payment-search-input" class="search-input" placeholder="جستجو در پرداخت‌ها ...">
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">ردیف</th>
+                        <th>نام کاربر (پنل)</th>
+                        <th>نام تلگرام</th>
+                        <th>یوزرنیم تلگرام</th>
+                        <th>شناسه تلگرام</th>
+                        <th>تاریخ پرداخت</th>
+                    </tr>
+                </thead>
+                <tbody id="payments-table-body">
+                    {% for payment in payments %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ payment.config_name }}</td>
+                            <td>{{ payment.first_name or 'کاربر' }}</td>
+                            <td class="telegram-username">
+                                {% if payment.username %}
+                                    <a href="https://t.me/{{ payment.username }}" target="_blank">@{{ payment.username }}</a>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td><code>{{ payment.user_id or 'N/A' }}</code></td>
+                            <td>{{ payment.payment_date_shamsi }}</td>
+                        </tr>
+                    {% else %}
+                        <tr class="empty-row">
+                            <td colspan="6">هیچ پرداختی برای نمایش وجود ندارد.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('payment-search-input');
+    const tableBody = document.getElementById('payments-table-body');
+    const allRows = Array.from(tableBody.querySelectorAll('tr'));
+    const emptyRow = tableBody.querySelector('.empty-row');
+
+    searchInput.addEventListener('keyup', function() {
+        const query = this.value.toLowerCase().trim();
+        let foundAny = false;
+
+        allRows.forEach(row => {
+            if (row.classList.contains('empty-row')) return;
+            
+            const rowText = row.textContent.toLowerCase();
+            if (rowText.includes(query)) {
+                row.style.display = '';
+                foundAny = true;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        if (emptyRow) {
+            if (!foundAny) {
+                emptyRow.style.display = '';
+                emptyRow.querySelector('td').textContent = 'هیچ موردی با این مشخصات یافت نشد.';
+            } else {
+                emptyRow.style.display = 'none';
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

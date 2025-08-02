@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}ورود به پنل{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* مخفی کردن سایدبار و هدر اصلی */
+    .sidebar, .header {
+        display: none !important;
+    }
+    .main-content {
+        padding: 0 !important;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ✅ اصلاح نگهدارنده برای ایجاد فاصله مناسب */
+    .login-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-grow: 1;
+        width: 100%;
+        background-color: var(--bg-color);
+        padding: 80px 1rem 1rem 1rem; /* فاصله از بالا (برای دکمه) و کناره‌ها */
+        box-sizing: border-box;
+    }
+
+    .login-card {
+        background-color: var(--card-bg);
+        padding: 2rem 2.5rem;
+        border-radius: var(--border-radius);
+        border: 1px solid var(--border-color);
+        width: 100%;
+        max-width: 420px;
+        text-align: center;
+        box-shadow: 0 10px 30px -5px var(--shadow-color);
+    }
+    .login-icon {
+        font-size: 3rem;
+        color: var(--accent-color);
+        margin-bottom: 1rem;
+    }
+    .login-card h1 {
+        font-size: 1.6rem;
+        margin-bottom: 0.5rem;
+        color: var(--text-color);
+    }
+    .login-card p {
+        color: var(--text-secondary);
+        margin-bottom: 2rem;
+    }
+    .form-control {
+        width: 100%;
+        padding: 0.8rem 1rem;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+        text-align: center;
+        direction: ltr;
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.1);
+    }
+    
+    /* ✅ کد برای حل مشکل سفید شدن فیلدها در حالت دارک */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover, 
+    input:-webkit-autofill:focus, 
+    input:-webkit-autofill:active {
+        transition: background-color 5000s ease-in-out 0s; /* تاخیر طولانی برای جلوگیری از تغییر رنگ مرورگر */
+        -webkit-text-fill-color: var(--text-color) !important;
+        box-shadow: 0 0 0 30px var(--bg-color) inset !important;
+        -webkit-box-shadow: 0 0 0 30px var(--bg-color) inset !important;
+    }
+
+    .btn-submit {
+        background: var(--accent-color);
+        color: white;
+        padding: 0.8rem 2rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+        margin-top: 1.5rem;
+        font-size: 1rem;
+    }
+    .btn-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.25);
+    }
+    .switch-tabs {
+        display: flex;
+        margin-bottom: 2rem;
+        background-color: var(--bg-color);
+        border-radius: 8px;
+        padding: 5px;
+        border: 1px solid var(--border-color);
+    }
+    .switch-tabs button {
+        flex: 1;
+        background: none;
+        border: none;
+        font-size: 1rem;
+        padding: 0.6rem 1rem;
+        border-radius: 6px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .switch-tabs button.active {
+        color: var(--accent-color);
+        background: var(--card-bg);
+        font-weight: bold;
+        box-shadow: 0 2px 5px var(--shadow-color);
+    }
+    .form-group {
+        margin-bottom: 1.2rem;
+    }
+    /* استایل دکمه تغییر تم (بدون تغییر) */
+    .login-theme-toggle {
+        position: absolute;
+        top: 1.5rem;
+        left: 1.5rem;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        font-size: 1.3rem;
+        color: var(--text-secondary);
+        z-index: 10; /* برای اطمینان از قرارگیری روی بقیه عناصر */
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div id="theme-toggle" class="login-theme-toggle" title="تغییر تم">
+    <i class="ri-moon-line"></i>
+</div>
+
+<div class="login-wrapper">
+  <div class="login-card">
+    <div class="login-icon">
+        <i class="ri-shield-keyhole-line"></i>
+    </div>
+    <h1>ورود به سامانه</h1>
+    <p>برای دسترسی به پنل خود وارد شوید</p>
+
+    <div class="switch-tabs">
+      <button type="button" id="userTab" class="active">کاربر</button>
+      <button type="button" id="adminTab">ادمین</button>
+    </div>
+
+    {% include 'partials/_flash_messages.html' %}
+
+    <form id="loginForm" method="POST" action="">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group" id="uuidGroup">
+        <input type="text" id="uuidInput" name="uuid" class="form-control" placeholder="شناسه کاربری (UUID)" required>
+      </div>
+      <div class="form-group" id="passwordGroup" style="display:none;">
+        <input type="password" id="passwordInput" name="password" class="form-control" placeholder="رمز عبور ادمین">
+      </div>
+      <input type="hidden" name="login_type" id="loginType" value="user">
+      <button type="submit" class="btn-submit">ورود</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }} <script>
+// اسکریپت شما بدون تغییر
+const userTab = document.getElementById('userTab');
+const adminTab = document.getElementById('adminTab');
+const uuidGroup = document.getElementById('uuidGroup');
+const passwordGroup = document.getElementById('passwordGroup');
+const loginType = document.getElementById('loginType');
+const uuidInput = document.getElementById('uuidInput');
+const passwordInput = document.getElementById('passwordInput');
+
+userTab.addEventListener('click', function() {
+  userTab.classList.add('active');
+  adminTab.classList.remove('active');
+  uuidGroup.style.display = '';
+  passwordGroup.style.display = 'none';
+  loginType.value = 'user';
+  uuidInput.required = true;
+  passwordInput.required = false;
+});
+
+adminTab.addEventListener('click', function() {
+  adminTab.classList.add('active');
+  userTab.classList.remove('active');
+  uuidGroup.style.display = 'none';
+  passwordGroup.style.display = '';
+  loginType.value = 'admin';
+  uuidInput.required = false;
+  passwordInput.required = true;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .settings-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .settings-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background-color: rgba(128, 128, 128, 0.05);
+    }
+    .settings-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+    .settings-body {
+        padding: 1.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.75rem;
+    }
+    .form-group label {
+        font-weight: 500;
+        font-size: 0.9rem;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+    .form-group small {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-top: 0.5rem;
+        display: block;
+        line-height: 1.6;
+    }
+    .form-control {
+        width: 100%;
+        padding: 0.8rem 1rem;
+        border: 1px solid var(--border-color);
+        background-color: var(--input-bg);
+        color: var(--text-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+        box-sizing: border-box;
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+    }
+    /* استایل برای چک‌باکس */
+    .form-switch {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .form-switch input {
+        width: 40px;
+        height: 20px;
+        appearance: none;
+        background-color: var(--border-color);
+        border-radius: 20px;
+        position: relative;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .form-switch input::before {
+        content: '';
+        width: 16px;
+        height: 16px;
+        background-color: white;
+        border-radius: 50%;
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        transition: right 0.2s;
+    }
+    .form-switch input:checked {
+        background-color: var(--success-color);
+    }
+    .form-switch input:checked::before {
+        right: 22px;
+    }
+
+    .form-footer {
+        padding: 1rem 1.5rem;
+        text-align: left;
+        border-top: 1px solid var(--border-color);
+        background-color: rgba(128, 128, 128, 0.05);
+    }
+    .btn-submit {
+        background: var(--accent-color);
+        color: white;
+        padding: 0.7rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .btn-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.2);
+    }
+    .form-feedback {
+        padding: 0.8rem 1.2rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        font-weight: bold;
+        display: none;
+        text-align: center;
+    }
+    .form-feedback.success { background-color: rgba(34, 197, 94, 0.1); color: var(--success-color); }
+    .form-feedback.error { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+</style>
+{% endblock %}
+
+{% block page_content %}
+{% set page_title='تنظیمات' %}
+{% include 'partials/_header.html' %}
+
+<form id="settings-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="settings-card">
+        <div class="settings-header"><i class="ri-time-line icon"></i><h3>زمان‌بندی (Scheduler)</h3></div>
+        <div class="settings-body">
+            <div class="form-group">
+                <label for="daily_report_time">زمان گزارش روزانه</label>
+                <input type="time" id="daily_report_time" name="daily_report_time" class="form-control"
+                       value="{{ settings.daily_report_time|default('23:59') }}">
+                <small>ساعتی که گزارش روزانه برای کاربران ارسال می‌شود (به وقت تهران).</small>
+            </div>
+            <div class="form-group">
+                <label for="usage_warning_check_minutes">فاصله بررسی هشدارها (دقیقه)</label>
+                <input type="number" id="usage_warning_check_minutes" name="usage_warning_check_minutes" class="form-control"
+                       value="{{ settings.usage_warning_check_minutes|default(60) }}">
+                <small>هر چند دقیقه یکبار ربات وضعیت کاربران را برای ارسال هشدار چک کند.</small>
+            </div>
+            <div class="form-group">
+                <label for="welcome_message_delay_minutes">زمان پیام خوش‌آمدگویی (دقیقه)</label>
+                <input type="number" id="welcome_message_delay_minutes" name="welcome_message_delay_minutes" class="form-control"
+                       value="{{ settings.welcome_message_delay_minutes|default(2880) }}">
+                <small>چند دقیقه پس از اولین اتصال کاربر، پیام خوش‌آمدگویی ارسال شود.</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="settings-header"><i class="ri-notification-3-line icon"></i><h3>هشدارها و هدایا</h3></div>
+        <div class="settings-body">
+            <div class="form-group">
+                <label for="warning_usage_threshold">آستانه هشدار مصرف (%)</label>
+                <input type="number" id="warning_usage_threshold" name="warning_usage_threshold" class="form-control"
+                       value="{{ settings.warning_usage_threshold|default(90) }}">
+                <small>وقتی مصرف کاربر به این درصد رسید، هشدار ارسال شود.</small>
+            </div>
+            <div class="form-group">
+                <label for="warning_days_before_expiry">آستانه هشدار انقضا (روز)</label>
+                <input type="number" id="warning_days_before_expiry" name="warning_days_before_expiry" class="form-control"
+                       value="{{ settings.warning_days_before_expiry|default(7) }}">
+                <small>چند روز مانده به انقضای اکانت، هشدار ارسال شود.</small>
+            </div>
+            <div class="form-group">
+                <label for="birthday_gift_gb">هدیه تولد (GB)</label>
+                <input type="number" id="birthday_gift_gb" name="birthday_gift_gb" class="form-control"
+                       value="{{ settings.birthday_gift_gb|default(15) }}">
+                <small>حجم هدیه‌ای که در روز تولد به کاربر داده می‌شود.</small>
+            </div>
+            <div class="form-group">
+                <label for="birthday_gift_days">مدت هدیه تولد (روز)</label>
+                <input type="number" id="birthday_gift_days" name="birthday_gift_days" class="form-control"
+                       value="{{ settings.birthday_gift_days|default(15) }}">
+                <small>مدت زمانی که به اعتبار اکانت کاربر در روز تولد اضافه می‌شود.</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="settings-header"><i class="ri-tools-line icon"></i><h3>تنظیمات عمومی</h3></div>
+        <div class="settings-body">
+            <div class="form-group">
+                <label for="admin_support_contact">آیدی پشتیبانی</label>
+                <input type="text" id="admin_support_contact" name="admin_support_contact" class="form-control"
+                       value="{{ settings.admin_support_contact|default('@username') }}">
+                <small>آیدی تلگرام برای نمایش در بخش پشتیبانی ربات (با @).</small>
+            </div>
+            <div class="form-group">
+                <label for="PAGE_SIZE">تعداد آیتم در هر صفحه</label>
+                <input type="number" id="PAGE_SIZE" name="PAGE_SIZE" class="form-control"
+                       value="{{ settings.PAGE_SIZE|default(15) }}">
+                <small>تعداد کاربرانی که در هر صفحه از گزارش‌های ربات نمایش داده می‌شوند.</small>
+            </div>
+        </div>
+        <div class="form-footer">
+            <button type="submit" class="btn-submit" id="save-btn">
+                <span class="btn-text">ذخیره تغییرات</span>
+                <span class="spinner-icon" style="display: none;">⏳</span>
+            </button>
+            <div id="form-feedback" class="form-feedback"></div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('settings-form');
+    const saveBtn = document.getElementById('save-btn');
+    const feedbackEl = document.getElementById('form-feedback');
+    const spinner = saveBtn.querySelector('.spinner-icon');
+    const btnText = saveBtn.querySelector('.btn-text');
+
+    feedbackEl.style.display = 'none';
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        btnText.style.display = 'none';
+        spinner.style.display = 'inline-block';
+        saveBtn.disabled = true;
+        feedbackEl.style.display = 'none';
+
+        const formData = new FormData(form);
+        const data = {};
+        formData.forEach((value, key) => {
+            const input = form.querySelector(`[name="${key}"]`);
+            if (input && input.type === 'checkbox') {
+                data[key] = input.checked;
+            } else {
+                const numValue = Number(value);
+                data[key] = isNaN(numValue) || value === '' ? value : numValue;
+            }
+        });
+
+        fetch('{{ url_for("admin.save_settings_api") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                feedbackEl.className = 'form-feedback success';
+            } else {
+                feedbackEl.className = 'form-feedback error';
+            }
+            feedbackEl.textContent = result.message;
+            feedbackEl.style.display = 'block';
+            window.scrollTo({top: feedbackEl.offsetTop - 60, behavior: 'smooth'});
+        })
+        .catch(error => {
+            feedbackEl.className = 'form-feedback error';
+            feedbackEl.textContent = 'خطای شبکه در هنگام ذخیره‌سازی.';
+            feedbackEl.style.display = 'block';
+            window.scrollTo({top: feedbackEl.offsetTop - 60, behavior: 'smooth'});
+        })
+        .finally(() => {
+            btnText.style.display = 'inline-block';
+            spinner.style.display = 'none';
+            saveBtn.disabled = false;
+        });
+    });
+});
+</script>
+{% endblock %}

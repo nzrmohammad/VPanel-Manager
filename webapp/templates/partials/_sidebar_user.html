@@ -1,0 +1,20 @@
+<aside class="sidebar">
+    <div id="sidebar-toggle" class="sidebar-header">
+        <span class="logo-text">پنل شما</span>
+        <i class="ri-arrow-right-s-line toggle-arrow"></i>
+    </div>
+    <nav class="sidebar-nav">
+        <ul>
+            <li><a href="{{ url_for('user.user_dashboard', uuid=uuid) }}" class="{% if request.endpoint == 'user.user_dashboard' %}active{% endif %}"><i class="ri-dashboard-line nav-icon"></i><span class="nav-text">داشبورد</span></a></li>
+            <li><a href="{{ url_for('user.user_profile_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.user_profile_page' %}active{% endif %}"><i class="ri-user-settings-line nav-icon"></i><span class="nav-text">پروفایل</span></a></li>
+            <li><a href="{{ url_for('user.subscription_links_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.subscription_links_page' %}active{% endif %}"><i class="ri-links-line nav-icon"></i><span class="nav-text">لینک‌های اتصال</span></a></li>
+            <li><a href="{{ url_for('user.usage_chart_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.usage_chart_page' %}active{% endif %}"><i class="ri-bar-chart-fill nav-icon"></i><span class="nav-text">نمودار مصرف</span></a></li>
+            <li><a href="{{ url_for('user.payment_history_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.payment_history_page' %}active{% endif %}"><i class="ri-history-line nav-icon"></i><span class="nav-text">سابقه پرداخت</span></a></li>
+            <li><a href="{{ url_for('user.buy_service_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.buy_service_page' %}active{% endif %}"><i class="ri-shopping-cart-line nav-icon"></i><span class="nav-text">خرید سرویس</span></a></li>
+            <li><a href="{{ url_for('user.tutorials_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.tutorials_page' %}active{% endif %}"><i class="ri-lightbulb-line nav-icon"></i><span class="nav-text">آموزش و نرم‌افزارها</span></a></li>
+        </ul>
+    </nav>
+    <div class="logout">
+        <nav><ul><li><a href="{{ url_for('auth.logout') }}"><i class="ri-logout-box-r-line nav-icon"></i><span class="nav-text">خروج</span></a></li></ul></nav>
+    </div>
+</aside>

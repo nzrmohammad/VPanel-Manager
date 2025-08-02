@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .card {background-color: var(--card-bg);border: 1px solid var(--border-color);border-radius: var(--border-radius);box-shadow: 0 2px 10px var(--shadow-color);overflow: hidden;}
+    .card-header {padding: 1rem 1.25rem;border-bottom: 1px solid var(--border-color);}
+    .card-header h3 {margin: 0;font-size: 1.1rem;}
+    .card-body {padding: 1.25rem;min-height: 250px; display: flex;justify-content: center;align-items: center;}
+    .charts-container {display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));gap: 2rem;}
+    .full-width-card {grid-column: 1 / -1; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'تحلیل مصرف' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="charts-container">
+        <div class="card full-width-card">
+            <div class="card-header">
+                <h3>نمودار مصرف ۲۴ ساعت گذشته</h3>
+            </div>
+            <div class="card-body">
+                <div id="dailyUsageChart" style="width:100%;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>تفکیک مصرف (دایره‌ای) 🥧</h3>
+            </div>
+            <div class="card-body">
+                <div id="serverUsagePieChart" style="width:100%;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>تفکیک مصرف (میله‌ای) 📊</h3>
+            </div>
+            <div class="card-body">
+                <div id="serverUsageBarChart" style="width:100%;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>تفکیک مصرف (شعاعی) 🎯</h3>
+            </div>
+            <div class="card-body">
+                <div id="serverUsageRadialChart" style="width:100%;"></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h3>تفکیک مصرف (قطبی) ❄️</h3>
+            </div>
+            <div class="card-body">
+                <div id="serverUsagePolarChart" style="width:100%;"></div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    let dailyChart, pieChart, barChart, radialChart, polarChart;
+
+    const renderCharts = () => {
+        const isDark = document.body.classList.contains('dark-theme');
+        const themeColors = {
+            text: isDark ? '#f9fafb' : '#111827',
+            secondaryText: isDark ? '#9ca3af' : '#6b7280',
+            grid: isDark ? '#374151' : '#e5e7eb',
+            cardBg: isDark ? '#1f2937' : '#ffffff'
+        };
+
+        // --- ۱. نمودار مصرف روزانه ---
+        try {
+            const dailyChartContainer = document.querySelector("#dailyUsageChart");
+            const dailyChartData = {{ usage_data | tojson | safe }};
+            if (!dailyChartData || !dailyChartData.series || dailyChartData.series.length === 0) {
+                dailyChartContainer.innerHTML = "<p>دیتایی برای نمودار مصرف روزانه یافت نشد.</p>";
+            } else {
+                const dailyOptions = {
+                    chart: { type: 'bar', height: 450, toolbar: { show: false }, fontFamily: 'Vazirmatn, sans-serif' },
+                    series: dailyChartData.series,
+                    xaxis: { categories: dailyChartData.categories, labels: { style: { colors: themeColors.secondaryText } }, tickPlacement: 'on' },
+                    yaxis: { title: { text: 'حجم مصرف (GB)' }, labels: { formatter: (val) => val.toFixed(2), style: { colors: themeColors.secondaryText } } },
+                    grid: { borderColor: themeColors.grid },
+                    plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 } },
+                    dataLabels: { enabled: false },
+                    tooltip: { y: { formatter: (val) => val.toFixed(2) + " GB" }, theme: isDark ? 'dark' : 'light' },
+                    legend: { position: 'top', labels: { colors: themeColors.text } }
+                };
+                if (dailyChart) { dailyChart.updateOptions(dailyOptions); }
+                else { dailyChart = new ApexCharts(dailyChartContainer, dailyOptions); dailyChart.render(); }
+            }
+        } catch (e) { console.error("خطا در رندر نمودار مصرف روزانه:", e); }
+
+        // --- داده‌های مشترک برای نمودارهای تفکیک مصرف ---
+        const hiddifyUsage = {{ user.breakdown.hiddify.current_usage_GB | default(0) }};
+        const marzbanUsage = {{ user.breakdown.marzban.current_usage_GB | default(0) }};
+        const noBreakdownDataMessage = "<p>هنوز مصرفی برای نمایش در نمودار ثبت نشده است.</p>";
+
+        // --- ۲. نمودار دایره‌ای ---
+        try {
+            const pieChartContainer = document.querySelector("#serverUsagePieChart");
+            if (hiddifyUsage === 0 && marzbanUsage === 0) { pieChartContainer.innerHTML = noBreakdownDataMessage; }
+            else {
+                const pieOptions = { series: [hiddifyUsage, marzbanUsage], chart: { type: 'pie', height: 350, fontFamily: 'Vazirmatn, sans-serif' }, labels: ['سرور آلمان', 'سرور فرانسه'], colors: ['#008FFB', '#00E396'], legend: { position: 'top', labels: { colors: themeColors.text } }, tooltip: { y: { formatter: (val) => val.toFixed(2) + " GB" }, theme: isDark ? 'dark' : 'light' }, dataLabels: { enabled: true, formatter: (val) => val.toFixed(1) + "%" } };
+                if (pieChart) { pieChart.updateOptions(pieOptions); }
+                else { pieChart = new ApexCharts(pieChartContainer, pieOptions); pieChart.render(); }
+            }
+        } catch (e) { console.error("خطا در رندر نمودار دایره‌ای:", e); }
+
+        // --- ۳. نمودار میله‌ای ---
+        try {
+            const barChartContainer = document.querySelector("#serverUsageBarChart");
+            if (hiddifyUsage === 0 && marzbanUsage === 0) { barChartContainer.innerHTML = noBreakdownDataMessage; }
+            else {
+                const barOptions = { series: [{ name: 'حجم مصرف', data: [hiddifyUsage, marzbanUsage] }], chart: { type: 'bar', height: 250, fontFamily: 'Vazirmatn, sans-serif', toolbar: { show: false } }, plotOptions: { bar: { horizontal: true, borderRadius: 4, dataLabels: { position: 'top' } } }, dataLabels: { enabled: true, formatter: (val) => val.toFixed(2) + " GB", offsetX: -20, style: { colors: ['#fff'] } }, xaxis: { categories: ['سرور آلمان', 'سرور فرانسه'], labels: { style: { colors: themeColors.text } } }, yaxis: { labels: { style: { colors: themeColors.text } } }, colors: ['#008FFB', '#00E396'], tooltip: { theme: isDark ? 'dark' : 'light', x: { show: false }, y: { title: { formatter: () => '' }, formatter: (val) => val.toFixed(2) + " GB" } }, grid: { show: false } };
+                if (barChart) { barChart.updateOptions(barOptions); }
+                else { barChart = new ApexCharts(barChartContainer, barOptions); barChart.render(); }
+            }
+        } catch (e) { console.error("خطا در رندر نمودار میله‌ای:", e); }
+
+        // --- ۴. نمودار شعاعی ---
+        try {
+            const radialChartContainer = document.querySelector("#serverUsageRadialChart");
+            if (hiddifyUsage === 0 && marzbanUsage === 0) { radialChartContainer.innerHTML = noBreakdownDataMessage; }
+            else {
+                const radialOptions = { series: [hiddifyUsage, marzbanUsage], chart: { type: 'radialBar', height: 350, fontFamily: 'Vazirmatn, sans-serif' }, labels: ['سرور آلمان', 'سرور فرانسه'], colors: ['#008FFB', '#00E396'], plotOptions: { radialBar: { hollow: { size: '30%' }, dataLabels: { name: { fontSize: '16px' }, value: { fontSize: '14px', formatter: (val) => val.toFixed(2) + " GB" }, total: { show: true, label: 'مجموع', formatter: (w) => (w.globals.series.reduce((a, b) => a + b, 0)).toFixed(2) + " GB" } } } }, legend: { position: 'top', labels: { colors: themeColors.text } }, stroke: { lineCap: 'round' } };
+                if (radialChart) { radialChart.updateOptions(radialOptions); }
+                else { radialChart = new ApexCharts(radialChartContainer, radialOptions); radialChart.render(); }
+            }
+        } catch (e) { console.error("خطا در رندر نمودار شعاعی:", e); }
+
+        // --- ۵. نمودار قطبی ---
+        try {
+            const polarChartContainer = document.querySelector("#serverUsagePolarChart");
+            if (hiddifyUsage === 0 && marzbanUsage === 0) { polarChartContainer.innerHTML = noBreakdownDataMessage; }
+            else {
+                const polarOptions = { series: [hiddifyUsage, marzbanUsage], chart: { type: 'polarArea', height: 350, fontFamily: 'Vazirmatn, sans-serif' }, labels: ['سرور آلمان', 'سرور فرانسه'], colors: ['#008FFB', '#00E396'], stroke: { colors: [isDark ? '#374151' : '#fff'] }, fill: { opacity: 0.8 }, legend: { position: 'top', labels: { colors: themeColors.text } }, yaxis: { show: false }, tooltip: { y: { formatter: (val) => val.toFixed(2) + " GB" }, theme: isDark ? 'dark' : 'light' } };
+                if (polarChart) { polarChart.updateOptions(polarOptions); }
+                else { polarChart = new ApexCharts(polarChartContainer, polarOptions); polarChart.render(); }
+            }
+        } catch (e) { console.error("خطا در رندر نمودار قطبی:", e); }
+    };
+
+    renderCharts();
+    
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            setTimeout(renderCharts, 100);
+        });
+    }
+});
+</script>
+{% endblock %}

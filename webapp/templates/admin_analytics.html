@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .kpi-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 1.25rem; display: flex; align-items: center; gap: 1.25rem; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px var(--shadow-color); }
+    .kpi-card .icon-wrapper { font-size: 1.8rem; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0; }
+    .kpi-card .icon-wrapper.users { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+    .kpi-card .icon-wrapper.online { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+    .kpi-card .icon-wrapper.new-users { background: rgba(234, 179, 8, 0.1); color: #eab308; }
+    .kpi-card .icon-wrapper.usage { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+    .kpi-card .card-content .value { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.1rem; }
+    .kpi-card .card-content .label { font-size: 0.9rem; color: var(--text-secondary); }
+    .charts-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.5rem; }
+    .chart-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 1.5rem; }
+    .chart-card h3 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.2rem; }
+    
+    .grid-col-12, .grid-col-6 { grid-column: span 12; }
+    @media (min-width: 992px) {
+        .grid-col-12 { grid-column: span 12; }
+        .grid-col-6 { grid-column: span 6; }
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='داشبورد تحلیل' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="icon-wrapper users"><i class="ri-user-follow-line"></i></div><div class="card-content"><div class="value">{{ analytics_data.kpis.active_users }}</div><div class="label">کاربران فعال</div></div></div>
+        <div class="kpi-card"><div class="icon-wrapper online"><i class="ri-wifi-line"></i></div><div class="card-content"><div class="value">{{ analytics_data.kpis.online_users }}</div><div class="label">آنلاین (3 دقیقه اخیر)</div></div></div>
+        <div class="kpi-card"><div class="icon-wrapper new-users"><i class="ri-user-add-line"></i></div><div class="card-content"><div class="value">{{ analytics_data.kpis.new_users_today }}</div><div class="label">کاربران جدید امروز</div></div></div>
+        <div class="kpi-card"><div class="icon-wrapper usage"><i class="ri-download-cloud-2-line"></i></div><div class="card-content"><div class="value">{{ analytics_data.kpis.total_usage_today_gb }}</div><div class="label">مجموع مصرف امروز</div></div></div>
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-card grid-col-6">
+            <h3>🧮 توزیع پلن‌های کاربران</h3>
+            <div id="plan-dist-chart"></div>
+        </div>
+        <div class="chart-card grid-col-6">
+            <h3>⏳ وضعیت انقضای کاربران</h3>
+            <div id="expiration-chart"></div>
+        </div>
+        <div class="chart-card grid-col-12">
+            <h3>🚀 ۱۰ کاربر پرمصرف (۳۰ روز اخیر)</h3>
+            <div id="top-consumers-chart"></div>
+        </div>
+        <div class="chart-card grid-col-12">
+            <h3>📊 مقایسه مصرف روزانه پنل‌ها</h3>
+            <div id="usage-comparison-chart"></div>
+        </div>
+        <div class="chart-card grid-col-12">
+            <h3>🧑‍🤝‍🧑 مقایسه کاربران فعال روزانه</h3>
+            <div id="active-users-panel-chart"></div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    let usageComparisonChart, expirationChart, planDistChart, topConsumersChart, activeUsersByPanelChart;
+
+    const renderOrUpdateCharts = () => {
+        const isDark = document.body.classList.contains('dark-theme');
+        // <<<<<<<<<<<<<<<< تغییر اصلی ۱: اصلاح تابع تنظیمات برای جلوگیری از خطا >>>>>>>>>>>>>>>>
+        const themeConfig = (options = {}) => {
+            const axisTitleColor = isDark ? '#9ca3af' : '#6b7280';
+            return {
+                chart: { fontFamily: 'Vazirmatn, sans-serif', background: 'transparent', toolbar: { show: false }, ...(options.chart || {}) },
+                theme: { mode: isDark ? 'dark' : 'light' },
+                tooltip: { theme: isDark ? 'dark' : 'light' },
+                xaxis: { labels: { style: { colors: isDark ? '#9ca3af' : '#6b7280' } }, axisBorder: { show: false }, axisTicks: { show: false }, title: { style: { color: axisTitleColor, fontWeight: 400, fontSize: '14px' } } },
+                yaxis: { labels: { style: { colors: isDark ? '#9ca3af' : '#6b7280' }, offsetX: -10 }, title: { rotate: -90, style: { color: axisTitleColor, fontWeight: 400, fontSize: '14px' } } },
+                grid: { borderColor: isDark ? '#374151' : '#e5e7eb', padding: { left: 5, right: 10 } },
+                legend: { labels: { colors: isDark ? '#f9fafb' : '#111827' }, itemMargin: { horizontal: 15 } }
+            }
+        };
+
+        const initOrUpdate = (chartInstance, selector, options) => {
+            const container = document.querySelector(selector);
+            if (!container) return;
+            if (chartInstance) {
+                chartInstance.updateOptions(options);
+            } else {
+                chartInstance = new ApexCharts(container, options);
+                chartInstance.render();
+            }
+            return chartInstance;
+        };
+
+        // ۱. نمودار توزیع پلن
+        const planData = {{ analytics_data.plan_distribution_chart | tojson | safe }};
+        const planOptions = { ...themeConfig({ chart: { type: 'donut', height: 350 } }), series: planData.series, labels: planData.labels, plotOptions: { pie: { donut: { labels: { show: true, total: { show: true, label: 'کل کاربران' } } } } }, dataLabels: { enabled: true, formatter: (val) => val.toFixed(1) + '%' }, legend: { position: 'bottom' }, tooltip: { y: { formatter: (val) => val + ' کاربر' } } };
+        planDistChart = initOrUpdate(planDistChart, "#plan-dist-chart", planOptions);
+
+        // ۲. نمودار وضعیت انقضا
+        const expData = {{ analytics_data.expiration_chart | tojson | safe }};
+        const expOptions = { ...themeConfig({ chart: { type: 'bar', height: 350 } }), series: expData.series, plotOptions: { bar: { borderRadius: 4, horizontal: false, distributed: true, barHeight: '80%'} }, dataLabels: { enabled: false }, xaxis: { categories: expData.labels }, yaxis: { title: { text: 'تعداد کاربران' } }, legend: { show: false }, tooltip: { y: { formatter: (val) => val + ' کاربر' } } };
+        expirationChart = initOrUpdate(expirationChart, "#expiration-chart", expOptions);
+
+        // ۳. نمودار کاربران پرمصرف
+        const topConsumersData = {{ analytics_data.top_consumers_chart | tojson | safe }};
+        const topConsumersOptions = { ...themeConfig({ chart: { type: 'bar', height: 350 } }), series: topConsumersData.series, plotOptions: { bar: { borderRadius: 4, horizontal: true } }, dataLabels: { enabled: true, textAnchor: 'start', style: { colors: ['#fff'] }, offsetX: 5 }, xaxis: { categories: topConsumersData.labels, title: { text: 'مصرف (GB)' } }, legend: { show: false } };
+        topConsumersChart = initOrUpdate(topConsumersChart, "#top-consumers-chart", topConsumersOptions);
+        
+        // <<<<<<<<<<<<<<<< تغییر اصلی ۲: افزودن دو نمودار درخواستی >>>>>>>>>>>>>>>>
+        // ۴. نمودار مقایسه مصرف
+        const usageCompData = {{ analytics_data.usage_comparison_chart | tojson | safe }};
+        const usageCompOptions = { ...themeConfig({ chart: { type: 'area', height: 350, stacked: true } }), series: usageCompData.series, colors: ['#3b82f6', '#22c55e'], dataLabels: { enabled: false }, stroke: { curve: 'smooth', width: 2 }, fill: { type: 'gradient', gradient: { opacityFrom: 0.6, opacityTo: 0.1 } }, xaxis: { type: 'category', categories: usageCompData.labels }, yaxis: { title: { text: 'حجم مصرف (GB)' } }, legend: { position: 'bottom', horizontalAlign: 'center' }, tooltip: { y: { formatter: (val) => val + ' GB' } } };
+        usageComparisonChart = initOrUpdate(usageComparisonChart, "#usage-comparison-chart", usageCompOptions);
+
+        // ۵. نمودار کاربران فعال پنل‌ها
+        const activeUsersData = {{ analytics_data.active_users_by_panel_chart | tojson | safe }};
+        const activeUsersOptions = { ...themeConfig({ chart: { type: 'line', height: 350 } }), series: activeUsersData.series, colors: ['#8b5cf6', '#eab308'], stroke: { curve: 'smooth', width: 3 }, markers: { size: 0 }, xaxis: { type: 'category', categories: activeUsersData.labels }, yaxis: { title: { text: 'تعداد کاربران فعال' } }, legend: { position: 'bottom', horizontalAlign: 'center' }, tooltip: { y: { formatter: (val) => val + ' کاربر' } } };
+        activeUsersByPanelChart = initOrUpdate(activeUsersByPanelChart, "#active-users-panel-chart", activeUsersOptions);
+    };
+
+    renderOrUpdateCharts();
+    
+    document.getElementById('theme-toggle')?.addEventListener('click', () => { 
+        setTimeout(renderOrUpdateCharts, 150); 
+    });
+});
+</script>
+{% endblock %}

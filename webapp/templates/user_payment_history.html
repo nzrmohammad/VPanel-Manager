@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .payment-list {
+        list-style: none;
+        padding: 0;
+        margin-top: 1rem;
+    }
+    .payment-item {
+        display: flex;
+        align-items: center;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.75rem;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .payment-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    .payment-item .index {
+        background-color: var(--accent-light);
+        color: var(--accent-color);
+        font-weight: bold;
+        width: 35px;
+        height: 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        margin-left: 1.25rem;
+    }
+    .payment-item .details {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+    }
+    .payment-item .date {
+        font-weight: 500;
+        font-size: 1rem;
+    }
+    .payment-item .time {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .empty-state {
+        text-align: center;
+        padding: 2rem;
+        color: var(--text-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'سابقه پرداخت' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="data-table-card" style="padding: 1rem; background: none; border: none;">
+        <div class="table-header" style="padding: 0 0 1rem 0; border: none;">
+            <h3><i class="ri-history-line"></i> سابقه پرداخت‌های شما</h3>
+        </div>
+        
+        {% if user.payment_history %}
+            <ul class="payment-list">
+                {% for payment in user.payment_history %}
+                    {% set dt_parts = payment.shamsi_date.split(' ') %}
+                    <li class="payment-item">
+                        <div class="index">{{ loop.revindex }}</div>
+                        <div class="details">
+                            <span class="date">{{ dt_parts[0] }}</span>
+                            <span class="time">{{ dt_parts[1] if dt_parts|length > 1 else '' }}</span>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="empty-state">
+                <i class="ri-file-text-line" style="font-size: 2.5rem;"></i>
+                <p>هیچ سابقه پرداختی برای شما ثبت نشده است.</p>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

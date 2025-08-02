@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .plan-price {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--accent-color);
+        margin-top: 1rem;
+        margin-bottom: 1.5rem;
+        text-align: center;
+    }
+    .plan-price small {
+        font-size: 0.9rem;
+        font-weight: normal;
+        color: var(--text-secondary);
+    }
+
+    /* --- مدیریت نمایش پرچم‌ها --- */
+    /* حالت پیش‌فرض (موبایل): نمایش ایموجی، مخفی کردن آیکون */
+    .flag-emoji {
+        display: inline;
+    }
+    .flag-icon {
+        display: none;
+    }
+
+    /* حالت دسکتاپ (صفحه‌های بزرگتر از 992 پیکسل) */
+    @media (min-width: 992px) {
+        .flag-emoji {
+            display: none; /* ایموجی را مخفی کن */
+        }
+        .flag-icon {
+            display: inline-block; /* آیکون را نمایش بده */
+            vertical-align: middle;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='خرید سرویس' %}
+    {% include 'partials/_header.html' %}
+
+    <h3 class="section-title">🚀 پلن‌های ترکیبی (پیشنهادی)</h3>
+    <section class="details-grid">
+        {% for plan in combined_plans %}
+        <div class="info-card panel-card">
+            <div class="panel-header">
+                <h4>
+                    {# نمایش نام پلن بدون ایموجی #}
+                    {{ plan.name.replace('🥉', '').replace('🥈', '').replace('🥇', '').replace('✨', '').replace('💎', '') }}
+                    
+                    {# نمایش ایموجی مدال‌ها برای همه دستگاه‌ها #}
+                    {% if '🥉' in plan.name %}🥉
+                    {% elif '🥈' in plan.name %}🥈
+                    {% elif '🥇' in plan.name %}🥇
+                    {% elif '✨' in plan.name %}✨
+                    {% elif '💎' in plan.name %}💎
+                    {% endif %}
+                </h4>
+            </div>
+            <ul class="server-stats">
+                {% if plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ plan.total_volume }}</span></li>{% endif %}
+                {% if plan.volume_de %}<li><div class="stat-label"><span class="fi fi-de"></span><span>&nbsp; آلمان</span></div><span class="stat-value">{{ plan.volume_de.replace('(🇩🇪)', '') }}</span></li>{% endif %}
+                {% if plan.volume_fr %}<li><div class="stat-label"><span class="fi fi-fr"></span><span>&nbsp; فرانسه</span></div><span class="stat-value">{{ plan.volume_fr.replace('(🇫🇷)', '') }}</span></li>{% endif %}
+                {% if plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>{% endif %}
+            </ul>
+            <div class="plan-price">
+                {{ "{:,.0f}".format(plan.price) }} <small>تومان</small>
+            </div>
+            <a href="{{ support_link }}" class="btn-action full-width-btn" target="_blank">خرید و مشاوره</a>
+        </div>
+        {% else %}
+            <p>در حال حاضر پلن ترکیبی برای نمایش وجود ندارد.</p>
+        {% endfor %}
+    </section>
+    
+     <h3 class="section-title">پلن‌های اختصاصی</h3>
+     <section class="details-grid">
+        {% for plan in dedicated_plans %}
+        <div class="info-card panel-card">
+            <div class="panel-header">
+                <h4>
+                    {# نام پلن بدون ایموجی پرچم #}
+                    {{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '') }}
+
+                    {# ایموجی پرچم (فقط برای موبایل) #}
+                    <span class="flag-emoji">
+                        {% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% endif %}
+                    </span>
+
+                    {# آیکون پرچم (فقط برای دسکتاپ) #}
+                    <span class="flag-icon">
+                        {% if 'de' in plan.type or '🇩🇪' in plan.name %}
+                            <span class="fi fi-de"></span>
+                        {% elif 'fr' in plan.type or '🇫🇷' in plan.name %}
+                            <span class="fi fi-fr"></span>
+                        {% endif %}
+                    </span>
+                </h4>
+            </div>
+             <ul class="server-stats">
+                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr }}</span></li>
+                <li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>
+            </ul>
+            <div class="plan-price">
+                {{ "{:,.0f}".format(plan.price) }} <small>تومان</small>
+            </div>
+            <a href="{{ support_link }}" class="btn-action full-width-btn" target="_blank">خرید و مشاوره</a>
+        </div>
+        {% else %}
+            <p>در حال حاضر پلن اختصاصی برای نمایش وجود ندارد.</p>
+        {% endfor %}
+    </section>
+{% endblock %}

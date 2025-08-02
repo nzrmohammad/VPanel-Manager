@@ -1,0 +1,89 @@
+[
+    {
+        "name": "Bronze 🥉",
+        "type": "combined",
+        "total_volume": "۳۰ گیگابایت",
+        "volume_de": "۲۰ گیگابایت (🇩🇪)",
+        "volume_fr": "۱۰ گیگابایت (🇫🇷)",
+        "duration": "۳۰ روز",
+        "price": 75000
+    },
+    {
+        "name": "Silver 🥈",
+        "type": "combined",
+        "total_volume": "۵۰ گیگابایت",
+        "volume_de": "۳۵ گیگابایت (🇩🇪)",
+        "volume_fr": "۱۵ گیگابایت (🇫🇷)",
+        "duration": "۳۰ روز",
+        "price": 120000
+    },
+    {
+        "name": "Gold 🥇",
+        "type": "combined",
+        "total_volume": "۸۰ گیگابایت",
+        "volume_de": "۵۰ گیگابایت (🇩🇪)",
+        "volume_fr": "۳۰ گیگابایت (🇫🇷)",
+        "duration": "۳۰ روز",
+        "price": 180000
+    },
+    {
+        "name": "Platinum ✨",
+        "type": "combined",
+        "total_volume": "۱۲۰ گیگابایت",
+        "volume_de": "۸۰ گیگابایت (🇩🇪)",
+        "volume_fr": "۴۰ گیگابایت (🇫🇷)",
+        "duration": "۳۰ روز",
+        "price": 270000
+    },
+    {
+        "name": "Diamond 💎",
+        "type": "combined",
+        "total_volume": "۲۰۰ گیگابایت",
+        "volume_de": "۱۲۰ گیگابایت (🇩🇪)",
+        "volume_fr": "۸۰ گیگابایت (🇫🇷)",
+        "duration": "۳۰ روز",
+        "price": 450000
+    },
+    {
+        "name": "DE Economy 🇩🇪",
+        "type": "germany",
+        "volume_de": "۲۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 40000
+    },
+    {
+        "name": "DE Standard 🇩🇪",
+        "type": "germany",
+        "volume_de": "۳۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 60000
+    },
+    {
+        "name": "DE Pro 🇩🇪",
+        "type": "germany",
+        "volume_de": "۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 100000
+    },
+    {
+        "name": "FR Economy 🇫🇷",
+        "type": "france",
+        "volume_de": "۲۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 60000
+    },
+    {
+        "name": "FR Standard 🇫🇷",
+        "type": "france",
+        "volume_de": "۳۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 90000
+    },
+    {
+        "name": "FR Pro 🇫🇷",
+        "type": "france",
+        "volume_de": "۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 150000
+    }
+]
