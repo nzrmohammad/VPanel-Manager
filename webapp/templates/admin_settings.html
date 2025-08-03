@@ -21,12 +21,14 @@
         margin: 0;
         font-size: 1.1rem;
     }
+    /* --- تغییر اصلی برای کوچک‌تر کردن کادرها --- */
     .settings-body {
-        padding: 1.5rem;
+        padding: 1.25rem; /* کاهش پدینگ داخلی */
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1.75rem;
+        gap: 1.5rem; /* کاهش فاصله بین آیتم‌ها */
     }
+    /* ------------------------------------------ */
     .form-group label {
         font-weight: 500;
         font-size: 0.9rem;
@@ -56,40 +58,6 @@
         border-color: var(--accent-color);
         box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
     }
-    /* استایل برای چک‌باکس */
-    .form-switch {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    .form-switch input {
-        width: 40px;
-        height: 20px;
-        appearance: none;
-        background-color: var(--border-color);
-        border-radius: 20px;
-        position: relative;
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-    .form-switch input::before {
-        content: '';
-        width: 16px;
-        height: 16px;
-        background-color: white;
-        border-radius: 50%;
-        position: absolute;
-        top: 2px;
-        right: 2px;
-        transition: right 0.2s;
-    }
-    .form-switch input:checked {
-        background-color: var(--success-color);
-    }
-    .form-switch input:checked::before {
-        right: 22px;
-    }
-
     .form-footer {
         padding: 1rem 1.5rem;
         text-align: left;
@@ -123,12 +91,68 @@
     }
     .form-feedback.success { background-color: rgba(34, 197, 94, 0.1); color: var(--success-color); }
     .form-feedback.error { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+    
+    /* استایل‌های جدید برای بخش زمان‌بندی */
+    .schedule-list {
+        padding: 0.5rem 0;
+    }
+    .schedule-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 1.5rem;
+        padding: 1.25rem 1.5rem;
+    }
+    .schedule-item:not(:last-child) {
+        border-bottom: 1px solid var(--border-color);
+    }
+    .schedule-icon {
+        flex-shrink: 0;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(var(--accent-rgb), 0.1);
+        color: var(--accent-color);
+        font-size: 1.5rem;
+    }
+    .schedule-details {
+        flex-grow: 1;
+    }
+    .schedule-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .schedule-title {
+        font-weight: bold;
+        font-size: 1.05rem;
+    }
+    .schedule-interval {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-color);
+        background-color: var(--bg-color);
+        padding: 0.2rem 0.6rem;
+        border-radius: 5px;
+        border: 1px solid var(--border-color);
+    }
+    .schedule-description {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin: 0;
+        line-height: 1.7;
+    }
 </style>
 {% endblock %}
 
 {% block page_content %}
 {% set page_title='تنظیمات' %}
 {% include 'partials/_header.html' %}
+
+<div id="form-feedback" class="form-feedback"></div>
 
 <form id="settings-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -168,7 +192,7 @@
             <div class="form-group">
                 <label for="warning_days_before_expiry">آستانه هشدار انقضا (روز)</label>
                 <input type="number" id="warning_days_before_expiry" name="warning_days_before_expiry" class="form-control"
-                       value="{{ settings.warning_days_before_expiry|default(7) }}">
+                       value="{{ settings.warning_days_before_expiry|default(3) }}">
                 <small>چند روز مانده به انقضای اکانت، هشدار ارسال شود.</small>
             </div>
             <div class="form-group">
@@ -205,12 +229,35 @@
         <div class="form-footer">
             <button type="submit" class="btn-submit" id="save-btn">
                 <span class="btn-text">ذخیره تغییرات</span>
-                <span class="spinner-icon" style="display: none;">⏳</span>
+                <i class="ri-loader-4-line spinner-icon" style="display: none; animation: spin 1s linear infinite;"></i>
             </button>
-            <div id="form-feedback" class="form-feedback"></div>
         </div>
     </div>
 </form>
+
+<div class="settings-card">
+    <div class="settings-header">
+        <i class="ri-calendar-todo-line icon"></i>
+        <h3>روند کارهای خودکار روزانه</h3>
+    </div>
+    <div class="schedule-list">
+        {% for task in schedule_info %}
+        <div class="schedule-item">
+            <div class="schedule-icon">
+                <i class="{{ task.icon }}"></i>
+            </div>
+            <div class="schedule-details">
+                <div class="schedule-header">
+                    <span class="schedule-title">{{ task.title }}</span>
+                    <span class="schedule-interval">{{ task.interval }}</span>
+                </div>
+                <p class="schedule-description">{{ task.description }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -221,8 +268,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const feedbackEl = document.getElementById('form-feedback');
     const spinner = saveBtn.querySelector('.spinner-icon');
     const btnText = saveBtn.querySelector('.btn-text');
-
-    feedbackEl.style.display = 'none';
 
     form.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -240,16 +285,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 data[key] = input.checked;
             } else {
                 const numValue = Number(value);
-                data[key] = isNaN(numValue) || value === '' ? value : numValue;
+                // کلید csrf_token را از تبدیل به عدد مستثنی می‌کنیم
+                if (key === 'csrf_token') {
+                    data[key] = value;
+                } else {
+                    data[key] = isNaN(numValue) || value === '' ? value : numValue;
+                }
             }
         });
 
+        // --- 🔥 تغییر اصلی برای رفع خطای شبکه ---
+        const csrfToken = data.csrf_token;
+        
         fetch('{{ url_for("admin.save_settings_api") }}', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken  // ارسال توکن در هدر درخواست
+            },
             body: JSON.stringify(data)
         })
-        .then(response => response.json())
+        // ------------------------------------
+        .then(response => {
+            if (!response.ok) {
+                // اگر سرور خطایی مثل 500 برگرداند، آن را به عنوان خطا در نظر می‌گیریم
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(result => {
             if (result.success) {
                 feedbackEl.className = 'form-feedback success';
@@ -258,13 +321,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             feedbackEl.textContent = result.message;
             feedbackEl.style.display = 'block';
-            window.scrollTo({top: feedbackEl.offsetTop - 60, behavior: 'smooth'});
+            // اسکرول به بالای صفحه برای نمایش پیام
+            window.scrollTo({top: 0, behavior: 'smooth'});
         })
         .catch(error => {
+            console.error('Fetch Error:', error);
             feedbackEl.className = 'form-feedback error';
-            feedbackEl.textContent = 'خطای شبکه در هنگام ذخیره‌سازی.';
+            feedbackEl.textContent = 'خطا در ارتباط با سرور. لطفاً لاگ‌ها را بررسی کنید.';
             feedbackEl.style.display = 'block';
-            window.scrollTo({top: feedbackEl.offsetTop - 60, behavior: 'smooth'});
+            window.scrollTo({top: 0, behavior: 'smooth'});
         })
         .finally(() => {
             btnText.style.display = 'inline-block';

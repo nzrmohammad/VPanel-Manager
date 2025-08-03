@@ -72,7 +72,7 @@ def to_shamsi(dt: Optional[Union[datetime, date, str]], include_time: bool = Fal
         return dt_shamsi.strftime("%Y/%m/%d")
 
     except Exception as e:
-        logger.error(f"Error in to_shamsi conversion: value={dt}, error={e}")
+        logger.error(f"Error in to_shamsi conversion: value={dt}, error={e}", exc_info=True)
         return "خطا"
 
 
@@ -143,7 +143,10 @@ def validate_uuid(uuid_str: str) -> bool:
 def _safe_edit(chat_id: int, msg_id: int, text: str, **kwargs):
     if not bot: return
     try:
-        kwargs.setdefault('parse_mode', 'MarkdownV2')
+        # این خط، حالت پیش‌فرض را روی 'Markdown' تنظیم می‌کند
+        # اگر در فراخوانی تابع، حالت دیگری مشخص نشود، از این استفاده می‌شود
+        kwargs.setdefault('parse_mode', 'MarkdownV2') # <<< این خط مهم است
+
         bot.edit_message_text(text=text, chat_id=chat_id, message_id=msg_id, **kwargs)
     except Exception as e:
         logger.error(f"Safe edit failed: {e}. Text was: \n---\n{text}\n---")
@@ -162,13 +165,12 @@ def escape_markdown(text: Union[str, int, float]) -> str:
 def create_progress_bar(percent: float, length: int = 15) -> str:
     percent = max(0, min(100, percent))
     filled_count = int(percent / 100 * length)
-    
+
     filled_bar = '█' * filled_count
     empty_bar = '░' * (length - filled_count)
-    
-    escaped_percent_str = escape_markdown(f"{percent:.1f}%")
-    
-    return f"`{filled_bar}{empty_bar} {escaped_percent_str}`"
+    percent_str = f"{percent:.1f}%" 
+
+    return f"`{filled_bar}{empty_bar} {percent_str}`"
 
 def load_custom_links():
     try:

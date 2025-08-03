@@ -127,5 +127,21 @@
   "fmt_report_footer_total_single": "⚡️ مجموع کل مصرف امروز : {usage}",
   "fmt_err_getting_birthday_info": "خطایی در دریافت اطلاعات تولد رخ داد.",
   "btn_prev_page": "قبلی",
-  "btn_next_page": "بعدی"
+  "btn_next_page": "بعدی",
+  "fmt_user_name_header": "👤 نام",
+  "fmt_total_volume_new": "📦 مجموع حجم",
+  "fmt_total_usage_new": "🔥 مجموع مصرف شده",
+  "fmt_total_remaining_new": "📥 مجموع باقیمانده",
+  "fmt_total_daily_usage_new": "⚡️ مجموع مصرف امروز",
+  "fmt_server_details_header_new": "جزئیات سرورها",
+  "server_de_new": "سرور 🇩🇪 ({status})",
+  "server_fr_new": "سرور 🇫🇷 ({status})",
+  "fmt_server_volume_new": "🗂 مجموع حجم",
+  "fmt_server_usage_new": "🔥 مجموع مصرف شده",
+  "fmt_server_daily_usage_new": "⚡️ مصرف امروز",
+  "fmt_server_last_online_new": "⏰ آخرین اتصال",
+  "fmt_expiry_date_new": "📅 انقضا",
+  "fmt_uuid_new": "🔑 شناسه یکتا",
+  "fmt_status_bar_new": "وضعیت",
+  "btn_cancel_action": "لغو عملیات"
 }

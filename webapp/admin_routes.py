@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, abort, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, abort, jsonify, session, redirect, url_for, flash
 from functools import wraps
 import logging
 from bot.config import ADMIN_SECRET_KEY
@@ -19,7 +19,11 @@ from .services import (
     get_all_payments_for_admin,
     get_analytics_data,
     get_all_settings,
-    save_all_settings
+    save_all_settings,
+    get_marzban_mappings_service, 
+    add_marzban_mapping_service,
+    delete_marzban_mapping_service,
+    get_schedule_info_service
 )
 
 logger = logging.getLogger(__name__)
@@ -195,7 +199,9 @@ def admin_settings_page():
     """صفحه تنظیمات پیشرفته را نمایش می‌دهد."""
     try:
         current_settings = get_all_settings()
-        return render_template('admin_settings.html', settings=current_settings, is_admin=True)
+        # کد جدید: دریافت اطلاعات زمان‌بندی
+        schedule_info = get_schedule_info_service()
+        return render_template('admin_settings.html', settings=current_settings, schedule_info=schedule_info, is_admin=True)
     except Exception as e:
         logger.error(f"Error loading settings page: {e}", exc_info=True)
         return "<h1>خطا در بارگذاری صفحه تنظیمات</h1>", 500
@@ -258,3 +264,32 @@ def reset_templates_api():
     except Exception as e:
         logger.error(f"API Failed to reset templates: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در عملیات ریست.'}), 500
+    
+@admin_bp.route('/marzban-mapping')
+@admin_required
+def marzban_mapping_page():
+    mappings = get_marzban_mappings_service()
+    return render_template('admin_marzban_mapping.html', mappings=mappings, is_admin=True)
+
+@admin_bp.route('/marzban-mapping/add', methods=['POST'])
+@admin_required
+def add_marzban_mapping_route():
+    hiddify_uuid = request.form.get('hiddify_uuid')
+    marzban_username = request.form.get('marzban_username')
+    success, message = add_marzban_mapping_service(hiddify_uuid, marzban_username)
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('admin.marzban_mapping_page'))
+
+@admin_bp.route('/marzban-mapping/delete', methods=['POST'])
+@admin_required
+def delete_marzban_mapping_route():
+    hiddify_uuid = request.form.get('hiddify_uuid')
+    success, message = delete_marzban_mapping_service(hiddify_uuid)
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('admin.marzban_mapping_page'))

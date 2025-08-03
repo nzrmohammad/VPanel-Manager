@@ -209,40 +209,61 @@ def _add_uuid_step(message: types.Message):
 
     if not validate_uuid(uuid_str):
         prompt = _build_formatted_prompt(get_string("uuid_invalid_cancel", lang_code))
-        m = bot.send_message(uid, prompt, reply_markup=menu.cancel_action(lang_code, "manage"), parse_mode="MarkdownV2")
+        m = bot.send_message(uid, prompt, reply_markup=menu.user_cancel_action(lang_code, "manage"), parse_mode="MarkdownV2")
         if m: bot.register_next_step_handler(m, _add_uuid_step)
         return
 
     if not (info := combined_handler.get_combined_user_info(uuid_str)):
         prompt = _build_formatted_prompt(get_string("uuid_not_found_panel_cancel", lang_code))
-        m = bot.send_message(uid, prompt, reply_markup=menu.cancel_action(lang_code, "manage"), parse_mode="MarkdownV2")
+        m = bot.send_message(uid, prompt, reply_markup=menu.user_cancel_action(lang_code, "manage"), parse_mode="MarkdownV2")
         if m: bot.register_next_step_handler(m, _add_uuid_step)
         return
     
     status_key = db.add_uuid(uid, uuid_str, info.get("name", get_string('unknown_user', lang_code)))
     _show_manage_menu(message=message, override_text=get_string(status_key, lang_code))
 
-def _get_birthday_step(message: types.Message):
-    global bot; uid, birthday_str = message.from_user.id, message.text.strip()
+def _get_birthday_step(message: types.Message, original_msg_id: int):
+    global bot
+    uid, birthday_str = message.from_user.id, message.text.strip()
     lang_code = db.get_user_language(uid)
-    
+
+    # --- ۱. پیام کاربر حذف می‌شود ---
+    try:
+        bot.delete_message(chat_id=uid, message_id=message.message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete user message {message.message_id} for user {uid}: {e}")
+
     try:
         gregorian_date = jdatetime.datetime.strptime(birthday_str, '%Y/%m/%d').togregorian().date()
         db.update_user_birthday(uid, gregorian_date)
-        bot.send_message(uid, escape_markdown(get_string("birthday_success", lang_code)))
-        _go_back_to_main(message=message)
+        
+        # --- ۲. پیام قبلی با استفاده از original_msg_id ویرایش می‌شود ---
+        success_text = escape_markdown(get_string("birthday_success", lang_code))
+        back_button_text = get_string('back_to_main_menu', lang_code)
+        kb = types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton(f"🔙 {back_button_text}", callback_data="back")
+        )
+        _safe_edit(uid, original_msg_id, success_text, reply_markup=kb, parse_mode="MarkdownV2")
+
     except ValueError:
+        # در صورت خطا، پیام قبلی ویرایش شده و دوباره راهنمایی نمایش داده می‌شود
         prompt = _build_formatted_prompt(get_string("birthday_invalid_format", lang_code))
-        m = bot.send_message(uid, prompt, parse_mode="MarkdownV2")
-        bot.clear_step_handler_by_chat_id(uid)
-        if m: bot.register_next_step_handler(m, _get_birthday_step)
+        _safe_edit(uid, original_msg_id, prompt, parse_mode="MarkdownV2")
+        
+        # و ربات دوباره منتظر پاسخ صحیح می‌ماند
+        bot.register_next_step_handler_by_chat_id(uid, _get_birthday_step, original_msg_id=original_msg_id)
 
 def _handle_add_uuid_request(call: types.CallbackQuery):
     global bot
-    lang_code = db.get_user_language(call.from_user.id)
-    # This is a simple prompt, no formatting needed. parse_mode=None is safe.
-    _safe_edit(call.from_user.id, call.message.message_id, get_string("prompt_add_uuid", lang_code), reply_markup=menu.cancel_action(lang_code, "manage"), parse_mode=None)
-    bot.register_next_step_handler_by_chat_id(call.from_user.id, _add_uuid_step)
+    uid = call.from_user.id
+    lang_code = db.get_user_language(uid)
+    
+    # --- تغییر اصلی اینجاست: استفاده صحیح از تابع cancel_action ---
+    _safe_edit(uid, call.message.message_id, get_string("prompt_add_uuid", lang_code), 
+               reply_markup=menu.user_cancel_action(back_callback="manage", lang_code=lang_code), 
+               parse_mode=None)
+               
+    bot.register_next_step_handler_by_chat_id(uid, _add_uuid_step)
 
 def _show_manage_menu(call: types.CallbackQuery = None, message: types.Message = None, override_text: str = None):
     global bot; uid = call.from_user.id if call else message.from_user.id
@@ -294,19 +315,21 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
 def _handle_birthday_gift_request(call: types.CallbackQuery):
     global bot 
     uid = call.from_user.id
+    msg_id = call.message.message_id  # <--- message_id را اینجا ذخیره می‌کنیم
     lang_code = db.get_user_language(uid)
     user_data = db.user(uid)
     
     if user_data and user_data.get('birthday'):
         text = fmt_registered_birthday_info(user_data, lang_code=lang_code)
         kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
-        _safe_edit(uid, call.message.message_id, text, reply_markup=kb, parse_mode="MarkdownV2")
+        _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
     else:
         raw_text = get_string("prompt_birthday", lang_code)
-        # Manually format the birthday prompt
         prompt = escape_markdown(raw_text).replace("YYYY/MM/DD", "`YYYY/MM/DD`")
-        _safe_edit(uid, call.message.message_id, prompt, reply_markup=menu.cancel_action(lang_code, "back"), parse_mode="MarkdownV2")
-        bot.register_next_step_handler_by_chat_id(uid, _get_birthday_step)
+        _safe_edit(uid, msg_id, prompt, reply_markup=menu.user_cancel_action(back_callback="back", lang_code=lang_code), parse_mode="MarkdownV2")
+        
+        # --- تغییر اصلی: message_id را به تابع بعدی پاس می‌دهیم ---
+        bot.register_next_step_handler_by_chat_id(uid, _get_birthday_step, original_msg_id=msg_id)
 
 def _show_plan_categories(call: types.CallbackQuery):
     lang_code = db.get_user_language(call.from_user.id)

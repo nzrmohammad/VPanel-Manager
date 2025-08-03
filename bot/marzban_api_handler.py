@@ -158,7 +158,7 @@ class MarzbanAPIHandler:
             if not self._get_access_token():
                 return None
         
-        marzban_username = self.uuid_to_username_map.get(uuid.lower())
+        marzban_username = db.get_marzban_username_by_uuid(uuid)
         if not marzban_username:
             return None
 
@@ -182,7 +182,7 @@ class MarzbanAPIHandler:
                 used_traffic = user.get('used_traffic', 0)
                 usage_gb = used_traffic / (1024 ** 3)
                 
-                uuid = self.username_to_uuid_map.get(username)
+                uuid = db.get_uuid_by_marzban_username(username)
                 expire_timestamp = user.get('expire')
                 expire_days = None
                 if expire_timestamp and expire_timestamp > 0:
@@ -209,7 +209,7 @@ class MarzbanAPIHandler:
         user = self._request("GET", f"/user/{username}")
         if not user: return None
 
-        uuid = self.username_to_uuid_map.get(username, None)
+        uuid = db.get_uuid_by_marzban_username(username)
         usage_gb = user.get('used_traffic', 0) / (1024 ** 3)
         limit_gb = round(user.get('data_limit', 0) / (1024 ** 3), 3)
         expire_timestamp = user.get('expire')

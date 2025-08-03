@@ -107,8 +107,9 @@ def handle_paginated_list(call, params):
     back_cb = f"admin:{config['back']}"
     if config['back'] in ['panel_reports', 'analytics_menu', 'manage_panel']:
          back_cb += f":{panel}"
-         
-    kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb)
+
+    lang_code = call.from_user.language_code
+    kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb, lang_code)
     _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
 
 def handle_report_by_plan_selection(call, params):
@@ -145,11 +146,16 @@ def handle_list_users_by_plan(call, params):
         return
         
     selected_plan = all_plans[plan_index]
-    plan_vol_de = float(parse_volume_string(selected_plan.get('volume_de', '0')))
-    plan_vol_fr = float(parse_volume_string(selected_plan.get('volume_fr', '0')))
+    plan_type = selected_plan.get('type', 'combined')
+
+    # <<<<<<<<<<<<<<<< منطق جدید برای تشخیص پلن >>>>
+    plan_vol_de = float(parse_volume_string(selected_plan.get('volume_de', '0'))) if plan_type in ['germany', 'combined'] else -1.0
+    plan_vol_fr = float(parse_volume_string(selected_plan.get('volume_fr', '0'))) if plan_type in ['france', 'combined'] else -1.0
     
     plan_spec_to_match = {(plan_vol_de, plan_vol_fr)}
     all_users = combined_handler.get_all_users_combined()
+    
+    # تابع _find_users_matching_plan_specs بدون تغییر باقی می‌ماند
     filtered_users = _find_users_matching_plan_specs(all_users, plan_spec_to_match, invert_match=False)
 
     plan_name_raw = selected_plan.get('name', '')
@@ -157,7 +163,8 @@ def handle_list_users_by_plan(call, params):
 
     base_cb = f"admin:list_by_plan:{plan_index}"
     back_cb = "admin:report_by_plan_select"
-    kb = menu.create_pagination_menu(base_cb, page, len(filtered_users), back_cb)
+    lang_code = call.from_user.language_code
+    kb = menu.create_pagination_menu(base_cb, page, len(filtered_users), back_cb, lang_code)
     _safe_edit(uid, msg_id, text, reply_markup=kb)
 
 
@@ -172,15 +179,19 @@ def handle_list_users_no_plan(call, params):
     
     plan_specs = set()
     for plan in all_plans:
-        vol_de = parse_volume_string(plan.get('volume_de', '0'))
-        vol_fr = parse_volume_string(plan.get('volume_fr', '0'))
-        plan_specs.add((float(vol_de), float(vol_fr)))
+        plan_type = plan.get('type', 'combined')
+        # <<<<<<<<<<<<<<<< منطق جدید برای تشخیص پلن >>>>
+        vol_de = float(parse_volume_string(plan.get('volume_de', '0'))) if plan_type in ['germany', 'combined'] else -1.0
+        vol_fr = float(parse_volume_string(plan.get('volume_fr', '0'))) if plan_type in ['france', 'combined'] else -1.0
+        plan_specs.add((vol_de, vol_fr))
 
+    # تابع _find_users_matching_plan_specs بدون تغییر باقی می‌ماند
     users_without_plan = _find_users_matching_plan_specs(all_users, plan_specs, invert_match=True)
 
     text = fmt_users_by_plan_list(users_without_plan, "بدون پلن مشخص", page)
 
     base_cb = "admin:list_no_plan"
     back_cb = "admin:report_by_plan_select"
-    kb = menu.create_pagination_menu(base_cb, page, len(users_without_plan), back_cb)
+    lang_code = call.from_user.language_code
+    kb = menu.create_pagination_menu(base_cb, page, len(users_without_plan), back_cb, lang_code)
     _safe_edit(uid, msg_id, text, reply_markup=kb)

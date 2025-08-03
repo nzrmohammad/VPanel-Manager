@@ -6,7 +6,6 @@ from ..utils import _safe_edit, load_service_plans, parse_volume_string, escape_
 from .. import combined_handler
 import pytz
 
-
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
 
@@ -16,9 +15,50 @@ def initialize_group_actions_handlers(b, conv_dict):
     admin_conversations = conv_dict
 
 def handle_select_plan_for_action(call, params):
+    """
+    محاسبه تعداد کاربران هر پلن و نمایش منوی داینامیک.
+    """
     uid, msg_id = call.from_user.id, call.message.message_id
-    prompt = "لطفاً پلنی که می‌خواهید دستور روی کاربران آن اجرا شود را انتخاب کنید:"
-    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_select_plan_for_action_menu())
+    _safe_edit(uid, msg_id, "⏳ در حال محاسبه تعداد کاربران هر پلن\\.\\.\\.", reply_markup=None)
+
+    try:
+        all_plans = load_service_plans()
+        all_users = combined_handler.get_all_users_combined()
+        
+        plan_counts = {i: 0 for i in range(len(all_plans))}
+
+        for user in all_users:
+            h_info = user.get('breakdown', {}).get('hiddify', {})
+            m_info = user.get('breakdown', {}).get('marzban', {})
+            
+            # --- تغییر اصلی اینجاست: مقدار پیش‌فرض به 0.0 تغییر کرد ---
+            user_vol_de = h_info.get('usage_limit_GB', 0.0)
+            user_vol_fr = m_info.get('usage_limit_GB', 0.0)
+
+            for i, plan in enumerate(all_plans):
+                plan_vol_de = float(parse_volume_string(plan.get('volume_de', '0')))
+                plan_vol_fr = float(parse_volume_string(plan.get('volume_fr', '0')))
+                
+                if user_vol_de == plan_vol_de and user_vol_fr == plan_vol_fr:
+                    plan_counts[i] += 1
+                    break 
+
+        # ساخت منوی داینامیک با تعداد کاربران
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, plan in enumerate(all_plans):
+            plan_name = escape_markdown(plan.get('name', f'پلن {i+1}'))
+            count = plan_counts.get(i, 0)
+            button_text = f"{plan_name} ({count} کاربر)"
+            kb.add(types.InlineKeyboardButton(button_text, callback_data=f"admin:ga_select_type:{i}"))
+        
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
+
+        prompt = "لطفاً پلنی که می‌خواهید دستور روی کاربران آن اجرا شود را انتخاب کنید:"
+        _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"Failed to calculate plan user counts: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, "❌ خطا در محاسبه تعداد کاربران\\.", reply_markup=menu.admin_panel())
 
 def handle_ask_action_value(call, params):
     action_type, context_type, context_value = params[0], params[1], params[2]
@@ -48,13 +88,14 @@ def handle_ask_action_value(call, params):
                 target_users.append(user)
         plan_or_filter_name = f"پلن «{escape_markdown(selected_plan.get('name', ''))}»"
 
-    else: # Should not happen
-        _safe_edit(uid, msg_id, "❌ خطای داخلی: اطلاعات زمینه یافت نشد\\.")
+    else:
+        _safe_edit(uid, msg_id, "❌ خطای داخلی: اطلاعات زمینه یافت نشد\\.", reply_markup=menu.admin_group_actions_menu())
         return
 
     if not target_users:
         prompt = f"❌ هیچ کاربری منطبق با {plan_or_filter_name} یافت نشد\\."
-        _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_panel())
+        # --- اصلاح: بازگشت به منوی دستورات گروهی ---
+        _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_group_actions_menu())
         return
 
     admin_conversations[uid] = {
@@ -64,17 +105,12 @@ def handle_ask_action_value(call, params):
     }
 
     user_count = len(target_users)
-    
-    prompt_map = {
-        "add_gb": "حجم (GB)",
-        "add_days": "تعداد روز"
-    }
+    prompt_map = {"add_gb": "حجم (GB)", "add_days": "تعداد روز"}
     value_type_str = escape_markdown(prompt_map.get(action_type, "مقدار"))
 
     prompt = (f"شما *{plan_or_filter_name}* را انتخاب کردید (شامل *{user_count}* کاربر)\\.\n\n"
               f"حالا لطفاً مقدار *{value_type_str}* که می‌خواهید به این کاربران اضافه شود را وارد کنید:")
     
-    # Unified cancel button
     back_cb = "admin:group_action_select_plan" if context_type == 'plan' else "admin:adv_ga_select_filter"
     _safe_edit(uid, msg_id, prompt, reply_markup=menu.cancel_action(back_cb))
     bot.register_next_step_handler_by_chat_id(uid, _apply_group_action)
@@ -84,20 +120,18 @@ def _apply_group_action(message: types.Message):
     if uid not in admin_conversations: return
     
     convo_data = admin_conversations.pop(uid, {})
-    # --- FIX: Using .get() to prevent KeyError ---
     msg_id = convo_data.get('msg_id')
     action_type = convo_data.get('action_type')
     target_users = convo_data.get('target_users', [])
 
     if not all([msg_id, action_type, target_users]):
-        logger.error(f"Incomplete conversation data for user {uid} in _apply_group_action.")
-        _safe_edit(uid, msg_id, "❌ خطای داخلی: اطلاعات عملیات ناقص است\\.", reply_markup=menu.admin_panel())
+        _safe_edit(uid, msg_id, "❌ خطای داخلی: اطلاعات عملیات ناقص است\\.", reply_markup=menu.admin_group_actions_menu())
         return
 
     try:
         value = float(text)
     except ValueError:
-        _safe_edit(uid, msg_id, "❌ مقدار وارد شده نامعتبر است. لطفاً یک عدد وارد کنید\\.", reply_markup=menu.admin_panel())
+        _safe_edit(uid, msg_id, "❌ مقدار وارد شده نامعتبر است\\. لطفاً یک عدد وارد کنید\\.", reply_markup=menu.admin_group_actions_menu())
         return
 
     _safe_edit(uid, msg_id, f"⏳ در حال اجرای دستور روی *{len(target_users)}* کاربر\\.\\.\\.")
@@ -113,10 +147,11 @@ def _apply_group_action(message: types.Message):
         else:
             fail_count += 1
 
-    final_text = (f"✅ عملیات گروهی با موفقیت انجام شد.\n\n"
-                  f"به *{success_count}* کاربر اعمال شد.\n"
-                  f"عملیات برای *{fail_count}* کاربر ناموفق بود.")
-    _safe_edit(uid, msg_id, final_text, reply_markup=menu.admin_panel())
+    final_text = (f"✅ عملیات گروهی با موفقیت انجام شد\\.\n\n"
+                  f"🔹 به *{success_count}* کاربر اعمال شد\\.\n"
+                  f"🔸 عملیات برای *{fail_count}* کاربر ناموفق بود\\.")
+    # --- اصلاح: بازگشت به منوی دستورات گروهی ---
+    _safe_edit(uid, msg_id, final_text, reply_markup=menu.admin_group_actions_menu())
 
 def handle_select_action_type(call, params):
     plan_index = int(params[0])
@@ -137,7 +172,6 @@ def handle_select_advanced_filter(call, params):
 
 
 def handle_select_action_for_filter(call, params):
-
     filter_type = params[0]
     uid, msg_id = call.from_user.id, call.message.message_id
 

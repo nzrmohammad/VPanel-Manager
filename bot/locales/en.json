@@ -127,5 +127,21 @@
   "fmt_report_footer_total_single": "⚡️ Total usage today: {usage}",
   "fmt_err_getting_birthday_info": "An error occurred while fetching birthday information.",
   "btn_prev_page": "Previous",
-  "btn_next_page": "Next"
+  "btn_next_page": "Next",
+"fmt_user_name_header": "👤 Name",
+  "fmt_total_volume_new": "📦 Total Volume",
+  "fmt_total_usage_new": "🔥 Total Used",
+  "fmt_total_remaining_new": "📥 Total Remaining",
+  "fmt_total_daily_usage_new": "⚡️ Today's Total Usage",
+  "fmt_server_details_header_new": "Server Details",
+  "server_de_new": "Server 🇩🇪 ({status})",
+  "server_fr_new": "Server 🇫🇷 ({status})",
+  "fmt_server_volume_new": "🗂️ Total Volume",
+  "fmt_server_usage_new": "🔥 Total Used",
+  "fmt_server_daily_usage_new": "⚡️ Today's Usage",
+  "fmt_server_last_online_new": "⏰ Last Connection",
+  "fmt_expiry_date_new": "📅 Expires",
+  "fmt_uuid_new": "🔑 Unique ID",
+  "fmt_status_bar_new": "Status",
+  "btn_cancel_action": "Cancel Operation"
 }

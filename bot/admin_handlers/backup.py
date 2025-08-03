@@ -34,24 +34,25 @@ def handle_backup_action(call, params):
         _handle_bot_db_backup_request(call)
     elif backup_type == "marzban":
         _handle_marzban_backup_request(call)
-    # <<<<<<<<<<<<<<<< تغییر اصلی اینجاست >>>>>>>>>>>>>>>>
-    # شرط جدید برای رسیدگی به پشتیبان‌گیری از هیدیفای
     elif backup_type == "hiddify":
         _handle_hiddify_backup_request(call)
 
 def _handle_bot_db_backup_request(call):
     """منطق پشتیبان‌گیری از دیتابیس ربات."""
-    chat_id = call.from_user.id
+    chat_id, msg_id = call.from_user.id, call.message.message_id
     bot.answer_callback_query(call.id, "در حال پردازش...")
     
+    # FIX: یک پیام "در حال پردازش" نمایش داده می‌شود تا کاربر منتظر بماند
+    _safe_edit(chat_id, msg_id, "⏳ در حال ساخت پشتیبان از دیتابیس ربات...")
+
     if not os.path.exists(DATABASE_PATH):
-        bot.send_message(chat_id, "❌ فایل دیتابیس ربات یافت نشد.")
+        _safe_edit(chat_id, msg_id, "❌ فایل دیتابیس ربات یافت نشد.", reply_markup=menu.admin_backup_selection_menu())
         return
         
     try:
         file_size = os.path.getsize(DATABASE_PATH)
         if file_size > TELEGRAM_FILE_SIZE_LIMIT_BYTES:
-            bot.send_message(chat_id, f"❌ خطا: حجم فایل دیتابیس ({escape_markdown(f'{file_size / (1024*1024):.2f}')} MB) زیاد است.")
+            _safe_edit(chat_id, msg_id, f"❌ خطا: حجم فایل دیتابیس ({escape_markdown(f'{file_size / (1024*1024):.2f}')} MB) زیاد است.", reply_markup=menu.admin_backup_selection_menu())
             return
             
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -64,12 +65,14 @@ def _handle_bot_db_backup_request(call):
                 caption="✅ فایل پشتیبان دیتابیس ربات.",
                 visible_file_name=backup_filename
             )
+        
+        # FIX: پس از اتمام عملیات، کاربر به منوی پشتیبان‌گیری بازگردانده می‌شود
+        _safe_edit(chat_id, msg_id, "🗄️ لطفاً نوع پشتیبان‌گیری را انتخاب کنید:", reply_markup=menu.admin_backup_selection_menu())
             
     except Exception as e:
         logger.error(f"Bot DB Backup failed: {e}")
-        bot.send_message(chat_id, f"❌ خطای ناشناخته: {escape_markdown(str(e))}")
+        _safe_edit(chat_id, msg_id, f"❌ خطای ناشناخته: {escape_markdown(str(e))}", reply_markup=menu.admin_backup_selection_menu())
 
-# <<<<<<<<<<<<<<<< تابع جدید برای پشتیبان‌گیری از هیدیفای >>>>>>>>>>>>>>>>
 def _handle_hiddify_backup_request(call):
     """منطق پشتیبان‌گیری از کاربران پنل آلمان (Hiddify)."""
     chat_id, msg_id = call.from_user.id, call.message.message_id
@@ -84,15 +87,16 @@ def _handle_hiddify_backup_request(call):
             
         backup_filename = f"hiddify_backup_{datetime.now().strftime('%Y-%m-%d')}.json"
         
-        # فایل جیسون را به صورت موقت می‌سازیم
         with open(backup_filename, 'w', encoding='utf-8') as f:
             json.dump(hiddify_users, f, ensure_ascii=False, indent=4, default=str)
             
-        # فایل را ارسال کرده و سپس حذف می‌کنیم
         with open(backup_filename, "rb") as backup_file:
             bot.send_document(chat_id, backup_file, caption=f"✅ فایل پشتیبان کاربران پنل آلمان ({len(hiddify_users)} کاربر).")
             
         os.remove(backup_filename)
+
+        # FIX: پس از اتمام عملیات، کاربر به منوی پشتیبان‌گیری بازگردانده می‌شود
+        _safe_edit(chat_id, msg_id, "🗄️ لطفاً نوع پشتیبان‌گیری را انتخاب کنید:", reply_markup=menu.admin_backup_selection_menu())
         
     except Exception as e:
         logger.error(f"Hiddify backup failed: {e}")
@@ -113,13 +117,15 @@ def _handle_marzban_backup_request(call):
         backup_filename = f"marzban_backup_{datetime.now().strftime('%Y-%m-%d')}.json"
         
         with open(backup_filename, 'w', encoding='utf-8') as f:
-            # استفاده از default=str برای مدیریت آبجکت‌های datetime
             json.dump(marzban_users, f, ensure_ascii=False, indent=4, default=str)
             
         with open(backup_filename, "rb") as backup_file:
             bot.send_document(chat_id, backup_file, caption=f"✅ فایل پشتیبان کاربران پنل فرانسه ({len(marzban_users)} کاربر).")
             
         os.remove(backup_filename)
+
+        # FIX: پس از اتمام عملیات، کاربر به منوی پشتیبان‌گیری بازگردانده می‌شود
+        _safe_edit(chat_id, msg_id, "🗄️ لطفاً نوع پشتیبان‌گیری را انتخاب کنید:", reply_markup=menu.admin_backup_selection_menu())
         
     except Exception as e:
         logger.error(f"Marzban backup failed: {e}")

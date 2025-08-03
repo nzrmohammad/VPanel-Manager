@@ -497,6 +497,25 @@ def get_analytics_data():
     new_users_today_count = db.get_new_users_in_range(start_of_today_utc, now_utc)
     daily_usage_map = db.get_all_daily_usage_since_midnight()
     total_usage_today = sum(sum(usage.values()) for usage in daily_usage_map.values())
+    new_users_stats = db.get_new_users_per_month_stats(months=6)
+    new_users_chart = {
+        "labels": [item['month'] for item in new_users_stats],
+        "series": [{"name": "کاربران جدید", "data": [item['count'] for item in new_users_stats]}]
+    }
+
+    # نمودار درآمد ماهانه
+    revenue_stats = db.get_revenue_by_month(months=6)
+    revenue_chart = {
+        "labels": [item['month'] for item in revenue_stats],
+        "series": [{"name": "تعداد پرداخت", "data": [item['revenue_unit'] for item in revenue_stats]}]
+    }
+    
+    # نمودار کاربران فعال روزانه
+    daily_active_users_stats = db.get_daily_active_users_count(days=30)
+    daily_active_users_chart = {
+        "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d')) for item in daily_active_users_stats],
+        "series": [{"name": "کاربران فعال", "data": [item['active_users'] for item in daily_active_users_stats]}]
+    }
 
     kpis = {
         "active_users": active_users_count, "online_users": online_users_count,
@@ -543,7 +562,10 @@ def get_analytics_data():
         "plan_distribution_chart": {"labels": plan_labels, "series": plan_series},
         "top_consumers_chart": {"labels": top_consumers_labels, "series": [{"name": "مصرف (GB)", "data": top_consumers_series_data}]},
         "usage_comparison_chart": {"labels": usage_comparison_labels, "series": usage_comparison_series},
-        "active_users_by_panel_chart": {"labels": active_users_labels, "series": active_users_series}
+        "active_users_by_panel_chart": {"labels": active_users_labels, "series": active_users_series},
+        "new_users_chart": new_users_chart,
+        "revenue_chart": revenue_chart,
+        "daily_active_users_chart": daily_active_users_chart
     }
 
 
@@ -585,3 +607,68 @@ def toggle_template_special_status(template_id: int):
     logger.info(f"Toggling Special status for template ID: {template_id}")
     db.toggle_template_special(template_id)
     return True
+
+def get_marzban_mappings_service():
+    """سرویس برای دریافت تمام مپ‌های مرزبان."""
+    return db.get_all_marzban_mappings()
+
+def add_marzban_mapping_service(hiddify_uuid, marzban_username):
+    """سرویس برای افزودن یک مپ جدید مرزبان."""
+    if not hiddify_uuid or not marzban_username:
+        return False, "UUID و یوزرنیم نمی‌توانند خالی باشند."
+    
+    success = db.add_marzban_mapping(hiddify_uuid, marzban_username)
+    if success:
+        return True, "مپ با موفقیت اضافه شد."
+    else:
+        return False, "خطا در افزودن مپ به دیتابیس."
+
+def delete_marzban_mapping_service(hiddify_uuid):
+    """سرویس برای حذف یک مپ مرزبان."""
+    success = db.delete_marzban_mapping(hiddify_uuid)
+    if success:
+        return True, "مپ با موفقیت حذف شد."
+    else:
+        return False, "خطا در حذف مپ از دیتابیس."
+
+def get_schedule_info_service():
+    """اطلاعات مربوط به کارهای زمان‌بندی شده ربات را برای نمایش در پنل ادمین آماده می‌کند."""
+    
+    # خواندن تنظیمات از فایل bot_settings.json
+    report_time = settings.get('daily_report_time', '23:59')
+    warning_interval = settings.get('usage_warning_check_minutes', 60)
+    
+    schedule_list = [
+        {
+            "icon": "ri-camera-lens-line",
+            "title": "اسنپ‌شات مصرف کاربران",
+            "interval": "هر ۱ ساعت",
+            "description": "مصرف لحظه‌ای کاربران در هر دو پنل ذخیره می‌شود تا نمودارها و گزارش‌های روزانه دقیق باشند."
+        },
+        {
+            "icon": "ri-alarm-warning-line",
+            "title": "بررسی هشدارهای انقضا و حجم",
+            "interval": f"هر {warning_interval} دقیقه",
+            "description": "وضعیت کاربران برای ارسال هشدارهای اتمام حجم و نزدیک شدن به تاریخ انقضا بررسی می‌شود."
+        },
+        {
+            "icon": "ri-send-plane-2-line",
+            "title": "ارسال گزارش روزانه",
+            "interval": f"هر شب ساعت {report_time}",
+            "description": "گزارش جامع روزانه برای ادمین‌ها و گزارش شخصی برای کاربران فعال ارسال می‌گردد."
+        },
+        {
+            "icon": "ri-cake-2-line",
+            "title": "بررسی و اعمال هدیه تولد",
+            "interval": "هر روز ساعت ۰۰:۰۵ بامداد",
+            "description": "کاربرانی که روز تولدشان فرا رسیده، هدیه خود را به صورت خودکار دریافت می‌کنند."
+        },
+        {
+            "icon": "ri-database-2-line",
+            "title": "بهینه‌سازی دیتابیس",
+            "interval": "هر روز ساعت ۰۴:۰۰ بامداد",
+            "description": "یک فرآیند سبک برای پاکسازی و بهینه‌سازی فایل دیتابیس ربات اجرا می‌شود."
+        }
+    ]
+    
+    return schedule_list

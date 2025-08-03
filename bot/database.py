@@ -20,22 +20,6 @@ class DatabaseManager:
 
     def _init_db(self) -> None:
         with self._conn() as c:
-            # --- بخش آپدیت دیتابیس‌های قدیمی (این بخش دست‌نخورده باقی می‌ماند) ---
-            try: c.execute("ALTER TABLE user_uuids ADD COLUMN is_vip INTEGER DEFAULT 0;")
-            except sqlite3.OperationalError: pass
-            try: c.execute("ALTER TABLE config_templates ADD COLUMN is_special INTEGER DEFAULT 0;")
-            except sqlite3.OperationalError: pass
-            try: c.execute("ALTER TABLE user_uuids ADD COLUMN has_access_de INTEGER DEFAULT 1;")
-            except sqlite3.OperationalError: pass
-            try: c.execute("ALTER TABLE user_uuids ADD COLUMN has_access_fr INTEGER DEFAULT 1;")
-            except sqlite3.OperationalError: pass
-            try:
-                c.execute("ALTER TABLE config_templates ADD COLUMN server_type TEXT DEFAULT 'none';")
-                logger.info("Column 'server_type' added to 'config_templates' table.")
-            except sqlite3.OperationalError:
-                pass
-
-            # --- بخش ساختار اولیه دیتابیس (این بخش اصلاح شده است) ---
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY,
@@ -111,13 +95,16 @@ class DatabaseManager:
                     FOREIGN KEY(template_id) REFERENCES config_templates(id) ON DELETE CASCADE,
                     UNIQUE(user_uuid_id, template_id)
                 );
+                -- جدول جدید برای مدیریت ارتباط کاربران مرزبان --
+                CREATE TABLE IF NOT EXISTS marzban_mapping (
+                    hiddify_uuid TEXT PRIMARY KEY,
+                    marzban_username TEXT NOT NULL UNIQUE
+                );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
                 CREATE INDEX IF NOT EXISTS idx_snapshots_uuid_id_taken_at ON usage_snapshots(uuid_id, taken_at);
-                CREATE INDEX IF NOT EXISTS idx_scheduled_messages_job_type ON scheduled_messages(job_type);
-                CREATE INDEX IF NOT EXISTS idx_warning_log_uuid_type ON warning_log(uuid_id, warning_type);
             """)
-        logger.info("SQLite schema and indexes are ready.")
+        logger.info("SQLite schema is fresh and ready.")
 
     def add_usage_snapshot(self, uuid_id: int, hiddify_usage: float, marzban_usage: float) -> None:
         with self._conn() as c:
@@ -889,5 +876,85 @@ class DatabaseManager:
             row = c.execute("SELECT lang_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
             # اگر زبانی ثبت نشده بود، فارسی را به عنوان پیش‌فرض برمی‌گرداند
             return row['lang_code'] if row and row['lang_code'] else 'fa'
+
+    def add_marzban_mapping(self, hiddify_uuid: str, marzban_username: str) -> bool:
+        """یک ارتباط جدید بین UUID هیدیفای و یوزرنیم مرزبان اضافه یا جایگزین می‌کند."""
+        with self._conn() as c:
+            try:
+                c.execute("INSERT OR REPLACE INTO marzban_mapping (hiddify_uuid, marzban_username) VALUES (?, ?)", (hiddify_uuid.lower(), marzban_username))
+                return True
+            except sqlite3.IntegrityError:
+                logger.warning(f"Marzban username '{marzban_username}' might already be mapped.")
+                return False
+
+    def get_marzban_username_by_uuid(self, hiddify_uuid: str) -> Optional[str]:
+        """یوزرنیم مرزبان را بر اساس UUID هیدیفای از دیتابیس دریافت می‌کند."""
+        with self._conn() as c:
+            row = c.execute("SELECT marzban_username FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),)).fetchone()
+            return row['marzban_username'] if row else None
+
+    def get_uuid_by_marzban_username(self, marzban_username: str) -> Optional[str]:
+        """UUID هیدیفای را بر اساس یوزرنیم مرزبان از دیتابیس دریافت می‌کند."""
+        with self._conn() as c:
+            row = c.execute("SELECT hiddify_uuid FROM marzban_mapping WHERE marzban_username = ?", (marzban_username,)).fetchone()
+            return row['hiddify_uuid'] if row else None
+            
+    def get_all_marzban_mappings(self) -> List[Dict[str, str]]:
+        """تمام ارتباط‌های مرزبان را برای نمایش در پنل وب برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute("SELECT hiddify_uuid, marzban_username FROM marzban_mapping ORDER BY marzban_username").fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_marzban_mapping(self, hiddify_uuid: str) -> bool:
+        """یک ارتباط را بر اساس UUID هیدیفای حذف می‌کند."""
+        with self._conn() as c:
+            res = c.execute("DELETE FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),))
+            return res.rowcount > 0
+    def get_new_users_per_month_stats(self, months: int = 6) -> List[Dict[str, Any]]:
+        """آمار کاربران جدید در هر ماه را برای نمودار باز می‌گرداند."""
+        query = f"""
+            SELECT
+                strftime('%Y-%m', created_at) as month,
+                COUNT(id) as count
+            FROM user_uuids
+            GROUP BY month
+            ORDER BY month DESC
+            LIMIT {months};
+        """
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
+            # نتیجه را برعکس می‌کنیم تا ترتیب ماه‌ها برای نمایش در نمودار درست باشد
+            return [dict(r) for r in reversed(rows)]
+        
+    def get_revenue_by_month(self, months: int = 6) -> List[Dict[str, Any]]:
+        """درآمد ماهانه را (بر اساس تعداد پرداخت) برای نمودار MRR محاسبه می‌کند."""
+        query = f"""
+            SELECT
+                strftime('%Y-%m', payment_date) as month,
+                COUNT(payment_id) as revenue_unit
+            FROM payments
+            GROUP BY month
+            ORDER BY month DESC
+            LIMIT {months};
+        """
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in reversed(rows)]
+
+    def get_daily_active_users_count(self, days: int = 30) -> List[Dict[str, Any]]:
+        """تعداد کاربران فعال یکتا در هر روز را بر اساس اسنپ‌شات‌های مصرف محاسبه می‌کند."""
+        date_limit = datetime.now(pytz.utc) - timedelta(days=days)
+        query = """
+            SELECT
+                DATE(taken_at) as date,
+                COUNT(DISTINCT uuid_id) as active_users
+            FROM usage_snapshots
+            WHERE taken_at >= ?
+            GROUP BY date
+            ORDER BY date ASC;
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (date_limit,)).fetchall()
+            return [dict(r) for r in rows]
 
 db = DatabaseManager()

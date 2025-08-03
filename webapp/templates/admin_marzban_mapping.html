@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}مدیریت ارتباط مرزبان{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 1.5rem; align-items: flex-end; }
+    .form-group label { font-weight: 500; font-size: 0.9rem; display: block; margin-bottom: 0.5rem; color: var(--text-secondary); }
+    .form-control { width: 100%; padding: 0.8rem 1rem; border: 1px solid var(--border-color); background-color: var(--bg-color); color: var(--text-color); border-radius: 8px; font-size: 1rem; transition: all 0.2s; box-sizing: border-box; }
+    .form-control:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15); }
+    .uuid-cell { font-family: monospace; font-size: 0.9em; direction: ltr; text-align: right; word-break: break-all; }
+    .table-actions { text-align: center; display: flex; justify-content: center; gap: 0.5rem; }
+    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+    .flash-container { margin-bottom: 1.5rem; }
+    .flash-message { padding: 1rem; border-radius: var(--border-radius); border-left: 5px solid; font-weight: 500; opacity: 1; transition: opacity 0.5s ease-out, transform 0.5s ease-out; }
+    .flash-message.fade-out { opacity: 0; transform: translateY(-20px); }
+
+    /* --- استایل مودال ویرایش --- */
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+    .modal-content { background-color: var(--card-bg); margin: 10% auto; padding: 25px; border: 1px solid var(--border-color); border-radius: var(--border-radius); width: 90%; max-width: 500px; position: relative; box-shadow: 0 5px 25px rgba(0,0,0,0.2); animation: slide-down 0.3s ease-out; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem; }
+    .modal-header h3 { margin: 0; }
+    .close-btn { color: var(--text-secondary); font-size: 1.8rem; font-weight: bold; cursor: pointer; transition: color 0.2s; }
+    .close-btn:hover { color: var(--text-color); }
+    .modal-body .form-group { margin-bottom: 1.5rem; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; }
+
+    /* --- استایل کوتاه کردن UUID در موبایل --- */
+    .uuid-full { display: inline; }
+    .uuid-short { display: none; }
+    
+    @keyframes slide-down { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    @media (max-width: 991px) {
+        .form-grid { grid-template-columns: 1fr; gap: 1rem; }
+        .form-grid button { width: 100%; }
+    }
+    @media (max-width: 767px) {
+        .data-table td:nth-of-type(1)::before { content: 'UUID هیدیفای'; }
+        .data-table td:nth-of-type(2)::before { content: 'یوزرنیم مرزبان'; }
+        .data-table td:nth-of-type(3)::before { content: 'عملیات'; }
+        .uuid-full { display: none; }
+        .uuid-short { display: inline; }
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='ارتباط کاربران مرزبان' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="page-grid">
+        <section class="info-card">
+            <div class="table-header" style="padding: 1rem 1.5rem;">
+                <h3><i class="ri-add-box-line" style="vertical-align: middle;"></i> افزودن ارتباط جدید</h3>
+            </div>
+            <form action="{{ url_for('admin.add_marzban_mapping_route') }}" method="POST" style="padding: 1.5rem; border-top: 1px solid var(--border-color);">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="hiddify_uuid">Hiddify UUID</label>
+                        <input type="text" id="hiddify_uuid" name="hiddify_uuid" class="form-control" placeholder="UUID کاربر در پنل Hiddify" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="marzban_username">Marzban Username</label>
+                        <input type="text" id="marzban_username" name="marzban_username" class="form-control" placeholder="نام کاربری در پنل Marzban" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ri-link"></i>
+                        <span>ایجاد ارتباط</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <div class="flash-container">
+            {% include 'partials/_flash_messages.html' %}
+        </div>
+
+        <section class="info-card data-table-container">
+            <div class="table-header">
+                <h3><i class="ri-list-check-2" style="vertical-align: middle;"></i> لیست ارتباط‌های موجود</h3>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Hiddify UUID</th>
+                            <th>Marzban Username</th>
+                            <th style="text-align: center;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mapping in mappings %}
+                        <tr>
+                            <td class="uuid-cell" data-full-uuid="{{ mapping.hiddify_uuid }}">
+                                <span class="uuid-full">{{ mapping.hiddify_uuid }}</span>
+                                <span class="uuid-short">{{ mapping.hiddify_uuid[:6] }}...{{ mapping.hiddify_uuid[-4:] }}</span>
+                            </td>
+                            <td data-marzban-username="{{ mapping.marzban_username }}">{{ mapping.marzban_username }}</td>
+                            <td class="table-actions">
+                                <button class="btn btn-info btn-sm edit-btn" title="ویرایش">
+                                    <i class="ri-pencil-line"></i>
+                                </button>
+                                <form action="{{ url_for('admin.delete_marzban_mapping_route') }}" method="POST" style="display:inline;" onsubmit="return confirm('آیا از حذف این ارتباط اطمینان دارید؟');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="hiddify_uuid" value="{{ mapping.hiddify_uuid }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" title="حذف ارتباط">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 2rem;">هیچ ارتباطی ثبت نشده است.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div id="editMappingModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>ویرایش ارتباط کاربر</h3>
+                <span class="close-btn">&times;</span>
+            </div>
+            <form id="editMappingForm" action="{{ url_for('admin.add_marzban_mapping_route') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" id="edit-hiddify-uuid" name="hiddify_uuid">
+                    <div class="form-group">
+                        <label>Hiddify UUID (غیرقابل ویرایش)</label>
+                        <input type="text" id="display-hiddify-uuid" class="form-control" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-marzban-username">Marzban Username</label>
+                        <input type="text" id="edit-marzban-username" name="marzban_username" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary cancel-btn">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- حذف خودکار پیام‌های فلش ---
+    const flashMessages = document.querySelectorAll('.flash-message');
+    flashMessages.forEach(function(msg) {
+        setTimeout(() => {
+            msg.classList.add('fade-out');
+            setTimeout(() => msg.remove(), 500); // حذف کامل از DOM بعد از انیمیشن
+        }, 5000); // 5 ثانیه
+    });
+
+    // --- منطق مودال ویرایش ---
+    const modal = document.getElementById('editMappingModal');
+    const editButtons = document.querySelectorAll('.edit-btn');
+    const closeBtn = modal.querySelector('.close-btn');
+    const cancelBtn = modal.querySelector('.cancel-btn');
+    
+    const editUuidInput = document.getElementById('edit-hiddify-uuid');
+    const displayUuidInput = document.getElementById('display-hiddify-uuid');
+    const editUsernameInput = document.getElementById('edit-marzban-username');
+
+    editButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const row = this.closest('tr');
+            const hiddifyUuid = row.querySelector('.uuid-cell').dataset.fullUuid;
+            const marzbanUsername = row.querySelector('[data-marzban-username]').dataset.marzbanUsername;
+            
+            // پر کردن فرم مودال
+            editUuidInput.value = hiddifyUuid;
+            displayUuidInput.value = hiddifyUuid;
+            editUsernameInput.value = marzbanUsername;
+
+            modal.style.display = "block";
+        });
+    });
+
+    function closeModal() {
+        modal.style.display = "none";
+    }
+
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+
+    window.addEventListener('click', function (event) {
+        if (event.target == modal) {
+            closeModal();
+        }
+    });
+});
+</script>
+{% endblock %}

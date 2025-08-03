@@ -10,67 +10,139 @@ from .utils import (
 )
 
 
+def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
+    # ——— اول تعریف یک تابع پرانتز escape شده ———
+    def esc(text):
+        # فقط برای مقادیر داینامیک!
+        return escape_markdown(str(text))
+
+    # اگر info تهی بود پیام خطا بده
+    if not info:
+        return "❌ خطا در دریافت اطلاعات کاربر."
+
+    report_parts = []
+    name = esc(info.get("name", "کاربر ناشناس"))
+    report_parts.append(f"👤 *نام:* {name}")
+
+    # یادداشت ادمین
+    if db_user and db_user.get('admin_note'):
+        note = esc(db_user['admin_note'])
+        report_parts.append(f"🗒️ *یادداشت:* {note}")
+
+    report_parts.append("")  # فاصله
+
+    h_info = info.get('breakdown', {}).get('hiddify')
+    m_info = info.get('breakdown', {}).get('marzban')
+
+    def panel_block(panel_info, country, flag):
+        status = "فعال 🟢" if panel_info.get('is_active') else "غیرفعال 🔴"
+        panel_header = f"*{country}* {flag}  \\(وضعیت : {status}\\)"
+        limit = esc(f"{panel_info.get('usage_limit_GB', 0):g}".replace('.', ','))
+        usage = esc(f"{panel_info.get('current_usage_GB', 0):g}".replace('.', ','))
+        remaining = esc(f"{panel_info.get('usage_limit_GB', 0) - panel_info.get('current_usage_GB', 0):g}".replace('.', ','))
+        last_online = esc(to_shamsi(panel_info.get('last_online'), include_time=True))
+
+        return [
+            panel_header,
+            f"🗂️ *حجم کل :* {limit} GB",
+            f"🔥 *مصرف شده :* {usage} GB",
+            f"📥 *باقی‌مانده :* {remaining} GB",
+            f"⏰ *آخرین اتصال :* {last_online}",
+            ""
+        ]
+
+    if h_info:
+        report_parts += panel_block(h_info, "آلمان", "🇩🇪")
+    if m_info:
+        report_parts += panel_block(m_info, "فرانسه", "🇫🇷")
+
+    # انقضا
+    expire_days = info.get("expire")
+    if expire_days is not None:
+        expire_label = esc(f"{int(expire_days)} روز" if int(expire_days) >= 0 else "منقضی شده")
+        report_parts.append(f"📅 *انقضا :* {expire_label}")
+
+    # UUID
+    if info.get('uuid'):
+        uuid = esc(info['uuid'])
+        report_parts.append(f"🔑 *شناسه یکتا :* `{uuid}`")
+
+    return "\n".join(report_parts).strip()
+
+
+
 def fmt_users_list(users: list, list_type: str, page: int) -> str:
     title_map = {
-        'active': "✅ کاربران فعال (۲۴ ساعت اخیر)",
-        'inactive': "⏳ کاربران غیرفعال (۱ تا ۷ روز)",
-        'never_connected': "🚫 کاربرانی که هرگز متصل نشده‌اند"
+        'active': "✅ Active Users \\(last 24h\\)",
+        'inactive': "⏳ Inactive Users \\(1\\-7 days\\)",
+        'never_connected': "🚫 Never Connected Users"
     }
-    title = title_map.get(list_type, "لیست کاربران")
+    title = title_map.get(list_type, "Users List")
 
     if not users:
-        return f"*{escape_markdown(title)}*\n\nهیچ کاربری در این دسته یافت نشد."
+        return f"*{title}*\n\nNo users found in this category."
 
-    header_text = f"*{escape_markdown(title)}*"
+    header_text = f"*{title}*"
     if len(users) > settings.get('PAGE_SIZE', 15):
         total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
+        pagination_text = f"\\(Page {page + 1} of {total_pages} \\| Total: {len(users)}\\)"
+        header_text += f"\n{pagination_text}"
 
     lines = [header_text]
 
     start_index = page * settings.get('PAGE_SIZE', 15)
     paginated_users = users[start_index : start_index + settings.get('PAGE_SIZE', 15)]
+    separator = " \\| "
 
     for user in paginated_users:
-        name = escape_markdown(user.get('name', 'کاربر ناشناس'))
-        line = f"`•` *{name}*"
-        separator = escape_markdown(" | ")
+        name = escape_markdown(user.get('name', 'N/A'))
+        line = f"• *{name}*"
 
         if list_type == 'active':
-            last_online_str = to_shamsi(user.get('last_online')).split(' ')[-1]
+            last_online_str = to_shamsi(user.get('last_online')).split(' ')[0]
             usage_p = user.get('usage_percentage', 0)
-            line += f"{separator}Last Seen: `{escape_markdown(last_online_str)}`{separator}Usage: `{usage_p:.1f}\\%`"
+            usage_p_str = f"{usage_p:.0f}"
+            line += f"{separator}{escape_markdown(last_online_str)}{separator}{usage_p_str}%"
 
         elif list_type == 'inactive':
             last_online_str = format_relative_time(user.get('last_online'))
-            status = "Expired" if user.get('expire', 0) < 0 else "Active"
-            line += f"{separator}Last Seen: `{escape_markdown(last_online_str)}`{separator}Status: `{status}`"
+            status = "expired" if user.get('expire', 0) < 0 else "active"
+            line += f"{separator}{escape_markdown(last_online_str)}{separator}{status}"
 
         elif list_type == 'never_connected':
-            created_at_str = format_relative_time(user.get('created_at'))
             limit_gb = user.get('usage_limit_GB', 0)
-            line += f"{separator}Registered: `{escape_markdown(created_at_str)}`{separator}Limit: `{limit_gb} GB`"
+            limit_gb_str = f"{limit_gb:g}"
+            
+            expire_days = user.get("expire")
+            expire_text = "unlimited"
+            if expire_days is not None:
+                expire_text = f"{expire_days} days" if expire_days >= 0 else "expired"
+            
+            line += f"{separator}{limit_gb_str} GB{separator}{escape_markdown(expire_text)}"
 
         lines.append(line)
 
     return "\n".join(lines)
 
+
 def fmt_online_users_list(users: list, page: int) -> str:
-    title = "⚡️ کاربران آنلاین (۳ دقیقه اخیر)" 
+    # <<<< اصلاح ۱: پرانتزها در عنوان به صورت دستی escape شدند >>>>
+    title = "⚡️ کاربران آنلاین \\(۳ دقیقه اخیر\\)"
 
     if not users:
-        return f"*{escape_markdown(title)}*\n\nهیچ کاربری در این لحظه آنلاین نیست\\."
+        return f"*{title}*\n\nهیچ کاربری در این لحظه آنلاین نیست."
 
-    header_text = f"*{escape_markdown(title)}*"
+    header_text = f"*{title}*"
     if len(users) > settings.get('PAGE_SIZE', 15):
         total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+        # <<<< اصلاح ۱: پرانتز و خط جداکننده در شماره صفحه هم escape شدند >>>>
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
     paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
     user_lines = []
-    separator = escape_markdown(" | ")
+    # <<<< اصلاح ۲: کاراکتر | به درستی escape شد >>>>
+    separator = " \\| "
 
     uuid_to_bot_user = db.get_uuid_to_bot_user_map()
 
@@ -78,26 +150,189 @@ def fmt_online_users_list(users: list, page: int) -> str:
         panel_name_raw = user.get('name', 'کاربر ناشناس')
         bot_user_info = uuid_to_bot_user.get(user.get('uuid'))
 
-        clean_name = panel_name_raw.replace('[', '').replace(']', '')
-        name_str = escape_markdown(clean_name)
+        clean_name_for_link = escape_markdown(panel_name_raw.replace('[', '').replace(']', ''))
+
         if bot_user_info and bot_user_info.get('user_id'):
             user_id = bot_user_info['user_id']
-            name_str = f"[{clean_name}](tg://user?id={user_id})"
+            name_str = f"[{clean_name_for_link}](tg://user?id={user_id})"
+        else:
+            name_str = escape_markdown(panel_name_raw)
 
         daily_usage_output = escape_markdown(format_daily_usage(user.get('daily_usage_GB', 0)))
         expire_days = user.get("expire")
-        expire_text = "Unlimited"
-        if expire_days is not None:
-            expire_text = f"{expire_days} Days" if expire_days >= 0 else "Expired"
-        expire_output = escape_markdown(expire_text)
 
-        line = f"{name_str}{separator}`{daily_usage_output}`{separator}`{expire_output}`"
+        expire_text = "unlimited"
+        if expire_days is not None:
+            expire_text = f"{expire_days} days" if expire_days >= 0 else "expired"
+
+        line = f"• {name_str}{separator}`{daily_usage_output}`{separator}`{escape_markdown(expire_text)}`"
         user_lines.append(line)
 
     body_text = "\n".join(user_lines)
     return f"{header_text}\n\n{body_text}"
 
-# file: admin_formatters.py
+
+
+def fmt_hiddify_panel_info(info: dict) -> str:
+    if not info:
+        return escape_markdown("اطلاعاتی از پنل دریافت نشد.")
+
+    title = escape_markdown(info.get('title', 'N/A'))
+    description = escape_markdown(info.get('description', 'N/A'))
+    version = escape_markdown(info.get('version', 'N/A'))
+
+    return (f"{EMOJIS['gear']} *اطلاعات پنل Hiddify*\n\n"
+            f"**عنوان:** {title}\n"
+            f"**توضیحات:** {description}\n"
+            f"**نسخه:** {version}\n")
+
+def fmt_bot_users_list(bot_users: list, page: int) -> str:
+    title = "کاربران ربات"
+    if not bot_users:
+        return f"🤖 *{escape_markdown(title)}*\n\nهیچ کاربری در ربات ثبت‌نام نکرده است."
+
+    header_text = f"🤖 *{escape_markdown(title)}*"
+    total_users = len(bot_users)
+    if total_users > settings.get('PAGE_SIZE', 15):
+        total_pages = (total_users + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {total_users})"
+        header_text += f"\n{escape_markdown(pagination_text)}"
+
+    lines = [header_text]
+    start_index = page * settings.get('PAGE_SIZE', 15)
+    paginated_users = bot_users[start_index : start_index + settings.get('PAGE_SIZE', 15)]
+
+    for user in paginated_users:
+        first_name = user.get('first_name') or 'ناشناس'
+        username = user.get('username')
+        user_id = user.get('user_id') or user.get('id')
+
+        if username:  # اگر یوزرنیم داشت
+            # یوزرنیم باید escape نشه، فقط اسم escape بشه
+            link_name = f"[{escape_markdown(first_name)}](https://t.me/{username})"
+        elif user_id:
+            try:
+                user_id_int = int(user_id)
+                link_name = f"[{escape_markdown(first_name)}](tg://user?id={user_id_int})"
+            except (ValueError, TypeError):
+                link_name = escape_markdown(first_name)
+        else:
+            link_name = escape_markdown(first_name)
+        lines.append(f"`•` {link_name} \\| ID : `{user_id or 'N/A'}`")
+
+    return "\n".join(lines)
+
+def fmt_marzban_system_stats(info: dict) -> str:
+    if not info:
+        return escape_markdown("اطلاعاتی از سیستم دریافت نشد.")
+
+    to_gb = lambda b: b / (1024**3)
+    
+    version = escape_markdown(info.get('version', 'N/A'))
+    mem_total_gb = f"{to_gb(info.get('mem_total', 0)):.2f}".replace('.', ',')
+    mem_used_gb = f"{to_gb(info.get('mem_used', 0)):.2f}".replace('.', ',')
+    mem_percent = (info.get('mem_used', 0) / info.get('mem_total', 1) * 100)
+    mem_percent_str = f"{mem_percent:.1f}".replace('.', ',')
+    cpu_cores = escape_markdown(str(info.get('cpu_cores', 'N/A')))
+    cpu_usage = f"{info.get('cpu_usage', 0.0):.1f}".replace('.', ',')
+
+    total_users = escape_markdown(str(info.get('total_user', 0)))
+    online_users = escape_markdown(str(info.get('online_users', 0)))
+    active_users = escape_markdown(str(info.get('users_active', 0)))
+    disabled_users = escape_markdown(str(info.get('users_disabled', 0)))
+    expired_users = escape_markdown(str(info.get('users_expired', 0)))
+
+    total_dl_gb = f"{to_gb(info.get('incoming_bandwidth', 0)):.2f}".replace('.', ',')
+    total_ul_gb = f"{to_gb(info.get('outgoing_bandwidth', 0)):.2f}".replace('.', ',')
+    speed_dl_mbps = f"{info.get('incoming_bandwidth_speed', 0) / (1024 * 1024):.2f}".replace('.', ',')
+    speed_ul_mbps = f"{info.get('outgoing_bandwidth_speed', 0) / (1024 * 1024):.2f}".replace('.', ',')
+
+    report = (
+        f"*📊 وضعیت سیستم پنل مرزبان \\(فرانسه 🇫🇷\\)*\n"
+        f"`──────────────────`\n"
+        f"⚙️ نسخه: `{version}`\n"
+        f"🖥️ هسته CPU: `{cpu_cores}` `|` مصرف: `{cpu_usage}\\%`\n"
+        f"💾 مصرف RAM: `{mem_used_gb} / {mem_total_gb} GB` `({mem_percent_str}\\%)`\n"
+        f"`──────────────────`\n"
+        f"👥 کاربران کل: `{total_users}` {escape_markdown('|')} 🟢 فعال: `{active_users}` {escape_markdown('|')} 🔴 آنلاین: `{online_users}`\n"
+        f"⚪️ غیرفعال: `{disabled_users}` {escape_markdown('|')} 🗓 منقضی شده: `{expired_users}`\n"
+        f"`──────────────────`\n"
+        f"*📈 ترافیک کل:*\n"
+        f"  `↓` دانلود: `{total_dl_gb} GB`\n"
+        f"  `↑` آپلود: `{total_ul_gb} GB`\n"
+        f"*🚀 سرعت لحظه‌ای:*\n"
+        f"  `↓` دانلود: `{speed_dl_mbps} MB/s`\n"
+        f"  `↑` آپلود: `{speed_ul_mbps} MB/s`"
+    )
+
+    return report
+
+
+def fmt_users_by_plan_list(users: list, plan_name: str, page: int) -> str:
+    title = f"گزارش کاربران پلن: {escape_markdown(plan_name)}"
+
+    if not users:
+        return f"*{title}*\n\nهیچ کاربری با مشخصات این پلن یافت نشد\\."
+
+    header_text = f"*{title}*"
+    if len(users) > settings.get('PAGE_SIZE', 15):
+        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
+        header_text += f"\n{pagination_text}"
+
+    user_lines = [header_text]
+    paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    separator = " \\| "
+
+    for user in paginated_users:
+        name = escape_markdown(user.get('name', 'کاربر ناشناس'))
+
+        h_info = user.get('breakdown', {}).get('hiddify')
+        m_info = user.get('breakdown', {}).get('marzban')
+        
+        panel_usage_parts = []
+        
+        # <<<<<<<<<<<<<<<< تغییر اصلی اینجاست >>>>>>>>>>>>>>>>
+        if h_info:
+            # روندن کردن به ۲ رقم اعشار و حذف .00 برای اعداد صحیح
+            h_usage_gb = f"{h_info.get('current_usage_GB', 0.0):.2f}".replace('.00', '')
+            h_limit_gb = f"{h_info.get('usage_limit_GB', 0.0):.2f}".replace('.00', '')
+            panel_usage_parts.append(f"🇩🇪 `{h_usage_gb}/{h_limit_gb} GB`")
+
+        if m_info:
+            m_usage_gb = f"{m_info.get('current_usage_GB', 0.0):.2f}".replace('.00', '')
+            m_limit_gb = f"{m_info.get('usage_limit_GB', 0.0):.2f}".replace('.00', '')
+            panel_usage_parts.append(f"🇫🇷 `{m_usage_gb}/{m_limit_gb} GB`")
+        # <<<<<<<<<<<<<<<< پایان تغییر اصلی >>>>>>>>>>>>>>>>
+
+        usage_str = separator.join(panel_usage_parts)
+        line = f"`•` *{name}*{separator}{usage_str}"
+        user_lines.append(line)
+
+    return "\n".join(user_lines)
+
+def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
+    title = f"سابقه پرداخت‌های کاربر: {escape_markdown(user_name)}"
+
+    if not payments:
+        return f"*{escape_markdown(title)}*\n\nهیچ پرداخت ثبت‌شده‌ای برای این کاربر یافت نشد."
+
+    header_text = f"*{title}*"
+    if len(payments) > settings.get('PAGE_SIZE', 15):
+        total_pages = (len(payments) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
+        header_text += f"\n{pagination_text}"
+
+    lines = [header_text]
+    paginated_payments = payments[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+
+    for i, payment in enumerate(paginated_payments, start=page * settings.get('PAGE_SIZE', 15) + 1):
+        shamsi_datetime = to_shamsi(payment.get('payment_date'), include_time=True)
+        lines.append(f"`{i}.` 💳 تاریخ ثبت: `{shamsi_datetime}`")
+
+    return "\n".join(lines)
+
+# توابع زیر بدون تغییر باقی می‌مانند چون از قبل فارسی و صحیح بودند
 
 def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     if not all_users_from_api:
@@ -153,7 +388,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             new_users_today.append(user_info)
 
     total_daily_all = total_daily_hiddify + total_daily_marzban
-    list_bullet = escape_markdown("- ")
+    list_bullet = "- "
     
     # --- Report Formatting ---
     report_lines = [
@@ -210,19 +445,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
     return "\n".join(report_lines)
 
-def fmt_hiddify_panel_info(info: dict) -> str:
-    if not info:
-        return escape_markdown("اطلاعاتی از پنل دریافت نشد.")
-
-    title = escape_markdown(info.get('title', 'N/A'))
-    description = escape_markdown(info.get('description', 'N/A'))
-    version = escape_markdown(info.get('version', 'N/A'))
-
-    return (f"{EMOJIS['gear']} *اطلاعات پنل Hiddify*\n\n"
-            f"**عنوان:** {title}\n"
-            f"**توضیحات:** {description}\n"
-            f"**نسخه:** {version}\n")
-
 def fmt_top_consumers(users: list, page: int) -> str:
     title = "پرمصرف‌ترین کاربران"
     if not users:
@@ -232,7 +454,7 @@ def fmt_top_consumers(users: list, page: int) -> str:
     if len(users) > settings.get('PAGE_SIZE', 15):
         total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
+        header_text += f"\n{pagination_text}"
 
     lines = [header_text]
     paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
@@ -240,49 +462,27 @@ def fmt_top_consumers(users: list, page: int) -> str:
 
     for i, user in enumerate(paginated_users, start=page * settings.get('PAGE_SIZE', 15) + 1):
         name = escape_markdown(user.get('name', 'کاربر ناشناس'))
-        usage = user.get('current_usage_GB', 0)
-        limit = user.get('usage_limit_GB', 0)
-        usage_str = f"`{usage:.2f} GB / {limit:.2f} GB`"
+        usage = f"{user.get('current_usage_GB', 0):.2f}".replace('.', ',')
+        limit = f"{user.get('usage_limit_GB', 0):.2f}".replace('.', ',')
+        usage_str = f"`{usage} GB / {limit} GB`"
         line = f"`{i}.` *{name}*{separator}{EMOJIS['chart']} {usage_str}"
         lines.append(line)
 
     return "\n".join(lines)
 
-def fmt_bot_users_list(bot_users: list, page: int) -> str:
-    title = "کاربران ربات"
-    if not bot_users:
-        return f"🤖 *{escape_markdown(title)}*\n\nهیچ کاربری در ربات ثبت‌نام نکرده است."
-
-    header_text = f"🤖 *{escape_markdown(title)}*"
-    total_users = len(bot_users)
-    if total_users > settings.get('PAGE_SIZE', 15):
-        total_pages = (total_users + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {total_users})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
-
-    lines = [header_text]
-    start_index = page * settings.get('PAGE_SIZE', 15)
-    paginated_users = bot_users[start_index : start_index + settings.get('PAGE_SIZE', 15)]
-
-    for user in paginated_users:
-        user_id = user.get('user_id')
-        first_name = escape_markdown(user.get('first_name') or 'ناشناس')
-        username = escape_markdown(f"(@{user.get('username')})" if user.get('username') else '')
-        lines.append(f"`•` {first_name} {username} `| ID:` `{user_id}`")
-
-    return "\n".join(lines)
 
 def fmt_birthdays_list(users: list, page: int) -> str:
     title = "لیست تولد کاربران"
     if not users:
-        return f"🎂 *{escape_markdown(title)}*\n\nهیچ کاربری تاریخ تولد خود را ثبت نکرده است."
+        return f"🎂 *{escape_markdown(title)}*\n\n{escape_markdown('هیچ کاربری تاریخ تولد خود را ثبت نکرده است.')}"
+    
 
     title_text = f"{title} (مرتب شده بر اساس ماه)"
     header_text = f"🎂 *{escape_markdown(title_text)}*"
 
     if len(users) > settings.get('PAGE_SIZE', 15):
         total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
-        pagination_text = escape_markdown(f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})")
+        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل : {len(users)})"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
@@ -299,66 +499,21 @@ def fmt_birthdays_list(users: list, page: int) -> str:
         remaining_days = days_until_next_birthday(birthday_obj)
         days_str = f"{remaining_days} روز" if remaining_days is not None else "نامشخص"
 
-        lines.append(f"🎂 *{name}*{separator}`{shamsi_str}`{separator}{escape_markdown(days_str)}")
+        lines.append(f"🎂 *{name}*{separator}`{shamsi_str}`{separator}مانده: {escape_markdown(days_str)}")
 
     return "\n".join(lines)
 
-def fmt_marzban_system_stats(info: dict) -> str:
-    if not info:
-        return escape_markdown("اطلاعاتی از سیستم دریافت نشد.")
-
-    to_gb = lambda b: b / (1024**3)
-    
-    # تغيير: تمام متغیرها قبل از استفاده escape شدند
-    version = escape_markdown(info.get('version', 'N/A'))
-    mem_total_gb = escape_markdown(f"{to_gb(info.get('mem_total', 0)):.2f}")
-    mem_used_gb = escape_markdown(f"{to_gb(info.get('mem_used', 0)):.2f}")
-    mem_percent = (info.get('mem_used', 0) / info.get('mem_total', 1) * 100)
-    mem_percent_str = escape_markdown(f"{mem_percent:.1f}")
-    cpu_cores = escape_markdown(info.get('cpu_cores', 'N/A'))
-    cpu_usage = escape_markdown(f"{info.get('cpu_usage', 0.0):.1f}")
-
-    total_users = escape_markdown(info.get('total_user', 0))
-    online_users = escape_markdown(info.get('online_users', 0))
-    active_users = escape_markdown(info.get('users_active', 0))
-    disabled_users = escape_markdown(info.get('users_disabled', 0))
-    expired_users = escape_markdown(info.get('users_expired', 0))
-
-    total_dl_gb = escape_markdown(f"{to_gb(info.get('incoming_bandwidth', 0)):.2f}")
-    total_ul_gb = escape_markdown(f"{to_gb(info.get('outgoing_bandwidth', 0)):.2f}")
-    speed_dl_mbps = escape_markdown(f"{info.get('incoming_bandwidth_speed', 0) / (1024 * 1024):.2f}")
-    speed_ul_mbps = escape_markdown(f"{info.get('outgoing_bandwidth_speed', 0) / (1024 * 1024):.2f}")
-
-    report = (
-        f"*📊 وضعیت سیستم پنل مرزبان \\(فرانسه 🇫🇷\\)*\n"
-        f"`────────────────────────────`\n"
-        f"⚙️ نسخه: `{version}`\n"
-        f"🖥️ هسته CPU: `{cpu_cores}` `|` مصرف: `{cpu_usage}\\%`\n"
-        f"💾 مصرف RAM: `{mem_used_gb} / {mem_total_gb} GB` `({mem_percent_str}\\%)`\n"
-        f"`────────────────────────────`\n"
-        f"👥 کاربران کل: `{total_users}` {escape_markdown('|')} 🟢 فعال: `{active_users}` {escape_markdown('|')} 🔴 آنلاین: `{online_users}`\n"
-        f"⚪️ غیرفعال: `{disabled_users}` {escape_markdown('|')} 🗓 منقضی شده: `{expired_users}`\n"
-        f"`────────────────────────────`\n"
-        f"*📈 ترافیک کل:*\n"
-        f"  `↓` دانلود: `{total_dl_gb} GB`\n"
-        f"  `↑` آپلود: `{total_ul_gb} GB`\n"
-        f"*🚀 سرعت لحظه‌ای:*\n"
-        f"  `↓` دانلود: `{speed_dl_mbps} MB/s`\n"
-        f"  `↑` آپلود: `{speed_ul_mbps} MB/s`"
-    )
-
-    return report
 
 def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
     title = f"کاربران پنل {panel_name}"
     if not users:
         return f"*{escape_markdown(title)}*\n\nهیچ کاربری در این پنل یافت نشد."
 
-    header_text = f"*{escape_markdown(title)}*"
+    header_text = f"*{title}*"
     if len(users) > settings.get('PAGE_SIZE', 15):
         total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
+        header_text += f"\n{pagination_text}"
 
     user_lines = []
     paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
@@ -371,172 +526,33 @@ def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
         if expire_days is not None:
             expire_text = f"{expire_days} روز" if expire_days >= 0 else "منقضی"
 
-        line = f"`•` *{name}*{separator}{EMOJIS['calendar']} {escape_markdown(expire_text)}"
+        line = f"`•` *{name}*{separator}{EMOJIS['calendar']} اعتبار: {escape_markdown(expire_text)}"
         user_lines.append(line)
 
     body_text = "\n".join(user_lines)
     return f"{header_text}\n\n{body_text}"
 
-def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
-    if not info:
-        return "❌ خطا در دریافت اطلاعات کاربر\\."
-
-    name = escape_markdown(info.get("name", "کاربر ناشناس"))
-    status_emoji = "🟢" if info.get("is_active") else "🔴"
-    status_text = "فعال" if info.get("is_active") else "غیرفعال"
-    # مشکل اینجا بود: پرانتزها باید escape می‌شدند
-    name_line = f"👤 نام : {name} \\({status_emoji} {status_text}\\)"
-
-    total_limit_gb = info.get('usage_limit_GB', 0)
-    total_usage_gb = info.get('current_usage_GB', 0)
-
-    h_info = info.get('breakdown', {}).get('hiddify')
-    m_info = info.get('breakdown', {}).get('marzban')
-    is_on_both_panels = h_info and m_info
-
-    report_parts = [name_line, ""]
-
-    if is_on_both_panels:
-        total_remaining_gb = total_limit_gb - total_usage_gb
-        daily_usage_total = info.get('daily_usage_GB', 0)
-
-        report_parts.extend([
-            f"🗂️ مجموع حجم : `{escape_markdown(f'{total_limit_gb:.2f}')} GB`",
-            f"🔥 مجموع مصرف شده : `{escape_markdown(f'{total_usage_gb:.2f}')} GB`",
-            f"📥 مجموع باقیمانده: `{escape_markdown(f'{total_remaining_gb:.2f}')} GB`",
-            f"⚡️ مجموع مصرف امروز: `{escape_markdown(format_daily_usage(daily_usage_total))}`"
-        ])
-
-    if is_on_both_panels:
-        report_parts.append("\n*جزئیات سرورها*")
-
-    if h_info:
-        h_daily_usage = h_info.get('daily_usage', 0.0)
-        h_last_online_str = escape_markdown(to_shamsi(h_info.get('last_online')))
-
-        report_parts.extend([
-            "\nآلمان 🇩🇪",
-            f"🗂️ حجم : `{escape_markdown(f'{h_info.get('usage_limit_GB', 0):.2f}')} GB`",
-            f"🔥 مصرف شده : `{escape_markdown(f'{h_info.get('current_usage_GB', 0):.2f}')} GB`",
-            f"⚡️ مصرف امروز : `{escape_markdown(format_daily_usage(h_daily_usage))}`",
-            f"⏰ آخرین اتصال : `{h_last_online_str}`"
-        ])
-
-    if m_info:
-        m_daily_usage = m_info.get('daily_usage', 0.0)
-        m_last_online_str = escape_markdown(to_shamsi(m_info.get('last_online')))
-
-        report_parts.extend([
-            "\nفرانسه 🇫🇷",
-            f"🗂️ حجم : `{escape_markdown(f'{m_info.get('usage_limit_GB', 0):.2f}')} GB`",
-            f"🔥 مصرف شده : `{escape_markdown(f'{m_info.get('current_usage_GB', 0):.2f}')} GB`",
-            f"⚡️ مصرف امروز : `{escape_markdown(format_daily_usage(m_daily_usage))}`",
-            f"⏰ آخرین اتصال : `{m_last_online_str}`"
-        ])
-
-    report_parts.append("")
-
-    expire_days = info.get("expire")
-    expire_label = "نامحدود"
-    if expire_days is not None:
-        expire_label = f"{expire_days} روز" if expire_days >= 0 else "منقضی شده"
-    report_parts.append(f"📅 انقضا: {escape_markdown(expire_label)}")
-
-    if h_info:
-        report_parts.append(f"🔑 شناسه یکتا: `{escape_markdown(info.get('uuid'))}`")
-    elif m_info:
-        report_parts.append(f"👤 یوزرنیم: `{escape_markdown(info.get('name'))}`")
-
-    admin_note = db_user.get('admin_note') if db_user else None
-    if admin_note:
-        report_parts.append(f"📝 *یادداشت ادمین:* `{escape_markdown(admin_note)}`")
-
-    usage_percentage = info.get('usage_percentage', 0)
-    status_bar_line = create_progress_bar(usage_percentage)
-    report_parts.append(f"\nوضعیت : {status_bar_line}")
-
-    return "\n".join(report_parts)
-
-def fmt_users_by_plan_list(users: list, plan_name: str, page: int) -> str:
-    title = f"گزارش کاربران پلن: {escape_markdown(plan_name)}"
-
-    if not users:
-        return f"*{title}*\n\nهیچ کاربری با مشخصات این پلن یافت نشد."
-
-    header_text = f"*{title}*"
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
-
-    user_lines = [header_text]
-    paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
-
-    for user in paginated_users:
-        name = escape_markdown(user.get('name', 'کاربر ناشناس'))
-
-        h_info = user.get('breakdown', {}).get('hiddify', {})
-        m_info = user.get('breakdown', {}).get('marzban', {})
-
-        h_usage_gb = h_info.get('current_usage_GB', 0.0)
-        h_limit_gb = h_info.get('usage_limit_GB', 0.0)
-        h_usage_str = escape_markdown(f"{h_usage_gb:.2f}")
-        h_limit_str = escape_markdown(f"{h_limit_gb:.2f}")
-
-        m_usage_gb = m_info.get('current_usage_GB', 0.0)
-        m_limit_gb = m_info.get('usage_limit_GB', 0.0)
-        m_usage_str = escape_markdown(f"{m_usage_gb:.2f}")
-        m_limit_str = escape_markdown(f"{m_limit_gb:.2f}")
-
-        line = f"`•` *{name}* `|` `{h_usage_str}/{h_limit_str} GB`  🇩🇪  `|`  `{m_usage_str}/{m_limit_str} GB`  🇫🇷  "
-        user_lines.append(line)
-
-    return "\n".join(user_lines)
 
 def fmt_payments_report_list(payments: list, page: int) -> str:
-    """گزارش آخرین پرداخت کاربران را با تاریخ شمسی فرمت می‌کند."""
     title = "گزارش آخرین پرداخت کاربران"
 
     if not payments:
         return f"*{escape_markdown(title)}*\n\nهیچ پرداخت ثبت‌شده‌ای یافت نشد."
 
-    header_text = f"*{escape_markdown(title)}*"
+    header_text = f"*{title}*"
     if len(payments) > settings.get('PAGE_SIZE', 15):
         total_pages = (len(payments) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
+        header_text += f"\n{pagination_text}"
 
     lines = [header_text]
     paginated_payments = payments[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
 
-    for payment in paginated_payments:
+    for i, payment in enumerate(paginated_payments, start=page * settings.get('PAGE_SIZE', 15) + 1):
         name = escape_markdown(payment.get('name', 'کاربر ناشناس'))
         shamsi_date = to_shamsi(payment.get('payment_date')).split(' ')[0]
 
-        line = f"`•` *{name}* `|` 💳 آخرین پرداخت: `{shamsi_date}`"
-        lines.append(line)
-
-    return "\n".join(lines)
-
-def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
-    """تاریخچه پرداخت‌های یک کاربر را با تاریخ شمسی فرمت می‌کند."""
-    title = f"سابقه پرداخت‌های کاربر: {escape_markdown(user_name)}"
-
-    if not payments:
-        return f"*{escape_markdown(title)}*\n\nهیچ پرداخت ثبت‌شده‌ای برای این کاربر یافت نشد."
-
-    header_text = f"*{escape_markdown(title)}*"
-    if len(payments) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(payments) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
-
-    lines = [header_text]
-    paginated_payments = payments[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
-
-    for payment in paginated_payments:
-        shamsi_datetime = to_shamsi(payment.get('payment_date'))
-        line = f"`•` 💳 تاریخ ثبت: `{shamsi_datetime}`"
+        line = f"`{i}.` *{name}* `|` 💳 آخرین پرداخت: `{shamsi_date}`"
         lines.append(line)
 
     return "\n".join(lines)

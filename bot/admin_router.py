@@ -2,7 +2,7 @@ import logging
 from telebot import types, telebot
 from .bot_instance import bot, admin_conversations # << تغییر اصلی
 from .admin_handlers import user_management, reporting, broadcast, backup, group_actions 
-from .admin_hiddify_handlers import _start_add_user_convo, _start_add_user_from_plan_convo, _handle_plan_selection, initialize_hiddify_handlers
+from .admin_hiddify_handlers import _start_add_hiddify_user_convo, initialize_hiddify_handlers, handle_add_user_back_step
 from .admin_marzban_handlers import _start_add_marzban_user_convo, initialize_marzban_handlers
 from .marzban_api_handler import marzban_handler
 from .menu import menu
@@ -41,7 +41,13 @@ def _handle_group_actions_menu(call, params):
     _safe_edit(call.from_user.id, call.message.message_id, "⚙️ لطفاً نوع دستور گروهی را انتخاب کنید:", reply_markup=menu.admin_group_actions_menu())
 
 def _handle_user_analysis_menu(call, params):
-    _safe_edit(call.from_user.id, call.message.message_id, "📈 لطفاً نوع تحلیل را انتخاب کنید:", reply_markup=menu.admin_user_analysis_menu())
+    """
+    کاربر را به منوی انتخاب پلن برای گزارش‌گیری هدایت می‌کند.
+    این تابع مانند یک پل عمل کرده و خطای قبلی را برطرف می‌کند.
+    """
+    # این تابع، شما را مستقیماً به همان منویی می‌برد که لیست پلن‌ها را برای
+    # گزارش‌گیری نمایش می‌دهد و دقیقاً همان عملکردی را دارد که می‌خواهید.
+    reporting.handle_report_by_plan_selection(call, params)
 
 # تابع جدید: برای نمایش منوی وضعیت سیستم
 def _handle_system_status_menu(call, params):
@@ -90,18 +96,21 @@ ADMIN_CALLBACK_HANDLERS = {
     "panel_reports": reporting.handle_panel_specific_reports_menu,
     "user_analysis_menu": _handle_user_analysis_menu,
     "system_status_menu": _handle_system_status_menu,
+    "ep": user_management.handle_select_panel_for_edit,
+
     
     # User Actions
-    "add_user": lambda c, p: (_start_add_user_convo if p[0] == 'hiddify' else _start_add_marzban_user_convo)(c.from_user.id, c.message.message_id),
-    "add_user_plan": lambda c, p: _start_add_user_from_plan_convo(c, p),
-    "plan_select": lambda c, p: _handle_plan_selection(c, p),
+    "add_user": lambda c, p: (_start_add_hiddify_user_convo if p[0] == 'hiddify' else _start_add_marzban_user_convo)(c.from_user.id, c.message.message_id),
+    # "add_user_plan": lambda c, p: _start_add_user_from_plan_convo(c, p),
+    # "plan_select": lambda c, p: _handle_plan_selection(c, p),
     "sg": user_management.handle_global_search_convo,
     "us": user_management.handle_show_user_summary,
     "edt": user_management.handle_edit_user_menu,
     "log_payment": user_management.handle_log_payment,
-    "payment_history": user_management.handle_payment_history,
+    "phist": user_management.handle_payment_history,
     "ae": user_management.handle_ask_edit_value,
     "tgl": user_management.handle_toggle_status,
+    "tglA": user_management.handle_toggle_status_action, # این تابع جدید، عمل را انجام می‌دهد
     "rb": user_management.handle_reset_birthday,
     "rusg_m": user_management.handle_reset_usage_menu,
     "rsa": user_management.handle_reset_usage_action,
@@ -131,6 +140,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "backup_menu": backup.handle_backup_menu,
     "backup": backup.handle_backup_action,
     "reload_maps": _handle_reload_maps,
+    "add_user_back": handle_add_user_back_step,
 }
 
 
