@@ -9,10 +9,11 @@ if __name__ == "__main__":
     setup_bot_logging()
 
     logger = logging.getLogger(__name__)
-    logger.info("Starting bot instance...")
+    logger.info("Creating HiddifyBot instance...")
 
     bot_instance = HiddifyBot()
     try:
+        logger.info("Starting bot instance from run_bot.py...")
         bot_instance.start()
     except Exception as e:
         logger.critical(f"Bot failed to start from run_bot.py: {e}", exc_info=True)

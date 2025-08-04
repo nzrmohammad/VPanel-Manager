@@ -18,28 +18,11 @@ class MarzbanAPIHandler:
         self.password = MARZBAN_API_PASSWORD
         self.access_token = None
         self.utc_tz = pytz.utc
-        self.uuid_to_username_map, self.username_to_uuid_map = {}, {}
         self.session = self._create_session() 
-        self.reload_uuid_maps()
 
     def _create_session(self) -> requests.Session:
         session = requests.Session()
         return session
-
-    def reload_uuid_maps(self) -> bool:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        uuid_map_path = os.path.join(current_dir, 'uuid_to_marzban_user.json')
-        try:
-            with open(uuid_map_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                self.uuid_to_username_map = {k.lower(): v for k, v in data.items()}
-                self.username_to_uuid_map = {v: k.lower() for k, v in data.items()}
-                logger.info(f"Successfully loaded/reloaded {len(self.uuid_to_username_map)} user mappings from JSON.")
-                return True
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.error(f"Could not load or reload {uuid_map_path}: {e}")
-            self.uuid_to_username_map, self.username_to_uuid_map = {}, {}
-            return False
 
     def _get_access_token(self) -> bool:
         """Fetches and sets the access token. Returns True on success, False on failure."""

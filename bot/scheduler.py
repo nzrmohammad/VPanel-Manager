@@ -165,9 +165,10 @@ class SchedulerManager:
                     logger.info(f"SCHEDULER: User {user_id} has disabled daily reports. Skipping.")
                     continue
                     
-                    # --- Admin Report ---
+                # --- Admin Report ---
                 if user_id in ADMIN_IDS:
                     logger.info(f"SCHEDULER: User {user_id} is an ADMIN. Generating admin report.")
+                    # FIX 1: کاراکتر '-' به درستی escape شده است
                     header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                     report_text = fmt_admin_report(all_users_info_from_api, db)
                     try:
@@ -176,7 +177,7 @@ class SchedulerManager:
                     except Exception as e:
                         logger.error(f"SCHEDULER: Failed to send ADMIN report to {user_id}: {e}", exc_info=True)
 
-                    # --- User Report (for ALL users, including admins) ---
+                # --- User Report (for ALL users, including admins) ---
                 logger.info(f"SCHEDULER: Now checking for personal user report for user_id: {user_id}.")
                 user_uuids_from_db = db.uuids(user_id)
                 user_infos_for_report = []
@@ -193,8 +194,13 @@ class SchedulerManager:
                         
                     if user_infos_for_report:
                         logger.info(f"SCHEDULER: Found {len(user_infos_for_report)} active account(s) for user {user_id}. Generating report.")
+                        # FIX 1: کاراکتر '-' به درستی escape شده است
                         header = f"🌙 *گزارش روزانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
-                        report_text = fmt_user_report(user_infos_for_report)
+                        
+                        # FIX 2: کد زبان کاربر از دیتابیس خوانده شده و به تابع ارسال می‌شود
+                        lang_code = db.get_user_language(user_id)
+                        report_text = fmt_user_report(user_infos_for_report, lang_code)
+                        
                         try:
                             self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
                             logger.info(f"SCHEDULER: Personal user report sent to {user_id}.")
@@ -274,22 +280,45 @@ class SchedulerManager:
                     self.bot.send_message(user_id, gift_message, parse_mode="MarkdownV2")
                 except Exception as e:
                     logger.error(f"Scheduler: Failed to send birthday message to user {user_id}: {e}")
-
+                    
     def _run_monthly_vacuum(self) -> None:
-        # (این بخش بدون تغییر باقی می‌ماند)
-        pass # ...
+        today = datetime.now(self.tz)
+        if today.day == 1:
+            logger.info("Scheduler: It's the first of the month, running database VACUUM job.")
+            try:
+                db.vacuum_db()
+                logger.info("Scheduler: Database VACUUM completed successfully.")
+            except Exception as e:
+                logger.error(f"Scheduler: Database VACUUM failed: {e}")
 
-    def start(self) -> None:
-        if self.running: return
+    def reschedule_jobs(self):
+        logger.info("SCHEDULER: Rescheduling jobs due to settings change...")
+        settings.reload()
         
-        # --- تغییر ۳: خواندن تمام زمان‌بندی‌ها از settings ---
+        schedule.clear()
+        
         report_time_str = settings.get('DAILY_REPORT_TIME', "23:59")
         warning_check_minutes = settings.get('USAGE_WARNING_CHECK_MINUTES', 60)
         
         schedule.every().hour.at(":01").do(self._hourly_snapshots)
         schedule.every(warning_check_minutes).minutes.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
-        schedule.every(3).hours.do(self._update_online_reports) # این مورد می‌تواند ثابت بماند
+        schedule.every(3).hours.do(self._update_online_reports)
+        schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
+        schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
+        
+        logger.info(f"Scheduler jobs re-configured. New report time: {report_time_str}")
+
+    def start(self) -> None:
+        if self.running: return
+        
+        report_time_str = settings.get('DAILY_REPORT_TIME', "23:59")
+        warning_check_minutes = settings.get('USAGE_WARNING_CHECK_MINUTES', 60)
+        
+        schedule.every().hour.at(":01").do(self._hourly_snapshots)
+        schedule.every(warning_check_minutes).minutes.do(self._check_for_warnings)
+        schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
+        schedule.every(3).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
         

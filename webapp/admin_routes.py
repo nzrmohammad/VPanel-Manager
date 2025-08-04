@@ -1,10 +1,13 @@
 from flask import Blueprint, render_template, request, abort, jsonify, session, redirect, url_for, flash
+import requests
+
 from functools import wraps
 import logging
 from bot.config import ADMIN_SECRET_KEY
 from bot.database import db
 from bot.settings_manager import settings
 from bot.utils import set_template_server_type_service, reset_all_templates
+from bot import scheduler
 from .services import (
     get_dashboard_data,
     generate_comprehensive_report_data,
@@ -206,18 +209,41 @@ def admin_settings_page():
         logger.error(f"Error loading settings page: {e}", exc_info=True)
         return "<h1>خطا در بارگذاری صفحه تنظیمات</h1>", 500
 
+
 @admin_bp.route('/api/settings/save', methods=['POST'])
 @admin_required
 def save_settings_api():
-    """تنظیمات جدید را از طریق API ذخیره می‌کند."""
     try:
-        new_settings = request.json
-        save_all_settings(new_settings)
-        return jsonify({'success': True, 'message': 'تنظیمات با موفقیت ذخیره شد. برای اعمال برخی تغییرات، ممکن است نیاز به ری‌استارت ربات باشد.'})
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': 'هیچ داده‌ای برای ذخیره ارسال نشده است.'}), 400
+
+        current_settings = get_all_settings()
+        save_all_settings(data)
+        
+        scheduler_keys = ['daily_report_time', 'usage_warning_check_minutes', 'welcome_message_delay_minutes']
+        needs_scheduler_reload = any(str(data.get(k)) != str(current_settings.get(k)) for k in scheduler_keys)
+
+        message = 'تنظیمات با موفقیت ذخیره شد.'
+
+        if needs_scheduler_reload:
+            api_url = 'http://127.0.0.1:5001/api/bot/reschedule'
+            try:
+                logger.info(f"Change in scheduler settings detected. Sending POST request to: {api_url}")
+                response = requests.post(api_url, timeout=5)
+                logger.info(f"Response from bot API: Status={response.status_code}, Body='{response.text}'")
+                response.raise_for_status()
+                message = 'تنظیمات ذخیره و زمان‌بندی ربات به صورت خودکار به‌روزرسانی شد.'
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Failed to send reschedule request to bot process. URL: {api_url}. Error: {e}", exc_info=True)
+                message = 'تنظیمات ذخیره شد، اما ارتباط با ربات برای به‌روزرسانی خودکار برقرار نشد. (لاگ سرور را برای جزئیات بررسی کنید)'
+        
+        return jsonify({'success': True, 'message': message})
     except Exception as e:
-        logger.error(f"API Error saving settings: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': f'خطا در ذخیره‌سازی: {str(e)}'}), 500
-    
+        logger.error(f"General error in save_settings_api: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'خطای کلی در ذخیره‌سازی: {str(e)}'}), 500
+
+
 @admin_bp.route('/api/users/toggle_vip/<string:uuid>', methods=['POST'])
 @admin_required
 def toggle_user_vip_api(uuid):
