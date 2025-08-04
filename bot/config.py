@@ -1,6 +1,8 @@
 import os
 from cachetools import TTLCache
 from dotenv import load_dotenv
+from datetime import time
+import pytz
 
 load_dotenv()
 
@@ -31,6 +33,27 @@ api_cache = TTLCache(maxsize=2, ttl=60)
 API_TIMEOUT = 15
 API_RETRY_COUNT = 3
 
+TEHRAN_TZ = pytz.timezone("Asia/Tehran")
+DAILY_REPORT_TIME = time(23, 59)
+CLEANUP_TIME = time(00, 1)
+
+ADMIN_SUPPORT_CONTACT = os.getenv("ADMIN_SUPPORT_CONTACT", "@Nzrmohammad")
+PAGE_SIZE = 35
+
+BIRTHDAY_GIFT_GB = 30
+BIRTHDAY_GIFT_DAYS = 15
+
+NOTIFY_ADMIN_ON_USAGE = True
+USAGE_WARNING_CHECK_HOURS = 6  
+ONLINE_REPORT_UPDATE_HOURS = 3
+
+WARNING_USAGE_THRESHOLD = 85  
+WARNING_DAYS_BEFORE_EXPIRY = 3
+DAILY_USAGE_ALERT_THRESHOLD_GB = 5
+
+WELCOME_MESSAGE_DELAY_HOURS = 48
+
+
 # --- Emojis & Visuals ---
 EMOJIS = {
     "fire": "🔥", "chart": "📊", "warning": "⚠️", "error": "❌",
@@ -39,8 +62,8 @@ EMOJIS = {
     "star": "⭐", "rocket": "🚀", "gear": "⚙️", "book": "📖",
     "home": "🏠", "user": "👤", "globe": "🌍", "wifi": "📡",
     "download": "📥", "upload": "📤", "database": "💾",
-    "shield": "🛡️", "crown": "👑", 'trophy': '🏆',
-    'database': '🗂️', 'back': '🔙'
+    "shield": "🛡️", "crown": "👑", "trophy": "🏆",
+    "database": "🗂️", "back": "🔙"
 }
 
 PROGRESS_COLORS = {

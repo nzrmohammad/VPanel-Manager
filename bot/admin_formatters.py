@@ -1,12 +1,11 @@
 import pytz
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from .config import EMOJIS
-from .settings_manager import settings
+from .config import EMOJIS, PAGE_SIZE
 from .database import db
 from .utils import (
     format_daily_usage, escape_markdown,
-    format_relative_time, validate_uuid, create_progress_bar, to_shamsi, days_until_next_birthday
+    format_relative_time , to_shamsi, days_until_next_birthday
 )
 
 
@@ -83,15 +82,15 @@ def fmt_users_list(users: list, list_type: str, page: int) -> str:
         return f"*{title}*\n\nNo users found in this category."
 
     header_text = f"*{title}*"
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(users) > PAGE_SIZE:
+        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"\\(Page {page + 1} of {total_pages} \\| Total: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
 
-    start_index = page * settings.get('PAGE_SIZE', 15)
-    paginated_users = users[start_index : start_index + settings.get('PAGE_SIZE', 15)]
+    start_index = page * PAGE_SIZE
+    paginated_users = users[start_index : start_index + PAGE_SIZE]
     separator = " \\| "
 
     for user in paginated_users:
@@ -133,13 +132,13 @@ def fmt_online_users_list(users: list, page: int) -> str:
         return f"*{title}*\n\nهیچ کاربری در این لحظه آنلاین نیست."
 
     header_text = f"*{title}*"
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(users) > PAGE_SIZE:
+        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
         # <<<< اصلاح ۱: پرانتز و خط جداکننده در شماره صفحه هم escape شدند >>>>
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
-    paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    paginated_users = users[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
     user_lines = []
     # <<<< اصلاح ۲: کاراکتر | به درستی escape شد >>>>
     separator = " \\| "
@@ -193,14 +192,14 @@ def fmt_bot_users_list(bot_users: list, page: int) -> str:
 
     header_text = f"🤖 *{escape_markdown(title)}*"
     total_users = len(bot_users)
-    if total_users > settings.get('PAGE_SIZE', 15):
-        total_pages = (total_users + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if total_users > PAGE_SIZE:
+        total_pages = (total_users + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {total_users})"
         header_text += f"\n{escape_markdown(pagination_text)}"
 
     lines = [header_text]
-    start_index = page * settings.get('PAGE_SIZE', 15)
-    paginated_users = bot_users[start_index : start_index + settings.get('PAGE_SIZE', 15)]
+    start_index = page * PAGE_SIZE
+    paginated_users = bot_users[start_index : start_index + PAGE_SIZE]
 
     for user in paginated_users:
         first_name = user.get('first_name') or 'ناشناس'
@@ -275,13 +274,13 @@ def fmt_users_by_plan_list(users: list, plan_name: str, page: int) -> str:
         return f"*{title}*\n\nهیچ کاربری با مشخصات این پلن یافت نشد\\."
 
     header_text = f"*{title}*"
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(users) > PAGE_SIZE:
+        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
     user_lines = [header_text]
-    paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    paginated_users = users[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
     separator = " \\| "
 
     for user in paginated_users:
@@ -318,21 +317,20 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
         return f"*{escape_markdown(title)}*\n\nهیچ پرداخت ثبت‌شده‌ای برای این کاربر یافت نشد."
 
     header_text = f"*{title}*"
-    if len(payments) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(payments) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(payments) > PAGE_SIZE:
+        total_pages = (len(payments) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
-    paginated_payments = payments[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    paginated_payments = payments[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
 
-    for i, payment in enumerate(paginated_payments, start=page * settings.get('PAGE_SIZE', 15) + 1):
+    for i, payment in enumerate(paginated_payments, start=page * PAGE_SIZE + 1):
         shamsi_datetime = to_shamsi(payment.get('payment_date'), include_time=True)
-        lines.append(f"`{i}.` 💳 تاریخ ثبت: `{shamsi_datetime}`")
+        lines.append(f"`{i}.` 💳 تاریخ ثبت : `{shamsi_datetime}`")
 
     return "\n".join(lines)
 
-# توابع زیر بدون تغییر باقی می‌مانند چون از قبل فارسی و صحیح بودند
 
 def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     if not all_users_from_api:
@@ -388,7 +386,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             new_users_today.append(user_info)
 
     total_daily_all = total_daily_hiddify + total_daily_marzban
-    list_bullet = "- "
+    list_bullet = escape_markdown("- ")
     
     # --- Report Formatting ---
     report_lines = [
@@ -451,16 +449,16 @@ def fmt_top_consumers(users: list, page: int) -> str:
         return f"🏆 *{escape_markdown(title)}*\n\nهیچ کاربری برای نمایش وجود ندارد."
 
     header_text = f"🏆 *{escape_markdown(title)}*"
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(users) > PAGE_SIZE:
+        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
-    paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    paginated_users = users[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
     separator = escape_markdown(" | ")
 
-    for i, user in enumerate(paginated_users, start=page * settings.get('PAGE_SIZE', 15) + 1):
+    for i, user in enumerate(paginated_users, start=page * PAGE_SIZE + 1):
         name = escape_markdown(user.get('name', 'کاربر ناشناس'))
         usage = f"{user.get('current_usage_GB', 0):.2f}".replace('.', ',')
         limit = f"{user.get('usage_limit_GB', 0):.2f}".replace('.', ',')
@@ -480,14 +478,14 @@ def fmt_birthdays_list(users: list, page: int) -> str:
     title_text = f"{title} (مرتب شده بر اساس ماه)"
     header_text = f"🎂 *{escape_markdown(title_text)}*"
 
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(users) > PAGE_SIZE:
+        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل : {len(users)})"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
-    start_index = page * settings.get('PAGE_SIZE', 15)
-    paginated_users = users[start_index : start_index + settings.get('PAGE_SIZE', 15)]
+    start_index = page * PAGE_SIZE
+    paginated_users = users[start_index : start_index + PAGE_SIZE]
     separator = escape_markdown(" | ")
 
     for user in paginated_users:
@@ -497,9 +495,9 @@ def fmt_birthdays_list(users: list, page: int) -> str:
         shamsi_str = to_shamsi(birthday_obj)
 
         remaining_days = days_until_next_birthday(birthday_obj)
-        days_str = f"{remaining_days} روز" if remaining_days is not None else "نامشخص"
+        days_str = f"{remaining_days} day" if remaining_days is not None else "نامشخص"
 
-        lines.append(f"🎂 *{name}*{separator}`{shamsi_str}`{separator}مانده: {escape_markdown(days_str)}")
+        lines.append(f"🎂 *{name}*{separator}`{shamsi_str}`{separator}{escape_markdown(days_str)}")
 
     return "\n".join(lines)
 
@@ -510,13 +508,13 @@ def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
         return f"*{escape_markdown(title)}*\n\nهیچ کاربری در این پنل یافت نشد."
 
     header_text = f"*{title}*"
-    if len(users) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(users) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(users) > PAGE_SIZE:
+        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
         header_text += f"\n{pagination_text}"
 
     user_lines = []
-    paginated_users = users[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    paginated_users = users[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
     separator = escape_markdown(" | ")
 
     for user in paginated_users:
@@ -540,15 +538,15 @@ def fmt_payments_report_list(payments: list, page: int) -> str:
         return f"*{escape_markdown(title)}*\n\nهیچ پرداخت ثبت‌شده‌ای یافت نشد."
 
     header_text = f"*{title}*"
-    if len(payments) > settings.get('PAGE_SIZE', 15):
-        total_pages = (len(payments) + settings.get('PAGE_SIZE', 15) - 1) // settings.get('PAGE_SIZE', 15)
+    if len(payments) > PAGE_SIZE:
+        total_pages = (len(payments) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
-    paginated_payments = payments[page * settings.get('PAGE_SIZE', 15) : (page + 1) * settings.get('PAGE_SIZE', 15)]
+    paginated_payments = payments[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
 
-    for i, payment in enumerate(paginated_payments, start=page * settings.get('PAGE_SIZE', 15) + 1):
+    for i, payment in enumerate(paginated_payments, start=page * PAGE_SIZE + 1):
         name = escape_markdown(payment.get('name', 'کاربر ناشناس'))
         shamsi_date = to_shamsi(payment.get('payment_date')).split(' ')[0]
 

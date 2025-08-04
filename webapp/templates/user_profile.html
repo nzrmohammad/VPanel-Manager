@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 
+{% block title %} پروفایل {% endblock %}
+
 {% block extra_css %}
 <style>
-    /* استایل‌های اختصاصی فقط برای صفحه پروفایل */
     .form-card {
         background-color: var(--card-bg);
         border: 1px solid var(--border-color);
@@ -39,7 +40,6 @@
         margin-top: 0.3rem;
         display: block;
     }
-    /* --- استایل مدرن برای Input ها --- */
     .form-control {
         width: 100%;
         padding: 0.8rem 1rem;
@@ -49,7 +49,6 @@
         border-radius: 8px;
         font-size: 1rem;
         transition: all 0.2s;
-        /* <<<<<<<<<<<<<<<< این خط مشکل را حل می‌کند >>>>>>>>>>>>>>>> */
         box-sizing: border-box; 
     }
     .form-control:focus {
@@ -63,7 +62,6 @@
         opacity: 0.7;
     }
 
-    /* --- استایل مدرن برای بخش اعلان‌ها --- */
     .switch-group {
         display: flex;
         justify-content: space-between;
@@ -90,7 +88,6 @@
     input:checked + .slider { background-color: var(--accent-color); }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    /* --- استایل دکمه ذخیره با فاصله مناسب --- */
     .form-footer {
         text-align: center;
         padding-bottom: 1rem;

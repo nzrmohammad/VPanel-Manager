@@ -1,13 +1,11 @@
 from flask import Blueprint, render_template, request, abort, jsonify, session, redirect, url_for, flash
-import requests
 
 from functools import wraps
 import logging
 from bot.config import ADMIN_SECRET_KEY
 from bot.database import db
-from bot.settings_manager import settings
 from bot.utils import set_template_server_type_service, reset_all_templates
-from bot import scheduler
+from bot.config import ADMIN_SUPPORT_CONTACT,BIRTHDAY_GIFT_GB,BIRTHDAY_GIFT_DAYS,WARNING_USAGE_THRESHOLD,WARNING_DAYS_BEFORE_EXPIRY,DAILY_USAGE_ALERT_THRESHOLD_GB,NOTIFY_ADMIN_ON_USAGE
 from .services import (
     get_dashboard_data,
     generate_comprehensive_report_data,
@@ -21,8 +19,6 @@ from .services import (
     delete_template,
     get_all_payments_for_admin,
     get_analytics_data,
-    get_all_settings,
-    save_all_settings,
     get_marzban_mappings_service, 
     add_marzban_mapping_service,
     delete_marzban_mapping_service,
@@ -195,53 +191,45 @@ def delete_template_api(template_id):
         logger.error(f"API Failed to delete template {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در حذف کانفیگ.'}), 500
     
+# این کد را در فایل admin_routes.py قرار دهید
+
+# این کد را در فایل admin_routes.py جایگزین کنید
+# مطمئن شوید که config در بالای فایل import شده است
+# import config
+
+# ... (بقیه کدهای admin_routes.py) ...
+
 # ✅ **بخش جدید: روت‌های مدیریت تنظیمات**
 @admin_bp.route('/settings')
 @admin_required
 def admin_settings_page():
-    """صفحه تنظیمات پیشرفته را نمایش می‌دهد."""
+    """صفحه‌ای برای نمایش تنظیمات فعلی ربات."""
     try:
-        current_settings = get_all_settings()
-        # کد جدید: دریافت اطلاعات زمان‌بندی
-        schedule_info = get_schedule_info_service()
-        return render_template('admin_settings.html', settings=current_settings, schedule_info=schedule_info, is_admin=True)
+        # فراخوانی سرویس برای دریافت اطلاعات زمان‌بندی
+        schedule_information = get_schedule_info_service()
+
+        # خواندن مستقیم تنظیمات از ماژول config و ساخت یک دیکشنری خوانا
+        current_settings = {
+            "شناسه پشتیبانی ادمین": ADMIN_SUPPORT_CONTACT,
+            "حجم هدیه تولد (GB)": BIRTHDAY_GIFT_GB,
+            "مدت زمان هدیه تولد (روز)": BIRTHDAY_GIFT_DAYS,
+            "آستانه هشدار مصرف (درصد)": WARNING_USAGE_THRESHOLD,
+            "هشدار انقضا از چند روز قبل": WARNING_DAYS_BEFORE_EXPIRY,
+            "آستانه هشدار مصرف غیرعادی روزانه (GB)": DAILY_USAGE_ALERT_THRESHOLD_GB,
+            "اطلاع‌رسانی به ادمین در مورد مصرف بالا": NOTIFY_ADMIN_ON_USAGE
+            # می‌توانید هر متغیر دیگری از config.py را به این دیکشنری اضافه کنید
+        }
+
+        # ارسال داده‌ها به قالب برای نمایش
+        return render_template(
+            'admin_settings.html',
+            settings=current_settings,
+            schedule_info=schedule_information
+        )
     except Exception as e:
-        logger.error(f"Error loading settings page: {e}", exc_info=True)
-        return "<h1>خطا در بارگذاری صفحه تنظیمات</h1>", 500
-
-
-@admin_bp.route('/api/settings/save', methods=['POST'])
-@admin_required
-def save_settings_api():
-    try:
-        data = request.json
-        if not data:
-            return jsonify({'success': False, 'message': 'هیچ داده‌ای برای ذخیره ارسال نشده است.'}), 400
-
-        current_settings = get_all_settings()
-        save_all_settings(data)
-        
-        scheduler_keys = ['daily_report_time', 'usage_warning_check_minutes', 'welcome_message_delay_minutes']
-        needs_scheduler_reload = any(str(data.get(k)) != str(current_settings.get(k)) for k in scheduler_keys)
-
-        message = 'تنظیمات با موفقیت ذخیره شد.'
-
-        if needs_scheduler_reload:
-            api_url = 'http://127.0.0.1:5001/api/bot/reschedule'
-            try:
-                logger.info(f"Change in scheduler settings detected. Sending POST request to: {api_url}")
-                response = requests.post(api_url, timeout=5)
-                logger.info(f"Response from bot API: Status={response.status_code}, Body='{response.text}'")
-                response.raise_for_status()
-                message = 'تنظیمات ذخیره و زمان‌بندی ربات به صورت خودکار به‌روزرسانی شد.'
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Failed to send reschedule request to bot process. URL: {api_url}. Error: {e}", exc_info=True)
-                message = 'تنظیمات ذخیره شد، اما ارتباط با ربات برای به‌روزرسانی خودکار برقرار نشد. (لاگ سرور را برای جزئیات بررسی کنید)'
-        
-        return jsonify({'success': True, 'message': message})
-    except Exception as e:
-        logger.error(f"General error in save_settings_api: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': f'خطای کلی در ذخیره‌سازی: {str(e)}'}), 500
+        logger.error(f"خطا در بارگذاری صفحه تنظیمات: {e}", exc_info=True)
+        flash("خطا در بارگذاری صفحه تنظیمات. لطفاً لاگ‌ها را بررسی کنید.", "error")
+        return redirect(url_for('admin.admin_dashboard'))
 
 
 @admin_bp.route('/api/users/toggle_vip/<string:uuid>', methods=['POST'])
@@ -278,7 +266,7 @@ def set_template_server_type_api(template_id):
     except Exception as e:
         return jsonify({'success': False, 'message': 'خطا در به‌روزرسانی.'}), 500
     
-# این کد را به انتهای فایل admin_routes.py اضافه کنید
+
 
 @admin_bp.route('/api/templates/reset', methods=['POST'])
 @admin_required

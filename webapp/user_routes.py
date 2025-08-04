@@ -1,12 +1,10 @@
 from flask import Blueprint, render_template, abort, request, Response, url_for, flash, redirect, session, jsonify
 from bot.utils import load_json_file, generate_user_subscription_configs, to_shamsi
-from bot.settings_manager import settings
 from bot.database import db
 from .user_service import user_service
 import base64
 import urllib.parse
 import logging
-from bot.settings_manager import settings
 from datetime import datetime, timedelta
 
 
@@ -185,7 +183,7 @@ def usage_chart_page(uuid):
 @user_bp.route('/<string:uuid>/buy')
 def buy_service_page(uuid):
     all_plans = load_json_file('plans.json')
-    support_link = f"https://t.me/{settings.get('admin_support_contact', "Nzrmohammad").replace('@', '')}"
+    support_link = f"https://t.me/Nzrmohammad"
     
     combined_plans, dedicated_plans = [], []
     if isinstance(all_plans, list):

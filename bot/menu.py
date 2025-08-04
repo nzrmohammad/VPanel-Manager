@@ -1,6 +1,5 @@
 from telebot import types
-from .config import EMOJIS
-from .settings_manager import settings
+from .config import EMOJIS, PAGE_SIZE
 from .language import get_string
 from typing import Optional
 
@@ -91,16 +90,34 @@ class Menu:
         kb.add(btn_back)
         return kb
 
+
     def plan_category_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
+        btn_payment_methods = types.InlineKeyboardButton(get_string('btn_payment_methods', lang_code), callback_data="show_payment_options")
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
         kb.add(btn_france, btn_germany)
         kb.add(btn_combined)
+        kb.add(btn_payment_methods)
         kb.add(btn_back)
         return kb
+    
+
+    def payment_options_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        
+        btn_blubank = types.InlineKeyboardButton(get_string('btn_blubank', lang_code), callback_data="show_account_details:blubank")
+        btn_ton = types.InlineKeyboardButton(get_string('btn_ton', lang_code), callback_data="coming_soon")
+        btn_eth = types.InlineKeyboardButton(get_string('btn_eth', lang_code), callback_data="coming_soon")
+        btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans")
+        
+        kb.add(btn_blubank) 
+        kb.add(btn_ton, btn_eth)
+        kb.add(btn_back)
+        return kb
+
 
     def settings(self, settings_dict: dict, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
@@ -132,7 +149,7 @@ class Menu:
         btn1 = types.InlineKeyboardButton("👥 مدیریت کاربران", callback_data="admin:management_menu")
         btn2 = types.InlineKeyboardButton("🔎 جستجوی کاربر", callback_data="admin:search_menu")
         btn3 = types.InlineKeyboardButton("⚙️ دستورات گروهی", callback_data="admin:group_actions_menu")
-        btn4 = types.InlineKeyboardButton("📊 گزارش‌ها و آمار", callback_data="admin:select_server:reports_menu")
+        btn4 = types.InlineKeyboardButton("📊 گزارش‌ها و آمار", callback_data="admin:reports_menu")
         btn5 = types.InlineKeyboardButton("📣 پیام همگانی", callback_data="admin:broadcast")
         btn6 = types.InlineKeyboardButton("💾 پشتیبان‌گیری", callback_data="admin:backup_menu")
         btn7 = types.InlineKeyboardButton("🖥️ وضعیت سیستم", callback_data="admin:system_status_menu")
@@ -341,7 +358,7 @@ class Menu:
         prev_text = f"⬅️ {get_string('btn_prev_page', effective_lang_code)}"
         next_text = f"{get_string('btn_next_page', effective_lang_code)} ➡️"
 
-        if total_items <= settings.get('PAGE_SIZE', 15):
+        if total_items <= PAGE_SIZE:
             kb.add(types.InlineKeyboardButton(back_text, callback_data=back_callback))
             return kb
 
@@ -352,7 +369,7 @@ class Menu:
         if current_page > 0:
             # پسوند زمینه به callback اضافه می‌شود
             nav_buttons.append(types.InlineKeyboardButton(prev_text, callback_data=f"{base_callback}:{current_page - 1}{context_suffix}"))
-        if (current_page + 1) * settings.get('PAGE_SIZE', 15) < total_items:
+        if (current_page + 1) * PAGE_SIZE < total_items:
             # پسوند زمینه به callback اضافه می‌شود
             nav_buttons.append(types.InlineKeyboardButton(next_text, callback_data=f"{base_callback}:{current_page + 1}{context_suffix}"))
 

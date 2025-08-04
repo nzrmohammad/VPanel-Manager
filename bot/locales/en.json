@@ -128,7 +128,7 @@
   "fmt_err_getting_birthday_info": "An error occurred while fetching birthday information.",
   "btn_prev_page": "Previous",
   "btn_next_page": "Next",
-"fmt_user_name_header": "👤 Name",
+  "fmt_user_name_header": "👤 Name",
   "fmt_total_volume_new": "📦 Total Volume",
   "fmt_total_usage_new": "🔥 Total Used",
   "fmt_total_remaining_new": "📥 Total Remaining",
@@ -143,5 +143,15 @@
   "fmt_expiry_date_new": "📅 Expires",
   "fmt_uuid_new": "🔑 Unique ID",
   "fmt_status_bar_new": "Status",
-  "btn_cancel_action": "Cancel Operation"
+  "btn_cancel_action": "Cancel Operation",
+  "btn_payment_methods": "💳 Payment Methods",
+  "btn_crypto_payment": "💎 Crypto Payment",
+  "btn_ton": "TON (Toncoin) 🔜",
+  "btn_eth": "ETH (Ethereum) 🔜",
+  "prompt_select_payment_method": "Please select your desired payment method:",
+  "msg_coming_soon_alert": "This feature will be added soon. Thank you for your patience.",
+  "btn_blubank": "💳 BluBank",
+  "msg_account_details_title": "{bank_name} Account Number",
+  "msg_account_details_body": "Click on the number below to copy it automatically."
+
 }

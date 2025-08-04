@@ -4,8 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import io
 import qrcode
 import jdatetime
-from .config import ADMIN_IDS, EMOJIS
-from .settings_manager import settings
+from .config import ADMIN_IDS, EMOJIS, ADMIN_SUPPORT_CONTACT
 from .database import db
 from . import combined_handler
 from .menu import menu
@@ -52,7 +51,9 @@ def handle_user_callbacks(call: types.CallbackQuery):
         "back": _go_back_to_main,
         "birthday_gift": _handle_birthday_gift_request,
         "view_plans": _show_plan_categories,
-        "change_language": _handle_change_language_request
+        "change_language": _handle_change_language_request,
+        "show_payment_options": _show_payment_options_menu,
+        "coming_soon": _handle_coming_soon
     }
     
     handler = USER_CALLBACK_MAP.get(data)
@@ -188,6 +189,29 @@ def handle_user_callbacks(call: types.CallbackQuery):
 
     elif data.startswith("show_plans:"):
         _show_filtered_plans(call)
+
+
+    elif data.startswith("show_account_details:"):
+        bank_name_code = data.split(":")[1]
+        if bank_name_code == "blubank":
+            account_number = "1234"
+            
+
+            bank_display_name = get_string('btn_blubank', lang_code).replace("💳 ", "").strip()
+            
+            title_template = get_string("msg_account_details_title", lang_code)
+            title = title_template.format(bank_name=bank_display_name)
+            body = get_string("msg_account_details_body", lang_code)
+
+            text = (
+                f"*{escape_markdown(title)}*\n\n"
+                f"{escape_markdown(body)}\\.\n\n"
+                f"`{escape_markdown(account_number)}`"
+            )
+
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="show_payment_options"))
+            _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
+
 
 # =============================================================================
 # Helper Functions (Next Step Handlers & Menu Builders)
@@ -348,7 +372,7 @@ def _show_filtered_plans(call: types.CallbackQuery):
 def _handle_support_request(call: types.CallbackQuery):
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
-    admin_contact = escape_markdown(settings.get('admin_support_contact', '@ExampleAdmin'))
+    admin_contact = escape_markdown(ADMIN_SUPPORT_CONTACT)
     
     title = f'*{escape_markdown(get_string("support_guidance_title", lang_code))}*'
     body_template = get_string('support_guidance_body', lang_code)
@@ -364,6 +388,24 @@ def _handle_change_language_request(call: types.CallbackQuery):
     lang_code = db.get_user_language(call.from_user.id)
     # parse_mode=None is safe as the string is plain
     _safe_edit(call.from_user.id, call.message.message_id, get_string("select_language", lang_code), reply_markup=language_selection_menu(), parse_mode=None)
+
+
+def _show_payment_options_menu(call: types.CallbackQuery):
+    uid = call.from_user.id
+    msg_id = call.message.message_id
+    lang_code = db.get_user_language(uid)
+    
+    text = f"*{escape_markdown(get_string('prompt_select_payment_method', lang_code))}*"
+    _safe_edit(uid, msg_id, text, reply_markup=menu.payment_options_menu(lang_code=lang_code), parse_mode="MarkdownV2")
+
+
+def _handle_coming_soon(call: types.CallbackQuery):
+    """با نمایش یک آلرت، به کلیک روی دکمههای "به زودی" پاسخ میدهد."""
+    lang_code = db.get_user_language(call.from_user.id)
+    alert_text = get_string('msg_coming_soon_alert', lang_code)
+    # نمایش پیغام به صورت پاپآپ (Alert)
+    bot.answer_callback_query(call.id, text=alert_text, show_alert=True)
+
 
 # =============================================================================
 # Main Registration Function

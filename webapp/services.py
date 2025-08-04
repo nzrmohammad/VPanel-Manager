@@ -7,7 +7,7 @@ from bot.marzban_api_handler import marzban_handler
 from bot.combined_handler import get_all_users_combined, get_combined_user_info
 from bot.utils import to_shamsi, format_relative_time, format_usage, days_until_next_birthday
 import logging
-from bot.settings_manager import settings
+from bot.config import DAILY_REPORT_TIME, USAGE_WARNING_CHECK_HOURS
 
 logger = logging.getLogger(__name__)
 
@@ -569,35 +569,6 @@ def get_analytics_data():
     }
 
 
-def get_all_settings() -> dict:
-    logger.info("Fetching all settings directly from disk for the admin settings page.")
-    try:
-        all_settings = settings.get_all_from_disk()
-        # ✅ امن‌سازی مقادیر متنی تنظیمات
-        for key, value in all_settings.items():
-            if isinstance(value, str):
-                all_settings[key] = escape(value)
-        logger.info(f"Successfully fetched and sanitized settings from disk: {all_settings}")
-        return all_settings
-    except Exception as e:
-        logger.error(f"An error occurred while fetching settings from disk for UI: {e}", exc_info=True)
-        return settings.settings
-
-def save_all_settings(data: dict):
-    logger.info(f"Attempting to save new settings via centralized manager: {data}")
-    # ✅ امن‌سازی داده‌های ورودی قبل از ذخیره
-    safe_data = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            safe_data[key] = escape(value)
-        else:
-            safe_data[key] = value # برای مقادیر عددی یا boolean نیازی به escape نیست
-            
-    success = settings.save_settings(safe_data)
-    if not success:
-        raise Exception("A server-side error occurred while writing to the settings file.")
-    return True
-
 def toggle_user_vip_status(uuid: str):
     logger.info(f"Toggling VIP status for user UUID: {uuid}")
     db.toggle_user_vip(uuid)
@@ -632,29 +603,27 @@ def delete_marzban_mapping_service(hiddify_uuid):
         return False, "خطا در حذف مپ از دیتابیس."
 
 def get_schedule_info_service():
-    """اطلاعات مربوط به کارهای زمان‌بندی شده ربات را برای نمایش در پنل ادمین آماده می‌کند."""
     
-    # خواندن تنظیمات از فایل bot_settings.json
-    report_time = settings.get('daily_report_time', '23:59')
-    warning_interval = settings.get('usage_warning_check_minutes', 60)
+    report_time_str = DAILY_REPORT_TIME.strftime('%H:%M')
+    warning_interval_hours = USAGE_WARNING_CHECK_HOURS
     
     schedule_list = [
         {
             "icon": "ri-camera-lens-line",
             "title": "اسنپ‌شات مصرف کاربران",
-            "interval": "هر ۱ ساعت",
+            "interval": "هر ساعت، در دقیقه ۰۱",
             "description": "مصرف لحظه‌ای کاربران در هر دو پنل ذخیره می‌شود تا نمودارها و گزارش‌های روزانه دقیق باشند."
         },
         {
             "icon": "ri-alarm-warning-line",
             "title": "بررسی هشدارهای انقضا و حجم",
-            "interval": f"هر {warning_interval} دقیقه",
+            "interval": f"هر {warning_interval_hours} ساعت",
             "description": "وضعیت کاربران برای ارسال هشدارهای اتمام حجم و نزدیک شدن به تاریخ انقضا بررسی می‌شود."
         },
         {
             "icon": "ri-send-plane-2-line",
             "title": "ارسال گزارش روزانه",
-            "interval": f"هر شب ساعت {report_time}",
+            "interval": f"هر شب ساعت {report_time_str}",
             "description": "گزارش جامع روزانه برای ادمین‌ها و گزارش شخصی برای کاربران فعال ارسال می‌گردد."
         },
         {
@@ -667,7 +636,7 @@ def get_schedule_info_service():
             "icon": "ri-database-2-line",
             "title": "بهینه‌سازی دیتابیس",
             "interval": "هر روز ساعت ۰۴:۰۰ بامداد",
-            "description": "یک فرآیند سبک برای پاکسازی و بهینه‌سازی فایل دیتابیس ربات اجرا می‌شود."
+            "description": "این فرآیند هر روز اجرا شده و در روز اول هر ماه، عملیات بهینه‌سازی (VACUUM) را روی دیتابیس انجام می‌دهد."
         }
     ]
     

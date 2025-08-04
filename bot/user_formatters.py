@@ -1,6 +1,5 @@
 import logging
-from .config import EMOJIS
-from .settings_manager import settings
+from .config import EMOJIS, PAGE_SIZE
 from .database import db
 from . import combined_handler
 from .language import get_string
@@ -11,9 +10,6 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# فایل: user_formatters.py
 
 def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     """Formats the detailed information for a single user account to the new desired format."""
@@ -241,7 +237,7 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int, lang_cod
         no_info_text = escape_markdown(get_string('fmt_payment_history_no_info', lang_code))
         return f"{header_text}\n\n{no_info_text}"
 
-    page_size = settings.get('PAGE_SIZE', 15)
+    page_size = PAGE_SIZE
     if total_payments > page_size:
         total_pages = (total_payments + page_size - 1) // page_size
         pagination_text = get_string("fmt_payment_page_of", lang_code).format(current_page=page + 1, total_pages=total_pages)
