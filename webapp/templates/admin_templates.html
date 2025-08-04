@@ -159,6 +159,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const editIdInput = document.getElementById('edit-template-id');
     const editStrTextarea = document.getElementById('edit-template-str');
     const resetBtn = document.getElementById('reset-templates-btn');
+    
+    // خواندن توکن امنیتی برای استفاده در تمام درخواست‌ها
+    const csrfToken = addForm.elements.csrf_token.value;
 
     // --- Helper Functions ---
     function showFeedback(message, isSuccess) {
@@ -170,22 +173,44 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- Event Listeners ---
+    
+    // رویداد: ثبت فرم افزودن کانفیگ
     addForm.addEventListener('submit', function(e) {
         e.preventDefault();
         const templatesStr = e.target.elements.templates_str.value;
         const submitBtn = addForm.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
         submitBtn.textContent = 'در حال افزودن...';
-        fetch(`/admin/api/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates_str: templatesStr }) })
-            .then(res => res.json()).then(result => {
-                showFeedback(result.message, result.success);
-                if (result.success) setTimeout(() => window.location.reload(), 1500);
-            }).finally(() => {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'افزودن همه به سیستم';
-            });
+        
+        fetch(`/admin/api/templates`, { 
+            method: 'POST', 
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken // ارسال توکن
+            }, 
+            body: JSON.stringify({ templates_str: templatesStr }) 
+        })
+        .then(res => {
+            if (!res.ok) {
+                return res.text().then(text => { throw new Error('پاسخ سرور موفقیت‌آمیز نبود: ' + text) });
+            }
+            return res.json();
+        })
+        .then(result => {
+            showFeedback(result.message, result.success);
+            if (result.success) setTimeout(() => window.location.reload(), 1500);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showFeedback('خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.', false);
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'افزودن همه به سیستم';
+        });
     });
 
+    // رویداد: کلیک روی دکمه‌های جدول
     tableBody.addEventListener('click', function(e) {
         const button = e.target.closest('.action-btn');
         if (!button) return;
@@ -196,16 +221,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // --- Action Handlers ---
         if (button.classList.contains('toggle-btn')) {
-            // ... (Toggle active/inactive logic) ...
+            fetch(`/admin/api/templates/toggle_active/${templateId}`, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken }
+            }).then(res => res.json()).then(result => {
+                if (result.success) {
+                    button.classList.toggle('active');
+                    const statusCell = row.querySelector('.status-cell');
+                    statusCell.textContent = result.is_active ? 'فعال' : 'غیرفعال';
+                    statusCell.className = `status-cell ${result.is_active ? 'active' : 'inactive'}`;
+                } else {
+                    showFeedback('خطا در تغییر وضعیت.', false);
+                }
+            });
         } else if (button.classList.contains('special-btn')) {
             button.disabled = true;
-            fetch(`/admin/api/templates/toggle_special/${templateId}`, { method: 'POST' })
-                .then(res => res.json()).then(result => {
-                    if (result.success) {
-                        button.classList.toggle('active');
-                        showFeedback(result.message, true);
-                    } else { showFeedback('خطا در تغییر وضعیت ویژه.', false); }
-                }).finally(() => { button.disabled = false; });
+            fetch(`/admin/api/templates/toggle_special/${templateId}`, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken }
+            }).then(res => res.json()).then(result => {
+                if (result.success) {
+                    button.classList.toggle('active');
+                    showFeedback(result.message, true);
+                } else { showFeedback('خطا در تغییر وضعیت ویژه.', false); }
+            }).finally(() => { button.disabled = false; });
         } else if (button.classList.contains('edit-btn')) {
             const fullTemplateStr = row.querySelector('.full-template-str').textContent;
             editIdInput.value = templateId;
@@ -213,20 +252,29 @@ document.addEventListener('DOMContentLoaded', function() {
             editModal.classList.add('show');
         } else if (button.classList.contains('delete-btn')) {
             if (!confirm('آیا از حذف این کانفیگ مطمئن هستید؟')) return;
-            fetch(`/admin/api/templates/${templateId}`, { method: 'DELETE' })
-                .then(res => res.json()).then(result => {
-                    showFeedback(result.message, result.success);
-                    if (result.success) { row.remove(); }
-                });
+            fetch(`/admin/api/templates/${templateId}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-Token': csrfToken }
+            }).then(res => res.json()).then(result => {
+                showFeedback(result.message, result.success);
+                if (result.success) { row.remove(); }
+            });
         } else if (button.classList.contains('server-type-btn')) {
             const type = button.dataset.type;
-            row.querySelectorAll('.server-type-btn').forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            fetch(`/admin/api/templates/set_server_type/${templateId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ server_type: type }) })
-                .then(res => res.json()).then(result => {
-                    if (result.success) { showFeedback(result.message, true); } 
-                    else { showFeedback(result.message, false); }
-                });
+            fetch(`/admin/api/templates/set_server_type/${templateId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({ server_type: type })
+            }).then(res => res.json()).then(result => {
+                if (result.success) {
+                    row.querySelectorAll('.server-type-btn').forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    showFeedback(result.message, true);
+                } else { showFeedback(result.message, false); }
+            });
         }
     });
 
@@ -241,7 +289,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         fetch(`/admin/api/templates/update/${templateId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
             body: JSON.stringify({ template_str: newTemplateStr })
         })
         .then(res => res.json())
@@ -249,26 +300,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showFeedback(result.message, result.success);
             if (result.success) {
                 editModal.classList.remove('show');
-                const rowToUpdate = tableBody.querySelector(`tr[data-template-id="${templateId}"]`);
-                if(rowToUpdate) {
-                    const configCell = rowToUpdate.querySelector('.config-cell');
-                    const fullStrSpan = rowToUpdate.querySelector('.full-template-str');
-                    
-                    // آپدیت کردن مقادیر در جدول
-                    configCell.title = newTemplateStr;
-                    fullStrSpan.textContent = newTemplateStr;
-                    
-                    const parts = newTemplateStr.split('#');
-                    const url_part = parts[0];
-                    const name_part = parts.length > 1 ? '#' + parts[1] : '';
-                    
-                    const container = configCell.querySelector('.config-string-container');
-                    container.innerHTML = `
-                        <span class="config-protocol">${url_part.substring(0, 60)}</span>
-                        <span class="config-separator">...</span>
-                        <span class="config-name">${name_part}</span>
-                    `;
-                }
+                window.location.reload(); // ساده‌ترین راه برای نمایش تغییرات
             }
         }).finally(() => {
             submitBtn.disabled = false;
@@ -276,19 +308,34 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // رویداد: کلیک روی دکمه ریست
     if (resetBtn) {
         resetBtn.addEventListener('click', function() {
             if (!confirm('آیا مطمئن هستید؟ این عمل تمام کانفیگ‌ها را حذف کرده و شماره‌گذاری را از ۱ شروع می‌کند. این عمل غیرقابل بازگشت است.')) return;
             resetBtn.disabled = true;
             resetBtn.textContent = 'در حال ریست...';
-            fetch('/admin/api/templates/reset', { method: 'POST' })
-                .then(res => res.json()).then(result => {
-                    showFeedback(result.message, result.success);
-                    if (result.success) { setTimeout(() => window.location.reload(), 2000); }
-                }).finally(() => {
-                    resetBtn.disabled = false;
-                    resetBtn.innerHTML = '<i class="ri-restart-line"></i> ریست کردن ID ها';
-                });
+            
+            fetch('/admin/api/templates/reset', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken } // ارسال توکن
+            })
+            .then(res => {
+                if (!res.ok) {
+                    return res.text().then(text => { throw new Error('پاسخ سرور موفقیت‌آمیز نبود: ' + text) });
+                }
+                return res.json();
+            }).then(result => {
+                showFeedback(result.message, result.success);
+                if (result.success) { setTimeout(() => window.location.reload(), 2000); }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showFeedback('خطا در ارتباط با سرور هنگام ریست کردن.', false);
+            })
+            .finally(() => {
+                resetBtn.disabled = false;
+                resetBtn.innerHTML = '<i class="ri-restart-line"></i> ریست کردن ID ها';
+            });
         });
     }
 });

@@ -104,7 +104,7 @@ class UserService:
             combined_info = get_combined_user_info(uuid) or {}
             
             payment_history = db.get_user_payment_history(uuid_id)
-            last_payment_shamsi, payment_count = None, 0
+            last_payment_shamsi, payment_count = "ثبت نشده", 0
             if payment_history:
                 payment_count = len(payment_history)
                 last_payment_date = payment_history[0].get('payment_date')

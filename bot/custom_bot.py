@@ -1,5 +1,3 @@
-# فایل: bot/custom_bot.py
-
 import logging
 import sys
 import signal
@@ -7,7 +5,6 @@ import time
 from datetime import datetime
 from telebot import TeleBot
 import threading
-from flask import Flask, jsonify
 
 from .bot_instance import bot, admin_conversations
 from .config import LOG_LEVEL, ADMIN_IDS, BOT_TOKEN
@@ -73,28 +70,6 @@ class HiddifyBot:
         self.shutdown()
         sys.exit(0)
 
-    def _run_api_server(self):
-        api_app = Flask(__name__)
-        log = logging.getLogger('werkzeug')
-        log.setLevel(logging.ERROR)
-
-        @api_app.route('/api/bot/reschedule', methods=['POST'])
-        def handle_reschedule():
-            logger.info("Received a reschedule request from the web panel.")
-            if not self.scheduler:
-                logger.error("API Error: Scheduler object not found.")
-                return jsonify({'success': False, 'message': 'Scheduler object not found in bot process.'}), 500
-            try:
-                self.scheduler.reschedule_jobs()
-                logger.info("Jobs rescheduled successfully via API request.")
-                return jsonify({'success': True, 'message': 'Jobs rescheduled successfully.'})
-            except Exception as e:
-                logger.error(f"API Error during reschedule: {e}", exc_info=True)
-                return jsonify({'success': False, 'message': str(e)}), 500
-        
-        logger.info("Starting internal API server for bot on http://127.0.0.1:5001")
-        api_app.run(host='127.0.0.1', port=5001)
-
     def start(self) -> None:
         if self.running: return
         try:
@@ -109,8 +84,6 @@ class HiddifyBot:
             logger.info("✅ SQLite ready")
             self.scheduler.start()
             logger.info("✅ Scheduler thread started")
-            api_thread = threading.Thread(target=self._run_api_server, daemon=True)
-            api_thread.start()
             _notify_admins_start()
             self.running = True
             self.started_at = datetime.now()

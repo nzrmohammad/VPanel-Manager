@@ -139,7 +139,6 @@
     <div id="add-payment-modal" class="modal-overlay"></div>
 {% endblock %}
 
-
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -150,6 +149,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const mainFilter = document.getElementById('main-filter');
     const paginationContainer = document.getElementById('pagination-container');
     const tableTitle = document.querySelector('.page-header h3');
+    
+    // --- CSRF Token ---
+    const csrfToken = '{{ csrf_token() }}';
 
     // --- Initial State ---
     const urlParams = new URLSearchParams(window.location.search);
@@ -163,7 +165,6 @@ document.addEventListener('DOMContentLoaded', function() {
         'expiring_soon': 'لیست کاربران در آستانه انقضا'
     };
 
-    // مقدار اولیه فیلتر را بر اساس پارامتر URL تنظیم می‌کند
     if (mainFilter) {
         mainFilter.value = initialUrlFilter;
     }
@@ -171,19 +172,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Core Function to Load Users ---
     function loadUsers(page = 1) {
         currentPage = page;
-
-        // کد امن: قبل از خواندن مقدار، وجود عنصر را بررسی می‌کند
         const searchQuery = searchInput ? searchInput.value.trim() : '';
         const panel = panelFilter ? panelFilter.value : 'all';
         const filter = mainFilter ? mainFilter.value : initialUrlFilter;
 
-        // عنوان صفحه را به‌روزرسانی می‌کند
         if (tableTitle && filterTitles[filter]) {
             tableTitle.textContent = filterTitles[filter];
         }
 
         tableBody.innerHTML = `<tr><td colspan="7" class="text-center" style="padding: 2rem;">درحال بارگذاری اطلاعات... <i class="ri-loader-4-line ri-spin"></i></td></tr>`;
-
         const url = `/admin/api/users?page=${page}&per_page=15&search=${encodeURIComponent(searchQuery)}&panel=${panel}&filter=${filter}`;
 
         fetch(url)
@@ -255,7 +252,10 @@ document.addEventListener('DOMContentLoaded', function() {
             row.querySelector('.vip-btn').addEventListener('click', (e) => {
                 const button = e.currentTarget;
                 button.disabled = true;
-                fetch(`/admin/api/users/toggle_vip/${user.uuid}`, { method: 'POST' })
+                fetch(`/admin/api/users/toggle_vip/${user.uuid}`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrfToken }
+                })
                     .then(res => res.json())
                     .then(result => {
                         if (result.success) {
@@ -270,73 +270,66 @@ document.addEventListener('DOMContentLoaded', function() {
             tableBody.appendChild(row);
         });
     }
-    // =========================================================================
-    // END: پایان بخشی که باید جایگزین شود
-    // =========================================================================
 
     function renderPagination(pagination) {
+        if (!paginationContainer) return;
         paginationContainer.innerHTML = '';
         if (pagination.total_pages <= 1) return;
-
         const { page: current, total_pages: total } = pagination;
-        
-        const createBtn = (p, text, disabled = false) => {
+        const createBtn = (p, text, disabled = false, isActive = false) => {
             const btn = document.createElement('button');
             btn.className = 'pagination-btn';
             btn.textContent = text || p;
+            if (isActive) btn.classList.add('active');
             if (p === current) btn.classList.add('active');
             if (disabled) btn.disabled = true;
-            btn.addEventListener('click', () => {
-                if(p !== currentPage) loadUsers(p);
-            });
+            btn.addEventListener('click', () => { if (p !== currentPage) loadUsers(p); });
             return btn;
         };
-
         paginationContainer.appendChild(createBtn(current - 1, 'قبلی', current === 1));
-
-        const pagesToShow = [];
-        if (total <= 7) {
-            for (let i = 1; i <= total; i++) pagesToShow.push(i);
-        } else {
-            pagesToShow.push(1);
-            if (current > 3) pagesToShow.push('...');
-            for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pagesToShow.push(i);
-            if (current < total - 2) pagesToShow.push('...');
-            pagesToShow.push(total);
-        }
-
-        pagesToShow.forEach(p => {
+        const pagesToShow = [1];
+        if (current > 3) pagesToShow.push('...');
+        for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pagesToShow.push(i);
+        if (current < total - 3) pagesToShow.push('...');
+        if (total > 1) pagesToShow.push(total);
+        const uniquePages = [...new Set(pagesToShow)];
+        uniquePages.forEach(p => {
             if (p === '...') {
                 const dots = document.createElement('span');
                 dots.className = 'pagination-dots';
                 dots.textContent = '...';
                 paginationContainer.appendChild(dots);
             } else {
-                paginationContainer.appendChild(createBtn(p));
+                paginationContainer.appendChild(createBtn(p, p, false, p === current));
             }
         });
-        
         paginationContainer.appendChild(createBtn(current + 1, 'بعدی', current === total));
     }
-
+    
     function populateDetailsModal(user) {
+        // This function does not modify data, so it does not need changes.
+        // It's left here for completeness.
         const modal = getModal('user-details-modal');
         const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
         let hiddifyHtml = '', marzbanHtml = '';
         if (user.on_hiddify) {
             const h = user.breakdown.hiddify;
             hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
-                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${h.current_usage_GB.toFixed(2)} / ${h.usage_limit_GB.toFixed(2)} GB</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted}</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
+                <div class="panel-details-grid">
+                    <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${h.current_usage_GB.toFixed(2)} / ${h.usage_limit_GB.toFixed(2)} GB</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted}</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
+                </div>
             </div>`;
         }
         if (user.on_marzban) {
             const m = user.breakdown.marzban;
             marzbanHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل فرانسه 🇫🇷</h5>
-                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${m.current_usage_GB.toFixed(2)} / ${m.usage_limit_GB.toFixed(2)} GB</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted}</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
+                 <div class="panel-details-grid">
+                    <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${m.current_usage_GB.toFixed(2)} / ${m.usage_limit_GB.toFixed(2)} GB</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted}</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
+                </div>
             </div>`;
         }
         const totalDaily = (user.breakdown?.hiddify?.daily_usage || 0) + (user.breakdown?.marzban?.daily_usage || 0);
@@ -354,14 +347,15 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="detail-item"><span class="label"><i class="ri-calendar-todo-line"></i>اعتبار باقیمانده:</span><span class="value">${user.expire_shamsi} (${user.expire} روز)</span></div>
                         </div>
                     </div>
-                    <div class="panel-details-grid">${hiddifyHtml}${marzbanHtml}</div>
+                    ${hiddifyHtml}
+                    ${marzbanHtml}
                     <div class="uuid-text-details">${user.uuid}</div>
                 </div>
             </div>`;
         modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
         showModal(modal);
     }
-    // ... ادامه توابع openAddUserModal, openEditModal, etc.
+
     function openAddUserModal() {
         const modal = getModal('add-user-modal');
         modal.innerHTML = `
@@ -380,7 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="form-group"><label for="h-mode">حالت</label><select id="h-mode" name="mode"><option value="no_reset">no_reset</option><option value="daily">daily</option><option value="weekly">weekly</option><option value="monthly">monthly</option></select></div>
                         </div></div>
                         <div id="marzban-tab" class="tab-content"><div class="form-grid">
-                            <div class="form-group"><label for="m-username">نام کاربری</label><input type="text" id="m-username" name="username" required placeholder="مثلا: user_test2"></div>
+                            <div class="form-group"><label for="m-username">نام کاربری</label><input type="text" id="m-username" name="username" placeholder="مثلا: user_test2"></div>
                             <div class="form-group"><label for="m-usage">حجم (GB)</label><input type="number" id="m-usage" name="usage_limit_GB" value="30" required></div>
                             <div class="form-group"><label for="m-days">مدت (روز)</label><input type="number" id="m-days" name="package_days" value="30" required></div>
                         </div></div>
@@ -405,14 +399,14 @@ document.addEventListener('DOMContentLoaded', function() {
         let hiddifyContent = user.on_hiddify ? `
             <div id="hiddify-edit-tab" class="tab-content active"><div class="form-grid">
                 <div class="form-group"><label for="edit-h-name">نام کاربر</label><input type="text" id="edit-h-name" name="common_name" value="${user.name || ''}" required></div>
-                <div class="form-group"><label for="edit-h-usage">حجم (GB)</label><input type="number" step="any" id="edit-h-usage" name="h_usage_limit_GB" value="${h.usage_limit_GB || 0}"></div>
-                <div class="form-group"><label for="edit-h-days">مدت (روز)</label><input type="number" id="edit-h-days" name="h_package_days" value="${user.expire || 0}"></div>
+                <div class="form-group"><label for="edit-h-usage">افزودن حجم (GB)</label><input type="number" step="any" id="edit-h-usage" name="h_usage_limit_GB" placeholder="برای افزودن وارد کنید" value=""></div>
+                <div class="form-group"><label for="edit-h-days">افزودن مدت (روز)</label><input type="number" id="edit-h-days" name="h_package_days" placeholder="برای افزودن وارد کنید" value=""></div>
             </div></div>` : '';
         let marzbanContent = user.on_marzban ? `
             <div id="marzban-edit-tab" class="tab-content ${!user.on_hiddify ? 'active' : ''}"><div class="form-grid">
                 <div class="form-group"><label for="edit-m-username">نام کاربر</label><input type="text" id="edit-m-username" name="m_username" value="${m.username || ''}" readonly disabled><small>نام کاربری مرزبان قابل تغییر نیست.</small></div>
-                <div class="form-group"><label for="edit-m-usage">حجم (GB)</label><input type="number" step="any" id="edit-m-usage" name="m_usage_limit_GB" value="${(m.usage_limit_GB || 0)}"></div>
-                <div class="form-group"><label for="edit-m-days">مدت (روز)</label><input type="number" id="edit-m-days" name="m_expire_days" value="${user.expire || 0}"></div>
+                <div class="form-group"><label for="edit-m-usage">افزودن حجم (GB)</label><input type="number" step="any" id="edit-m-usage" name="m_usage_limit_GB" placeholder="برای افزودن وارد کنید" value=""></div>
+                <div class="form-group"><label for="edit-m-days">افزودن مدت (روز)</label><input type="number" id="edit-m-days" name="m_expire_days" placeholder="برای افزودن وارد کنید" value=""></div>
             </div></div>` : '';
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 650px;">
@@ -451,14 +445,40 @@ document.addEventListener('DOMContentLoaded', function() {
         modal.querySelector('.close-btn-footer').addEventListener('click', () => hideModal(modal));
         modal.querySelector('#confirm-delete-btn').addEventListener('click', async () => {
              try {
-                const response = await fetch(`/admin/api/users/delete/${user.uuid}`, { method: 'DELETE' });
+                const response = await fetch(`/admin/api/users/delete/${user.uuid}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-Token': csrfToken }
+                });
                 if (!response.ok) throw new Error('خطا در حذف کاربر');
+                showToast('کاربر با موفقیت حذف شد.', 'success');
                 hideModal(modal);
                 loadUsers(currentPage);
              } catch(error) {
                 showToast(error.message, 'error');
              }
         });
+        showModal(modal);
+    }
+    
+    function openAddPaymentModal(user) {
+        const modal = getModal('add-payment-modal');
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <form id="add-payment-form" data-uuid="${user.uuid}">
+                    <div class="modal-header"><h4><i class="ri-money-dollar-circle-line"></i> ثبت پرداخت برای ${user.name}</h4><button type="button" class="close-btn">&times;</button></div>
+                    <div class="modal-body">
+                        <p>آیا میخواهید یک رکورد پرداخت برای این کاربر ثبت کنید؟</p>
+                        <div id="payment-form-feedback"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn close-btn-footer">انصراف</button>
+                        <button type="submit" class="btn btn-primary" id="submit-add-payment-btn">
+                            <span class="btn-text">بله، ثبت کن</span><i class="ri-loader-4-line ri-spin" style="display: none;"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>`;
+        attachFormModalListeners(modal, 'add-payment-form', handleAddPaymentSubmit);
         showModal(modal);
     }
 
@@ -470,18 +490,22 @@ document.addEventListener('DOMContentLoaded', function() {
             tab.addEventListener('click', () => {
                 modal.querySelectorAll('.modal-tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
                 tab.classList.add('active');
-                const activeContent = modal.querySelector(`#${tab.dataset.tab.replace('-edit','')}-tab`);
-                if(activeContent) activeContent.classList.add('active');
+                const activeTabId = tab.dataset.tab.replace('-edit', '-tab');
+                const activeContent = modal.querySelector(`#${activeTabId}`);
+                if (activeContent) activeContent.classList.add('active');
+                
                 modal.querySelectorAll('.tab-content').forEach(content => {
                     const isContentActive = content.classList.contains('active');
                     content.querySelectorAll('input, select').forEach(input => {
-                        if (input.name !== 'username') input.disabled = !isContentActive;
+                         if (!input.readOnly && !input.disabled) {
+                            input.required = isContentActive;
+                         }
                     });
                 });
             });
         });
         const firstActiveTab = modal.querySelector('.modal-tab-btn.active');
-        if(firstActiveTab) firstActiveTab.click();
+        if (firstActiveTab) firstActiveTab.click();
         const form = modal.querySelector(`#${formId}`);
         if(form) form.addEventListener('submit', submitHandler);
     }
@@ -495,14 +519,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const data = { panel: activePanel };
         form.querySelector(`.tab-content.active`).querySelectorAll('input, select').forEach(input => { if (input.name) data[input.name] = input.value; });
         try {
-            const response = await fetch(`/admin/api/users/create`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            const response = await fetch(`/admin/api/users/create`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify(data)
+            });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'خطای سرور');
-            feedbackEl.className = 'success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
-            loadUsers(1);
-            setTimeout(() => hideModal(getModal('add-user-modal')), 1500);
+            feedbackEl.className = 'form-feedback success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
+            setTimeout(() => {
+                hideModal(getModal('add-user-modal'));
+                loadUsers(1);
+            }, 1500);
         } catch (error) {
-            feedbackEl.className = 'error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
+            feedbackEl.className = 'form-feedback error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
         } finally {
             btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
         }
@@ -516,52 +546,73 @@ document.addEventListener('DOMContentLoaded', function() {
         const data = { uuid: user.uuid };
         form.querySelectorAll('input:not([disabled]), select:not([disabled])').forEach(input => { if (input.name && input.value) data[input.name] = input.value; });
         try {
-            const response = await fetch(`/admin/api/users/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            const response = await fetch(`/admin/api/users/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify(data)
+            });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'خطای سرور');
-            feedbackEl.className = 'success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
-            loadUsers(currentPage);
+            feedbackEl.className = 'form-feedback success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
+            setTimeout(() => {
+                hideModal(getModal('edit-user-modal'));
+                loadUsers(currentPage);
+            }, 1500);
         } catch (error) {
-            feedbackEl.className = 'error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
+            feedbackEl.className = 'form-feedback error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
+        } finally {
+            btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
+        }
+    }
+    
+    async function handleAddPaymentSubmit(e) {
+        e.preventDefault();
+        const form = e.target, uuid = form.dataset.uuid, feedbackEl = form.querySelector('#payment-form-feedback'), submitBtn = form.querySelector('#submit-add-payment-btn');
+        const btnText = submitBtn.querySelector('.btn-text'), btnSpinner = submitBtn.querySelector('.ri-loader-4-line');
+        feedbackEl.style.display = 'none'; btnText.style.display = 'none'; btnSpinner.style.display = 'inline-block'; submitBtn.disabled = true;
+        try {
+            const response = await fetch(`/admin/api/users/add_payment/${uuid}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'خطای سرور');
+            feedbackEl.className = 'form-feedback success'; feedbackEl.textContent = result.message; feedbackEl.style.display = 'block';
+            loadUsers(currentPage);
+            setTimeout(() => hideModal(getModal('add-payment-modal')), 1500);
+        } catch (error) {
+            feedbackEl.className = 'form-feedback error'; feedbackEl.textContent = `خطا: ${error.message}`; feedbackEl.style.display = 'block';
         } finally {
             btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
         }
     }
 
     function showToast(message, type = 'success') {
+        const toastContainer = document.body;
         const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
+        toast.className = `toast-notification ${type}`;
         toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.classList.add('show'), 10);
+        toastContainer.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 100);
         setTimeout(() => {
             toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
+            setTimeout(() => toast.remove(), 500);
         }, 3000);
     }
     
     // --- Event Listeners ---
     let searchDebounceTimer;
-    searchInput.addEventListener('input', () => {
+    if(searchInput) searchInput.addEventListener('input', () => {
         clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = setTimeout(() => {
-            loadUsers(1); // Reset to page 1 on new search
-        }, 500);
+        searchDebounceTimer = setTimeout(() => { loadUsers(1); }, 500);
     });
-
-    panelFilter.addEventListener('change', () => loadUsers(1));
-    
-    // <-- شنونده رویداد برای فیلتر جدید اضافه شد
-    if (mainFilter) {
-        mainFilter.addEventListener('change', () => loadUsers(1));
-    }
-    
+    if(panelFilter) panelFilter.addEventListener('change', () => loadUsers(1));
+    if (mainFilter) mainFilter.addEventListener('change', () => loadUsers(1));
     document.addEventListener('click', (e) => { 
-        if (e.target.matches('.modal-overlay')) {
-            hideModal(e.target);
-        }
+        if (e.target.matches('.modal-overlay')) { hideModal(e.target); }
     });
-    getModal('add-user-btn').addEventListener('click', openAddUserModal);
+    const addUserBtn = document.getElementById('add-user-btn');
+    if(addUserBtn) addUserBtn.addEventListener('click', openAddUserModal);
     
     // --- Initial Load ---
     loadUsers(); 

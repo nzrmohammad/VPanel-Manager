@@ -191,15 +191,7 @@ def delete_template_api(template_id):
         logger.error(f"API Failed to delete template {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در حذف کانفیگ.'}), 500
     
-# این کد را در فایل admin_routes.py قرار دهید
 
-# این کد را در فایل admin_routes.py جایگزین کنید
-# مطمئن شوید که config در بالای فایل import شده است
-# import config
-
-# ... (بقیه کدهای admin_routes.py) ...
-
-# ✅ **بخش جدید: روت‌های مدیریت تنظیمات**
 @admin_bp.route('/settings')
 @admin_required
 def admin_settings_page():
@@ -217,14 +209,14 @@ def admin_settings_page():
             "هشدار انقضا از چند روز قبل": WARNING_DAYS_BEFORE_EXPIRY,
             "آستانه هشدار مصرف غیرعادی روزانه (GB)": DAILY_USAGE_ALERT_THRESHOLD_GB,
             "اطلاع‌رسانی به ادمین در مورد مصرف بالا": NOTIFY_ADMIN_ON_USAGE
-            # می‌توانید هر متغیر دیگری از config.py را به این دیکشنری اضافه کنید
         }
 
         # ارسال داده‌ها به قالب برای نمایش
         return render_template(
             'admin_settings.html',
             settings=current_settings,
-            schedule_info=schedule_information
+            schedule_info=schedule_information,
+            is_admin=True
         )
     except Exception as e:
         logger.error(f"خطا در بارگذاری صفحه تنظیمات: {e}", exc_info=True)
@@ -244,6 +236,7 @@ def toggle_user_vip_api(uuid):
         logger.error(f"API Failed to toggle user VIP status {uuid}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت VIP.'}), 500
 
+
 @admin_bp.route('/api/templates/toggle_special/<int:template_id>', methods=['POST'])
 @admin_required
 def toggle_template_special_api(template_id):
@@ -256,6 +249,7 @@ def toggle_template_special_api(template_id):
         logger.error(f"API Failed to toggle template special status {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت.'}), 500
 
+
 @admin_bp.route('/api/templates/set_server_type/<int:template_id>', methods=['POST']) # ✅ این خط باید اضافه شود
 @admin_required
 def set_template_server_type_api(template_id):
@@ -265,7 +259,6 @@ def set_template_server_type_api(template_id):
         return jsonify({'success': True, 'message': 'نوع سرور کانفیگ به‌روز شد.'})
     except Exception as e:
         return jsonify({'success': False, 'message': 'خطا در به‌روزرسانی.'}), 500
-    
 
 
 @admin_bp.route('/api/templates/reset', methods=['POST'])

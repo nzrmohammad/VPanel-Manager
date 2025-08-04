@@ -325,16 +325,21 @@ def _show_settings(call: types.CallbackQuery):
     text = f'*{escape_markdown(get_string("settings_title", lang_code))}*'
     _safe_edit(uid, call.message.message_id, text, reply_markup=menu.settings(settings_data, lang_code=lang_code))
 
-def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None):
+
+def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None, original_msg_id: int = None):
+
     uid = call.from_user.id if call else message.from_user.id
-    msg_id = call.message.message_id if call and not message else None
+    msg_id = original_msg_id or (call.message.message_id if call else None)
+    
     lang_code = db.get_user_language(uid)
     text = f'*{escape_markdown(get_string("main_menu_title", lang_code))}*'
     reply_markup = menu.main(uid in ADMIN_IDS, lang_code=lang_code)
+
     if msg_id:
         _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
     else:
         bot.send_message(uid, text, reply_markup=reply_markup, parse_mode="MarkdownV2")
+
 
 def _handle_birthday_gift_request(call: types.CallbackQuery):
     global bot 
@@ -410,7 +415,6 @@ def _handle_coming_soon(call: types.CallbackQuery):
 # =============================================================================
 # Main Registration Function
 # =============================================================================
-
 def register_user_handlers(b: telebot.TeleBot):
     """Registers all the message and callback handlers for user interactions."""
     global bot; bot = b
@@ -422,40 +426,46 @@ def register_user_handlers(b: telebot.TeleBot):
         if db.uuids(uid):
             _go_back_to_main(message=message)
         else:
-            # New user: Ask for language first (hardcoded bilingual prompt is fine here)
             bot.send_message(uid, "Please select your language:\n\nلطفا زبان خود را انتخاب کنید:", reply_markup=language_selection_menu())
 
-    def process_uuid_step_after_lang(message: types.Message):
+    def process_uuid_step_after_lang(message: types.Message, original_msg_id: int):
         uid, uuid_str = message.chat.id, message.text.strip().lower()
         lang_code = db.get_user_language(uid)
-        
+
+        try:
+            bot.delete_message(chat_id=uid, message_id=message.message_id)
+        except Exception as e:
+            logger.warning(f"Could not delete user's message {message.message_id}: {e}")
+
         if not validate_uuid(uuid_str):
             prompt = _build_formatted_prompt(get_string("uuid_invalid", lang_code))
-            m = bot.send_message(uid, prompt, parse_mode="MarkdownV2")
-            bot.register_next_step_handler(m, process_uuid_step_after_lang)
+            _safe_edit(uid, original_msg_id, prompt)
+            bot.register_next_step_handler_by_chat_id(uid, process_uuid_step_after_lang, original_msg_id=original_msg_id)
             return
 
-        if not (info := combined_handler.get_combined_user_info(uuid_str)):
+        info = combined_handler.get_combined_user_info(uuid_str)
+        if not info:
             prompt = _build_formatted_prompt(get_string("uuid_not_found", lang_code))
-            m = bot.send_message(uid, prompt, parse_mode="MarkdownV2")
-            bot.register_next_step_handler(m, process_uuid_step_after_lang)
+            _safe_edit(uid, original_msg_id, prompt)
+            bot.register_next_step_handler_by_chat_id(uid, process_uuid_step_after_lang, original_msg_id=original_msg_id)
             return
-            
+
         db.add_uuid(uid, uuid_str, info.get("name", get_string('unknown_user', lang_code)))
-        _go_back_to_main(message=message)
+        _go_back_to_main(message=message, original_msg_id=original_msg_id)
+
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def handle_language_selection(call: types.CallbackQuery):
         uid, lang_code = call.from_user.id, call.data.split(':')[1]
         db.set_user_language(uid, lang_code)
-        bot.answer_callback_query(call.id)
-        # Simple, plain text message
-        _safe_edit(uid, call.message.message_id, get_string("lang_selected", lang_code))
-        
+        bot.answer_callback_query(call.id, get_string("lang_selected", lang_code))
+
         if db.uuids(uid):
             _go_back_to_main(call=call)
         else:
             raw_text = get_string("start_prompt", lang_code)
             formatted_text = _build_formatted_prompt(raw_text)
-            m = bot.send_message(uid, formatted_text, parse_mode="MarkdownV2")
-            bot.register_next_step_handler(m, process_uuid_step_after_lang)
+            
+            _safe_edit(uid, call.message.message_id, formatted_text)
+            bot.register_next_step_handler_by_chat_id(uid, process_uuid_step_after_lang, original_msg_id=call.message.message_id)
+
