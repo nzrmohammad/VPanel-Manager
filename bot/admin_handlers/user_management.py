@@ -506,7 +506,7 @@ def handle_payment_history(call, params):
 def handle_ask_for_note(call, params):
     identifier = params[0]
     context = "search" if len(params) > 1 and params[1] == 'search' else None
-    panel_short = params[2] if len(params) > 2 else 'h' # 'h' به عنوان پیش‌فرض
+    panel_short = params[2] if len(params) > 2 else 'h'
     panel = 'marzban' if panel_short == 'm' else 'hiddify'
     context_suffix = f":{context}" if context else ""
     
@@ -621,7 +621,7 @@ def _find_user_by_telegram_id(message: types.Message):
         bot.register_next_step_handler_by_chat_id(admin_id, _find_user_by_telegram_id)
         return
 
-    _safe_edit(admin_id, msg_id, "⏳ در حال جستجو...")
+    _safe_edit(admin_id, msg_id, escape_markdown("⏳ در حال جستجو..."))
 
     user_uuids = db.uuids(target_user_id)
     if not user_uuids:
@@ -681,3 +681,36 @@ def handle_select_panel_for_edit(call, params):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"admin:edt:{identifier}{context_suffix}"))
     
     _safe_edit(call.from_user.id, call.message.message_id, escape_markdown(prompt), reply_markup=kb)
+
+def handle_purge_user_convo(call, params):
+    uid, msg_id = call.from_user.id, call.message.message_id
+    prompt = escape_markdown("⚠️ توجه: این عمل کاربر را به طور کامل از دیتابیس ربات حذف می‌کند و غیرقابل بازگشت است.\n\nلطفاً شناسه عددی (ID) کاربر تلگرام برای پاکسازی کامل را وارد کنید:")
+
+    admin_conversations[uid] = {'action_type': 'purge_user', 'msg_id': msg_id}
+
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:search_menu"))
+    bot.register_next_step_handler_by_chat_id(uid, _confirm_and_purge_user)
+
+def _confirm_and_purge_user(message: types.Message):
+    admin_id, text = message.from_user.id, message.text.strip()
+    bot.delete_message(admin_id, message.message_id)
+
+    if admin_id not in admin_conversations: return
+
+    convo = admin_conversations.pop(admin_id, {})
+    msg_id = convo['msg_id']
+
+    try:
+        target_user_id = int(text)
+    except ValueError:
+        _safe_edit(admin_id, msg_id, escape_markdown("❌ شناسه وارد شده نامعتبر است. عملیات لغو شد."), reply_markup=menu.admin_search_menu())
+        return
+
+    _safe_edit(admin_id, msg_id, "⏳ در حال پاکسازی کامل کاربر...")
+
+    if db.purge_user_by_telegram_id(target_user_id):
+        success_msg = f"✅ کاربر با شناسه {target_user_id} به طور کامل از دیتابیس ربات پاکسازی شد. اکنون می‌تواند دوباره ثبت نام کند."
+        _safe_edit(admin_id, msg_id, escape_markdown(success_msg), reply_markup=menu.admin_search_menu())
+    else:
+        error_msg = f"❌ کاربری با شناسه {target_user_id} در جدول اصلی کاربران یافت نشد."
+        _safe_edit(admin_id, msg_id, escape_markdown(error_msg), reply_markup=menu.admin_search_menu())

@@ -152,6 +152,12 @@
   "msg_coming_soon_alert": "This feature will be added soon. Thank you for your patience.",
   "btn_blubank": "💳 BluBank",
   "msg_account_details_title": "{bank_name} Account Number",
-  "msg_account_details_body": "Click on the number below to copy it automatically."
+  "msg_account_details_body": "Click on the number below to copy it automatically.",
+  "btn_usage_history": "Usage History",
+  "usage_history_title": "📊 Last 7 Days Usage History for {name}",
+  "usage_history_no_data": "No usage has been recorded for this account in the last 7 days.",
+  "btn_web_login": "Login to Web Panel"
+
+
 
 }

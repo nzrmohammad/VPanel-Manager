@@ -8,6 +8,7 @@ from bot.combined_handler import get_all_users_combined, get_combined_user_info
 from bot.utils import to_shamsi, format_relative_time, format_usage, days_until_next_birthday
 import logging
 from bot.config import DAILY_REPORT_TIME, USAGE_WARNING_CHECK_HOURS
+from html import unescape
 
 logger = logging.getLogger(__name__)
 
@@ -155,17 +156,22 @@ def get_dashboard_data():
         usage_chart_data = {"labels": [], "data": []}
     
     top_consumers_chart_data = {
-        # ✅ نام کاربران اینجا هم امن‌سازی می‌شود
         "labels": [escape(user['name']) for user in top_consumers_today],
         "data": [round(user.get('daily_usage_gb', 0), 2) for user in top_consumers_today]
     }
+
+    users_with_birthdays = db.get_users_with_birthdays()
+    for user in users_with_birthdays:
+        user['name'] = escape(user.get('first_name', 'کاربر'))
+        user['days_to_birthday'] = days_until_next_birthday(user.get('birthday'))
 
     return {
         "stats": stats, "new_users_last_24h": new_users_last_24h, "expiring_soon_users": expiring_soon_users, 
         "top_consumers_today": top_consumers_today, "online_users_hiddify": online_users_hiddify, 
         "online_users_marzban": online_users_marzban, "panel_distribution_data": panel_distribution_data,
         "system_health": system_health, "usage_chart_data": usage_chart_data,
-        "top_consumers_chart_data": top_consumers_chart_data
+        "top_consumers_chart_data": top_consumers_chart_data,
+        "users_with_birthdays": users_with_birthdays
     }
 
 # ===================================================================
@@ -302,9 +308,7 @@ def get_paginated_users(args: dict):
         } for u in db_user_details_list if u.get('uuid')
     }
 
-    # ۳. غنی‌سازی و امن‌سازی داده‌های کاربران
     for user in all_users_data:
-        # ✅ امن‌سازی نام کاربر در همان ابتدا
         user['name'] = escape(user.get('name', ''))
 
         user['payment_count'] = payment_counts.get(user.get('name'), 0)
@@ -317,15 +321,22 @@ def get_paginated_users(args: dict):
             daily_usage = db.get_usage_since_midnight_by_uuid(user_uuid)
             if user.get('on_hiddify'):
                 h_info = user.setdefault('breakdown', {}).setdefault('hiddify', {})
-                h_info['daily_usage_formatted'] = format_usage(daily_usage.get('hiddify', 0))
+                h_daily_raw = daily_usage.get('hiddify', 0)
+                h_info['daily_usage'] = h_daily_raw
+                h_info['daily_usage_formatted'] = format_usage(h_daily_raw)
                 h_info['last_online_shamsi'] = to_shamsi(h_info.get('last_online'), include_time=True)
 
             if user.get('on_marzban'):
                 m_info = user.setdefault('breakdown', {}).setdefault('marzban', {})
-                m_info['daily_usage_formatted'] = format_usage(daily_usage.get('marzban', 0))
+                m_daily_raw = daily_usage.get('marzban', 0)
+                m_info['daily_usage'] = m_daily_raw
+                m_info['daily_usage_formatted'] = format_usage(m_daily_raw)
                 m_info['last_online_shamsi'] = to_shamsi(m_info.get('last_online'), include_time=True)
         else:
             user.update({'is_vip': False, 'has_access_de': False, 'has_access_fr': False})
+
+        if user.get('expire') is not None and user.get('expire') < 0:
+            user['is_active'] = False
 
         if user.get('expire') is not None and user.get('expire') >= 0:
             user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=user.get('expire')))
@@ -452,8 +463,11 @@ def add_templates_from_text(raw_text: str):
         logger.warning("add_templates_from_text called with empty input text.")
         raise ValueError('کادر ورود کانفیگ‌ها نمی‌تواند خالی باشد.')
 
-    # ✅ امن‌سازی: هر خط از ورودی کاربر قبل از پردازش escape می‌شود.
-    config_list = [escape(line.strip()) for line in raw_text.splitlines() if line.strip().startswith(VALID_PROTOCOLS)]
+    config_list = [
+        unescape(line).strip() 
+        for line in raw_text.splitlines() 
+        if line.strip().startswith(VALID_PROTOCOLS)
+    ]
     
     if not config_list:
         logger.warning("No valid configs found in the provided text.")

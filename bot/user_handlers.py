@@ -4,12 +4,12 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import io
 import qrcode
 import jdatetime
-from .config import ADMIN_IDS, EMOJIS, ADMIN_SUPPORT_CONTACT
+from .config import ADMIN_IDS, EMOJIS, ADMIN_SUPPORT_CONTACT, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT
 from .database import db
 from . import combined_handler
 from .menu import menu
 from .utils import validate_uuid, escape_markdown, _safe_edit
-from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info
+from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history
 from .utils import load_service_plans
 from .language import get_string
 
@@ -53,7 +53,8 @@ def handle_user_callbacks(call: types.CallbackQuery):
         "view_plans": _show_plan_categories,
         "change_language": _handle_change_language_request,
         "show_payment_options": _show_payment_options_menu,
-        "coming_soon": _handle_coming_soon
+        "coming_soon": _handle_coming_soon,
+        "web_login": _handle_web_login_request
     }
     
     handler = USER_CALLBACK_MAP.get(data)
@@ -190,27 +191,40 @@ def handle_user_callbacks(call: types.CallbackQuery):
     elif data.startswith("show_plans:"):
         _show_filtered_plans(call)
 
+    elif data == "show_card_details":
+        if not (CARD_PAYMENT_INFO and CARD_PAYMENT_INFO.get("card_number")):
+            return # اگر اطلاعاتی وجود نداشت، کاری نکن
 
-    elif data.startswith("show_account_details:"):
-        bank_name_code = data.split(":")[1]
-        if bank_name_code == "blubank":
-            account_number = "1234"
-            
+        title = get_string("payment_card_details_title", lang_code)
+        holder_label = get_string("payment_card_holder", lang_code)
+        number_label = get_string("payment_card_number", lang_code)
+        instructions = get_string("payment_card_instructions", lang_code)
+        
+        holder_name = escape_markdown(CARD_PAYMENT_INFO.get("card_holder", ""))
+        card_number = escape_markdown(CARD_PAYMENT_INFO.get("card_number", ""))
 
-            bank_display_name = get_string('btn_blubank', lang_code).replace("💳 ", "").strip()
-            
-            title_template = get_string("msg_account_details_title", lang_code)
-            title = title_template.format(bank_name=bank_display_name)
-            body = get_string("msg_account_details_body", lang_code)
+        text = (
+            f"*{escape_markdown(title)}*\n\n"
+            f"*{escape_markdown(holder_label)}* `{holder_name}`\n\n"
+            f"*{escape_markdown(number_label)}*\n`{card_number}`\n\n"
+            f"{escape_markdown(instructions)}"
+        )
 
-            text = (
-                f"*{escape_markdown(title)}*\n\n"
-                f"{escape_markdown(body)}\\.\n\n"
-                f"`{escape_markdown(account_number)}`"
-            )
-
-            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="show_payment_options"))
-            _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        support_url = f"https://t.me/{ADMIN_SUPPORT_CONTACT.replace('@', '')}"
+        kb.add(types.InlineKeyboardButton(f"💬 {get_string('btn_contact_support', lang_code)}", url=support_url))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="show_payment_options"))
+        
+        _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
+    
+    elif data.startswith("usage_history_"):
+        uuid_id = int(data.split("_")[2])
+        row = db.uuid_by_id(uid, uuid_id)
+        if row:
+            history = db.get_user_daily_usage_history(uuid_id)
+            text = fmt_user_usage_history(history, row.get('name', 'اکانت'), lang_code)
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data=f"acc_{uuid_id}"))
+            _safe_edit(uid, msg_id, text, reply_markup=kb)
 
 
 # =============================================================================
@@ -411,6 +425,29 @@ def _handle_coming_soon(call: types.CallbackQuery):
     # نمایش پیغام به صورت پاپآپ (Alert)
     bot.answer_callback_query(call.id, text=alert_text, show_alert=True)
 
+def _handle_web_login_request(call: types.CallbackQuery):
+    uid = call.from_user.id
+    user_uuids = db.uuids(uid)
+    if not user_uuids:
+        bot.answer_callback_query(call.id, "ابتدا باید یک اکانت ثبت کنید.", show_alert=True)
+        return
+
+    # از اولین UUID کاربر برای ورود استفاده می‌کنیم
+    user_uuid = user_uuids[0]['uuid']
+    token = db.create_login_token(user_uuid)
+    
+    # آدرس اصلی پنل وب خود را اینجا وارد کنید
+    # اگر برنامه شما روی دامنه دیگری است، آن را جایگزین کنید
+    base_url = "https://panel.cloudvibe.ir" # <--- !!! این آدرس را حتماً تغییر دهید
+    
+    login_url = f"{base_url}/login/token/{token}"
+
+    text = "✅ لینک ورود یکبار مصرف شما ایجاد شد.\n\nاین لینک به مدت ۵ دقیقه معتبر است و پس از یکبار استفاده منقضی می‌شود."
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("ورود به پنل کاربری", url=login_url))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    
+    _safe_edit(uid, call.message.message_id, text, reply_markup=kb, parse_mode=None)
 
 # =============================================================================
 # Main Registration Function

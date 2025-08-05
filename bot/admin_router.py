@@ -87,6 +87,7 @@ def _handle_reload_maps(call, params):
 ADMIN_CALLBACK_HANDLERS = {
     # Menus
     "panel": _handle_show_panel,
+    "quick_dashboard": reporting.handle_quick_dashboard,
     "management_menu": _handle_management_menu,
     "manage_panel": _handle_panel_management_menu,
     "select_server": _handle_server_selection,
@@ -118,6 +119,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "del_a": user_management.handle_delete_user_action,
     "note": user_management.handle_ask_for_note,
     "search_by_tid": user_management.handle_search_by_telegram_id_convo,
+    "purge_user": user_management.handle_purge_user_convo,
     
     # Reporting & Analytics
     "health_check": reporting.handle_health_check,

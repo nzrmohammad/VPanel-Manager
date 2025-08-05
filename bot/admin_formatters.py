@@ -554,3 +554,26 @@ def fmt_payments_report_list(payments: list, page: int) -> str:
         lines.append(line)
 
     return "\n".join(lines)
+
+def fmt_admin_quick_dashboard(stats: dict) -> str:
+    """داده‌های داشبورد را به یک پیام متنی خوانا برای تلگرام تبدیل می‌کند."""
+    
+    total_users = stats.get('total_users', 0)
+    active_users = stats.get('active_users', 0)
+    online_users = stats.get('online_users', 0)
+    expiring_soon = stats.get('expiring_soon_count', 0)
+    new_users = stats.get('new_users_last_24h_count', 0)
+    total_usage = escape_markdown(stats.get('total_usage_today', '0 GB'))
+
+    lines = [
+        f"👑 *داشبورد سریع ربات*",
+        "`──────────────────`",
+        f"👥 *کل کاربران:* {total_users}",
+        f"✅ *کاربران فعال:* {active_users}",
+        f"📡 *کاربران آنلاین \\(۳ دقیقه\\):* {online_users}",
+        f"⚠️ *در آستانه انقضا \\(۷ روز\\):* {expiring_soon}",
+        f"➕ *کاربران جدید \\(۲۴ ساعت\\):* {new_users}",
+        f"⚡️ *مجموع مصرف امروز:* {total_usage}"
+    ]
+    
+    return "\n".join(lines)

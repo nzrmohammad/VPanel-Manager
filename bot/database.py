@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 import logging
 import pytz
+import uuid as uuid_generator
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,11 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS marzban_mapping (
                     hiddify_uuid TEXT PRIMARY KEY,
                     marzban_username TEXT NOT NULL UNIQUE
+                );
+                CREATE TABLE IF NOT EXISTS login_tokens (
+                    token TEXT PRIMARY KEY,
+                    uuid TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
@@ -956,5 +963,64 @@ class DatabaseManager:
         with self._conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
+        
+    def purge_user_by_telegram_id(self, user_id: int) -> bool:
+        """
+        یک کاربر را به طور کامل از جدول users بر اساس شناسه تلگرام حذف می‌کند.
+        به دلیل وجود ON DELETE CASCADE، تمام رکوردهای مرتبط نیز حذف خواهند شد.
+        """
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            return cursor.rowcount > 0
+
+    def get_user_daily_usage_history(self, uuid_id: int, days: int = 7) -> list:
+        """تاریخچه مصرف روزانه یک کاربر را برای تعداد روز مشخص شده برمی‌گرداند."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        history = []
+        with self._conn() as c:
+            for i in range(days):
+                target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
+                day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+                day_end_utc = day_start_utc + timedelta(days=1)
+                
+                query = """
+                    SELECT
+                        (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
+                        (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as m_usage
+                    FROM usage_snapshots
+                    WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
+                """
+                row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
+                
+                h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
+                m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
+                
+                history.append({
+                    "date": target_date,
+                    "total_usage": h_usage + m_usage
+                })
+        return history
+
+    def create_login_token(self, user_uuid: str) -> str:
+        """یک توکن یکبار مصرف برای ورود به پنل وب ایجاد می‌کند."""
+        token = secrets.token_urlsafe(32)
+        with self._conn() as c:
+            c.execute("INSERT INTO login_tokens (token, uuid) VALUES (?, ?)", (token, user_uuid))
+        return token
+
+    def validate_login_token(self, token: str) -> Optional[str]:
+        """یک توکن را اعتبارسنجی کرده و در صورت اعتبار، UUID کاربر را برمی‌گرداند."""
+        five_minutes_ago = datetime.now(pytz.utc) - timedelta(minutes=5)
+        with self._conn() as c:
+            # ابتدا توکن‌های منقضی شده را حذف می‌کنیم
+            c.execute("DELETE FROM login_tokens WHERE created_at < ?", (five_minutes_ago,))
+            
+            # سپس توکن معتبر را پیدا می‌کنیم
+            row = c.execute("SELECT uuid FROM login_tokens WHERE token = ?", (token,)).fetchone()
+            if row:
+                # توکن پس از یکبار استفاده باید حذف شود
+                c.execute("DELETE FROM login_tokens WHERE token = ?", (token,))
+                return row['uuid']
+        return None
 
 db = DatabaseManager()

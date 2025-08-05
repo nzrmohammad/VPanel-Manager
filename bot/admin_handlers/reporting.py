@@ -11,7 +11,7 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_hiddify_panel_info, fmt_marzban_system_stats, fmt_users_by_plan_list,
-    fmt_payments_report_list
+    fmt_payments_report_list, fmt_admin_quick_dashboard
 )
 from ..utils import _safe_edit, load_service_plans, parse_volume_string, escape_markdown
 
@@ -195,3 +195,49 @@ def handle_list_users_no_plan(call, params):
     lang_code = call.from_user.language_code
     kb = menu.create_pagination_menu(base_cb, page, len(users_without_plan), back_cb, lang_code)
     _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+
+def handle_quick_dashboard(call, params):
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال محاسبه آمار داشبورد، لطفاً صبر کنید..."))
+
+
+    try:
+        all_users_data = combined_handler.get_all_users_combined()
+        
+        stats = {
+            "total_users": len(all_users_data), "active_users": 0, "online_users": 0,
+            "expiring_soon_count": 0, "total_usage_today_gb": 0, "new_users_last_24h_count": 0
+        }
+        now_utc = datetime.now(pytz.utc)
+        db_users_map = {u['uuid']: u for u in db.get_all_user_uuids()}
+
+        for user in all_users_data:
+            daily_usage = db.get_usage_since_midnight_by_uuid(user.get('uuid', ''))
+            stats['total_usage_today_gb'] += sum(daily_usage.values())
+            if user.get('is_active'):
+                stats['active_users'] += 1
+            
+            last_online = user.get('last_online')
+            if last_online and (now_utc - last_online.astimezone(pytz.utc)).total_seconds() < 180:
+                stats['online_users'] += 1
+
+            expire_days = user.get('expire')
+            if expire_days is not None and 0 <= expire_days <= 7:
+                stats['expiring_soon_count'] += 1
+
+            db_user = db_users_map.get(user.get('uuid'))
+            if db_user and db_user.get('created_at'):
+                created_at_dt = db_user['created_at']
+                if (now_utc - created_at_dt.astimezone(pytz.utc)).days < 1:
+                    stats['new_users_last_24h_count'] += 1
+        
+        stats['total_usage_today'] = f"{stats['total_usage_today_gb']:.2f} GB"
+        
+        text = fmt_admin_quick_dashboard(stats)
+        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin:quick_dashboard"), types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel"))
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"Failed to generate quick dashboard: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, "❌ خطا در تولید داشبورد", reply_markup=menu.admin_panel())

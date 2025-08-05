@@ -4,6 +4,7 @@ import os
 from bot.utils import to_shamsi
 from dotenv import load_dotenv
 from flask_wtf.csrf import CSRFProtect
+import urllib.parse
 
 load_dotenv()
 
@@ -25,6 +26,8 @@ def create_app():
 
 
     app.jinja_env.filters['to_shamsi'] = to_shamsi
+    app.jinja_env.filters['url_decode'] = lambda s: urllib.parse.unquote(s)
+
 
 
     logging.info("Flask app created and blueprints registered successfully.")

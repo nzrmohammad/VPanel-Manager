@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const dailyFR = user.breakdown?.marzban?.daily_usage_formatted || '0 GB';
             let panelIcons = (user.on_hiddify ? '🇩🇪 ' : '') + (user.on_marzban ? '🇫🇷' : '');
             const statusEmoji = user.is_active ? '🟢' : '🔴';
-            
+
             const actions = `
                 <button class="action-btn vip-btn ${user.is_vip ? 'active' : ''}" title="تغییر وضعیت VIP"><i class="ri-vip-crown-line"></i></button>
                 <button class="action-btn add-payment-btn" title="ثبت رکورد پرداخت"><i class="ri-money-dollar-circle-line"></i></button>
@@ -228,8 +228,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <a href="/user/${user.uuid}" target="_blank" class="action-btn" title="مشاهده پنل کاربر"><i class="ri-external-link-line"></i></a>
             `;
             
-            const expiryText = user.expire_shamsi ? `${user.expire_shamsi} <small class='text-secondary'>(${user.expire} روز)</small>` : 'نامحدود';
-            const row = document.createElement('tr');
+            let expiryText;
+            if (user.expire < 0) {
+                expiryText = "<span class='text-danger'>منقضی شده</span>";
+            } else if (user.expire_shamsi) {
+                expiryText = `${user.expire_shamsi} <small class='text-secondary'>(${user.expire} روز)</small>`;
+            } else {
+                expiryText = 'نامحدود';
+            }            const row = document.createElement('tr');
             row.dataset.uuid = user.uuid;
             
             row.innerHTML = `
@@ -306,55 +312,66 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationContainer.appendChild(createBtn(current + 1, 'بعدی', current === total));
     }
     
-    function populateDetailsModal(user) {
-        // This function does not modify data, so it does not need changes.
-        // It's left here for completeness.
-        const modal = getModal('user-details-modal');
-        const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
-        let hiddifyHtml = '', marzbanHtml = '';
-        if (user.on_hiddify) {
-            const h = user.breakdown.hiddify;
-            hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
-                <div class="panel-details-grid">
-                    <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${h.current_usage_GB.toFixed(2)} / ${h.usage_limit_GB.toFixed(2)} GB</span></div>
-                    <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted}</span></div>
-                    <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
-                </div>
-            </div>`;
-        }
-        if (user.on_marzban) {
-            const m = user.breakdown.marzban;
-            marzbanHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل فرانسه 🇫🇷</h5>
-                 <div class="panel-details-grid">
-                    <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${m.current_usage_GB.toFixed(2)} / ${m.usage_limit_GB.toFixed(2)} GB</span></div>
-                    <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted}</span></div>
-                    <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
-                </div>
-            </div>`;
-        }
-        const totalDaily = (user.breakdown?.hiddify?.daily_usage || 0) + (user.breakdown?.marzban?.daily_usage || 0);
-        const formattedTotalDaily = totalDaily < 1 ? `${(totalDaily * 1024).toFixed(0)} MB` : `${totalDaily.toFixed(2)} GB`;
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header"><h4><i class="ri-information-line"></i>${user.name} <small class='text-secondary'>(${statusText} ${statusIcon})</small></h4><button class="close-btn">&times;</button></div>
-                <div class="modal-body" style="background-color:var(--bg-color)">
-                    <div class="details-card">
-                        <h5><i class="ri-dashboard-line"></i> خلاصه وضعیت</h5>
-                        <div class="panel-details-grid">
-                            <div class="detail-item"><span class="label"><i class="ri-hard-drive-2-line"></i>مجموع مصرف:</span><span class="value">${user.current_usage_GB.toFixed(2)} GB</span></div>
-                            <div class="detail-item"><span class="label"><i class="ri-bar-chart-box-line"></i>مجموع حجم:</span><span class="value">${user.usage_limit_GB.toFixed(2)} GB</span></div>
-                            <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف کل امروز:</span><span class="value">${formattedTotalDaily}</span></div>
-                            <div class="detail-item"><span class="label"><i class="ri-calendar-todo-line"></i>اعتبار باقیمانده:</span><span class="value">${user.expire_shamsi} (${user.expire} روز)</span></div>
-                        </div>
-                    </div>
-                    ${hiddifyHtml}
-                    ${marzbanHtml}
-                    <div class="uuid-text-details">${user.uuid}</div>
-                </div>
-            </div>`;
-        modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
-        showModal(modal);
+function populateDetailsModal(user) {
+    const modal = getModal('user-details-modal');
+    const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
+    let hiddifyHtml = '', marzbanHtml = '';
+
+    const h = user.breakdown?.hiddify || {};
+    const m = user.breakdown?.marzban || {};
+
+    if (user.on_hiddify) {
+        hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
+            <div class="panel-details-grid">
+                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${(h.current_usage_GB || 0).toFixed(2)} / ${(h.usage_limit_GB || 0).toFixed(2)} GB</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted || 'N/A'}</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
+            </div>
+        </div>`;
     }
+    if (user.on_marzban) {
+        marzbanHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل فرانسه 🇫🇷</h5>
+             <div class="panel-details-grid">
+                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${(m.current_usage_GB || 0).toFixed(2)} / ${(m.usage_limit_GB || 0).toFixed(2)} GB</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted || 'N/A'}</span></div>
+                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
+            </div>
+        </div>`;
+    }
+    
+    const totalDaily = (h.daily_usage || 0) + (m.daily_usage || 0);
+    const formattedTotalDaily = totalDaily < 1 ? `${(totalDaily * 1024).toFixed(0)} MB` : `${totalDaily.toFixed(2)} GB`;
+    
+    let finalExpiryText;
+    if (user.expire < 0) {
+        finalExpiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
+    } else if (user.expire_shamsi) {
+        finalExpiryText = `${user.expire_shamsi} (${user.expire} روز)`;
+    } else {
+        finalExpiryText = 'نامحدود';
+    }
+
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header"><h4><i class="ri-information-line"></i>${user.name} <small class='text-secondary'>(${statusText} ${statusIcon})</small></h4><button class="close-btn">&times;</button></div>
+            <div class="modal-body" style="background-color:var(--bg-color)">
+                <div class="details-card">
+                    <h5><i class="ri-dashboard-line"></i> خلاصه وضعیت</h5>
+                    <div class="panel-details-grid">
+                        <div class="detail-item"><span class="label"><i class="ri-hard-drive-2-line"></i>مجموع مصرف:</span><span class="value">${(user.current_usage_GB || 0).toFixed(2)} GB</span></div>
+                        <div class="detail-item"><span class="label"><i class="ri-bar-chart-box-line"></i>مجموع حجم:</span><span class="value">${(user.usage_limit_GB || 0).toFixed(2)} GB</span></div>
+                        <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف کل امروز:</span><span class="value">${formattedTotalDaily}</span></div>
+                        <div class="detail-item"><span class="label"><i class="ri-calendar-todo-line"></i>اعتبار باقیمانده:</span><span class="value">${finalExpiryText}</span></div>
+                    </div>
+                </div>
+                ${hiddifyHtml}
+                ${marzbanHtml}
+                <div class="uuid-text-details">${user.uuid || 'N/A'}</div>
+            </div>
+        </div>`;
+    modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
+    showModal(modal);
+}
 
     function openAddUserModal() {
         const modal = getModal('add-user-modal');
@@ -363,8 +380,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <form id="add-user-form">
                     <div class="modal-header"><h4><i class="ri-user-add-line"></i> افزودن کاربر جدید</h4><button type="button" class="close-btn">&times;</button></div>
                     <div class="modal-tabs" style="padding: 0 1.5rem; background-color: var(--card-bg);">
-                        <button type="button" class="modal-tab-btn active" data-tab="hiddify">پنل آلمان 🇩🇪</button>
-                        <button type="button" class="modal-tab-btn" data-tab="marzban">پنل فرانسه 🇫🇷</button>
+                        <button type="button" class="modal-tab-btn active" data-tab="hiddify-tab">پنل آلمان 🇩🇪</button>
+                        <button type="button" class="modal-tab-btn" data-tab="marzban-tab">پنل فرانسه 🇫🇷</button>
                     </div>
                     <div class="modal-body" style="background-color:var(--bg-color)">
                         <div id="hiddify-tab" class="tab-content active"><div class="form-grid">
@@ -394,8 +411,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const modal = getModal('edit-user-modal');
         const h = user.breakdown.hiddify || {};
         const m = user.breakdown.marzban || {};
-        let hiddifyTab = user.on_hiddify ? `<button type="button" class="modal-tab-btn active" data-tab="hiddify-edit">پنل آلمان 🇩🇪</button>` : '';
-        let marzbanTab = user.on_marzban ? `<button type="button" class="modal-tab-btn ${!user.on_hiddify ? 'active' : ''}" data-tab="marzban-edit">پنل فرانسه 🇫🇷</button>` : '';
+        let hiddifyTab = user.on_hiddify ? `<button type="button" class="modal-tab-btn active" data-tab="hiddify-edit-tab">پنل آلمان 🇩🇪</button>` : '';
+        let marzbanTab = user.on_marzban ? `<button type="button" class="modal-tab-btn ${!user.on_hiddify ? 'active' : ''}" data-tab="marzban-edit-tab">پنل فرانسه 🇫🇷</button>` : '';
         let hiddifyContent = user.on_hiddify ? `
             <div id="hiddify-edit-tab" class="tab-content active"><div class="form-grid">
                 <div class="form-group"><label for="edit-h-name">نام کاربر</label><input type="text" id="edit-h-name" name="common_name" value="${user.name || ''}" required></div>
@@ -490,16 +507,18 @@ document.addEventListener('DOMContentLoaded', function() {
             tab.addEventListener('click', () => {
                 modal.querySelectorAll('.modal-tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
                 tab.classList.add('active');
-                const activeTabId = tab.dataset.tab.replace('-edit', '-tab');
+                
+                const activeTabId = tab.dataset.tab; 
                 const activeContent = modal.querySelector(`#${activeTabId}`);
+
                 if (activeContent) activeContent.classList.add('active');
                 
                 modal.querySelectorAll('.tab-content').forEach(content => {
                     const isContentActive = content.classList.contains('active');
                     content.querySelectorAll('input, select').forEach(input => {
-                         if (!input.readOnly && !input.disabled) {
+                        if (!input.readOnly && !input.disabled) {
                             input.required = isContentActive;
-                         }
+                        }
                     });
                 });
             });
@@ -509,7 +528,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const form = modal.querySelector(`#${formId}`);
         if(form) form.addEventListener('submit', submitHandler);
     }
-
     async function handleAddUserSubmit(e) {
         e.preventDefault();
         const form = e.target, feedbackEl = form.querySelector('#form-feedback'), submitBtn = form.querySelector('#submit-add-user-btn');

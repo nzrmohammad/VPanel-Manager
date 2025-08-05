@@ -1,5 +1,5 @@
 from telebot import types
-from .config import EMOJIS, PAGE_SIZE
+from .config import EMOJIS, PAGE_SIZE, CARD_PAYMENT_INFO, ONLINE_PAYMENT_LINK
 from .language import get_string
 from typing import Optional
 
@@ -18,9 +18,11 @@ class Menu:
         btn_settings = types.InlineKeyboardButton(f"{EMOJIS['bell']} {get_string('settings', lang_code)}", callback_data="settings")
         btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
+        btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_settings, btn_services)
         kb.add(btn_birthday, btn_support)
+        kb.add(btn_web_login)
 
         if is_admin:
             kb.add(types.InlineKeyboardButton(f"{EMOJIS['crown']} پنل مدیریت", callback_data="admin:panel"))
@@ -33,12 +35,12 @@ class Menu:
             usage_percentage = r.get('usage_percentage', 0)
             expire_days = r.get('expire')
 
-            usage_str = get_string('usage_summary', lang_code).format(usage_percentage=usage_percentage)
+            usage_str = f"{usage_percentage:.0f}%"
             
             summary = usage_str
             if expire_days is not None:
-                expire_str = get_string('expire_summary', lang_code).format(expire_days=expire_days)
-                summary += f" / {expire_str}"
+                expire_str = f"{expire_days} days"
+                summary += f" - {expire_str}"
 
             button_text = f"📊 {name} ({summary})"
             kb.add(types.InlineKeyboardButton(button_text, callback_data=f"acc_{r['id']}"))
@@ -57,6 +59,7 @@ class Menu:
             types.InlineKeyboardButton(f"💳 {get_string('btn_payment_history', lang_code)}", callback_data=f"payment_history_{uuid_id}_0"),
             types.InlineKeyboardButton(f"🗑 {get_string('btn_delete', lang_code)}", callback_data=f"del_{uuid_id}")
         )
+        kb.add(types.InlineKeyboardButton(f"📈 {get_string('btn_usage_history', lang_code)}", callback_data=f"usage_history_{uuid_id}"))
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('btn_back_to_list', lang_code)}", callback_data="manage"))
         return kb
 
@@ -108,13 +111,22 @@ class Menu:
     def payment_options_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         
-        btn_blubank = types.InlineKeyboardButton(get_string('btn_blubank', lang_code), callback_data="show_account_details:blubank")
-        btn_ton = types.InlineKeyboardButton(get_string('btn_ton', lang_code), callback_data="coming_soon")
-        btn_eth = types.InlineKeyboardButton(get_string('btn_eth', lang_code), callback_data="coming_soon")
-        btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans")
+        # دکمه پرداخت آنلاین (فقط اگر لینکی تعریف شده باشد)
+        if ONLINE_PAYMENT_LINK:
+            btn_online = types.InlineKeyboardButton("💳 پرداخت آنلاین (درگاه)", url=ONLINE_PAYMENT_LINK)
+            kb.add(btn_online)
         
-        kb.add(btn_blubank) 
-        kb.add(btn_ton, btn_eth)
+        # دکمه کارت به کارت (فقط اگر اطلاعات کارت تعریف شده باشد)
+        if CARD_PAYMENT_INFO and CARD_PAYMENT_INFO.get("card_number"):
+            bank_name = CARD_PAYMENT_INFO.get("bank_name", "کارت به کارت")
+            btn_card = types.InlineKeyboardButton(f"📄 {bank_name}", callback_data="show_card_details")
+            kb.add(btn_card)
+
+        # دکمه‌های پرداخت کریپتو (بدون تغییر)
+        btn_crypto = types.InlineKeyboardButton(get_string('btn_crypto_payment', lang_code), callback_data="coming_soon")
+        kb.add(btn_crypto)
+        
+        btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans")
         kb.add(btn_back)
         return kb
 
@@ -145,7 +157,8 @@ class Menu:
     # =============================================================================
     def admin_panel(self):
         kb = types.InlineKeyboardMarkup(row_width=2)
-        
+
+        btn_dashboard = types.InlineKeyboardButton("📊 داشبورد سریع", callback_data="admin:quick_dashboard")
         btn1 = types.InlineKeyboardButton("👥 مدیریت کاربران", callback_data="admin:management_menu")
         btn2 = types.InlineKeyboardButton("🔎 جستجوی کاربر", callback_data="admin:search_menu")
         btn3 = types.InlineKeyboardButton("⚙️ دستورات گروهی", callback_data="admin:group_actions_menu")
@@ -155,6 +168,7 @@ class Menu:
         btn7 = types.InlineKeyboardButton("🖥️ وضعیت سیستم", callback_data="admin:system_status_menu")
         btn8 = types.InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back")
 
+        kb.add(btn_dashboard)
         kb.add(btn2,btn1)
         kb.add(btn4, btn3)
         kb.add(btn6, btn5)
@@ -411,7 +425,8 @@ class Menu:
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(
             types.InlineKeyboardButton("🔎 جست و جوی جامع کاربر", callback_data="admin:sg"),
-            types.InlineKeyboardButton("🆔 جست و جو با آیدی تلگرام", callback_data="admin:search_by_tid")
+            types.InlineKeyboardButton("🆔 جست و جو با آیدی تلگرام", callback_data="admin:search_by_tid"),
+            types.InlineKeyboardButton("🔥 پاکسازی کامل کاربر با آیدی", callback_data="admin:purge_user")
         )
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb

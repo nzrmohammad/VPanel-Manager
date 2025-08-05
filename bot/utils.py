@@ -262,7 +262,7 @@ def create_info_config(user_uuid: str) -> Optional[str]:
         usage = hiddify_info.get('current_usage_GB', 0)
         limit = hiddify_info.get('usage_limit_GB', 0)
         limit_str = f"{limit:.1f}" if limit > 0 else '∞'
-        parts.append(f"🇩🇪 {usage:.2f} / {limit_str} GB ")
+        parts.append(f"🇩🇪 {usage:.2f} / {limit_str} GB")
 
     marzban_info = info.get('breakdown', {}).get('marzban')
     if marzban_info:
@@ -270,18 +270,18 @@ def create_info_config(user_uuid: str) -> Optional[str]:
         limit = marzban_info.get('usage_limit_GB', 0)
         
         limit_str = f"{limit:.1f}" if limit > 0 else '∞'
-        parts.append(f" 🇫🇷 {usage:.2f} / {limit_str} GB ")
+        parts.append(f" 🇫🇷 {usage:.2f} / {limit_str} GB")
     
     days_left = info.get('expire')
     if parts and days_left is not None:
         days_left_str = str(days_left) if days_left >= 0 else 'پایان'
-        parts.append(f"  📅 {days_left_str}  ")
+        parts.append(f" 📅 {days_left_str} ")
 
     if not parts:
         return None 
         
     final_name_parts = " | ".join(parts)
-    config_name = f" {final_name_parts} "
+    config_name = f"{final_name_parts}"
     
     encoded_name = urllib.parse.quote(config_name)
     return f"vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?type=ws&path=/&security=tls#{encoded_name}"

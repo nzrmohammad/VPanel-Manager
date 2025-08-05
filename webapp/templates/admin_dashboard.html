@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %} داشبورد {% endblock %}
+
 {% block extra_css %}
 <style>
     .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; align-items: flex-start; }
@@ -30,7 +32,7 @@
         <a href="{{ url_for('admin.user_management_page', filter='expiring_soon') }}" class="info-card clickable"><div class="card-header"><i class="ri-alarm-warning-line icon"></i><span>در آستانه انقضا (۷ روز)</span></div><div class="card-content">{{ stats.expiring_soon_count | default('...') }}</div></a>
         <a href="{{ url_for('admin.user_management_page', filter='online') }}" class="info-card clickable"><div class="card-header"><i class="ri-wifi-line icon"></i><span>کاربران آنلاین (۳دقیقه)</span></div><div class="card-content">{{ stats.online_users | default('...') }}</div></a>
         <div class="info-card"><div class="card-header"><i class="ri-download-cloud-2-line icon"></i><span>مصرف کل امروز</span></div><div class="card-content">{{ stats.total_usage_today | default('...') }}</div></div>
-        <div class="info-card"><div class="card-header"><i class="ri-user-add-line icon"></i><span>کاربران جدید ۲۴ ساعت اخیر</span></div><div class="card-content">{{ stats.new_users_today | default('...') }}</div></div>
+        <div class="info-card"><div class="card-header"><i class="ri-user-add-line icon"></i><span>کاربران جدید ۲۴ ساعت اخیر</span></div><div class="card-content">{{ stats.new_users_last_24h_count | default('...') }}</div></div>
     </section>
     
     <div class="dashboard-grid">
@@ -98,22 +100,34 @@
             <div class="info-card">
                 <div class="card-header"><i class="ri-user-add-line icon"></i><span>کاربران جدید</span></div>
                 <ul class="user-list">
-                    {% for user in recent_users %}<li class="user-list-item"><span>{{ user.name }}</span><span class="date">{{ user.created_at.strftime('%Y/%m/%d') if user.created_at }}</span></li>{% else %}<li>کاربر جدیدی یافت نشد.</li>{% endfor %}
+                    {% for user in new_users_last_24h %}
+                        <li class="user-list-item">
+                            <span>{{ user.name }}</span>
+                            <span class="date">{{ user.created_at | to_shamsi(include_time=False) if user.created_at }}</span>
+                        </li>
+                    {% else %}
+                        <li>کاربر جدیدی یافت نشد.</li>
+                    {% endfor %}
                 </ul>
             </div>
             <div class="info-card">
-                <div class="card-header"><i class="ri-gift-line icon"></i><span>تولدهای نزدیک</span></div>
+                <div class="card-header"><i class="ri-gift-line icon"></i><span>تولدهای نزدیک (۷ روز آینده)</span></div>
                 <ul class="user-list">
-                  {% set upcoming_birthdays = users | selectattr('days_to_birthday', 'lt', 7) | list %}
-                  {% for user in upcoming_birthdays %}
+                {% set upcoming_birthdays = users_with_birthdays | selectattr('days_to_birthday', 'le', 7) | list %}
+                {% for user in upcoming_birthdays %}
                     <li class="user-list-item">
-                      <span>{{ user.name }}</span>
-                      <span class="date">{{ user.birth_date }}</span>
-                      <span class="days">({{ user.days_to_birthday }} روز دیگر)</span>
+                    <span>{{ user.name }}</span>
+                    <span class="days">
+                        {% if user.days_to_birthday == 0 %}
+                            <strong style="color: var(--success-color);">🎉 امروز!</strong>
+                        {% else %}
+                            {{ user.days_to_birthday }} روز دیگر
+                        {% endif %}
+                    </span>
                     </li>
-                  {% else %}
+                {% else %}
                     <li>کاربری با تولد نزدیک یافت نشد.</li>
-                  {% endfor %}
+                {% endfor %}
                 </ul>
             </div>
             <div class="info-card">

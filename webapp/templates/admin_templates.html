@@ -103,7 +103,7 @@
                                     
                                     {# نمایش کامل نام کانفیگ (هرچیزی بعد از #) #}
                                     {% if parts|length > 1 %}
-                                        <span class="config-name">#{{ parts[1] }}</span>
+                                        <span class="config-name">#{{ parts[1] | url_decode }}</span>
                                     {% endif %}
                                 </div>
                                 <span class="full-template-str" style="display: none;">{{ tpl.template_str }}</span>

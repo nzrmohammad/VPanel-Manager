@@ -35,6 +35,20 @@ def login():
     return render_template('login.html')
 
 
+@auth_bp.route('/login/token/<string:token>')
+def login_with_token(token):
+    session.clear()
+    user_uuid = db.validate_login_token(token)
+    
+    if user_uuid:
+        session['uuid'] = user_uuid
+        flash("شما با موفقیت وارد شدید.", "success")
+        return redirect(url_for('user.user_dashboard', uuid=user_uuid))
+    else:
+        flash("لینک ورود نامعتبر یا منقضی شده است. لطفاً دوباره تلاش کنید.", "error")
+        return redirect(url_for('auth.login'))
+
+
 @auth_bp.route('/logout')
 def logout():
     session.clear()

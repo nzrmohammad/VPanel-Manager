@@ -53,6 +53,15 @@ DAILY_USAGE_ALERT_THRESHOLD_GB = 5
 
 WELCOME_MESSAGE_DELAY_HOURS = 48
 
+# --- Payment Information ---
+# اطلاعات پرداخت کارت به کارت (در صورت خالی بودن، این گزینه نمایش داده نمی‌شود)
+CARD_PAYMENT_INFO = {
+    "bank_name": "بلوبانک",
+    "card_holder": "محمد جواد نظری",
+    "card_number": "1234-5678-1234-5678"
+}
+
+ONLINE_PAYMENT_LINK = ""
 
 # --- Emojis & Visuals ---
 EMOJIS = {
