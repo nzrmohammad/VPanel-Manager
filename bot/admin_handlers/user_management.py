@@ -706,7 +706,7 @@ def _confirm_and_purge_user(message: types.Message):
         _safe_edit(admin_id, msg_id, escape_markdown("❌ شناسه وارد شده نامعتبر است. عملیات لغو شد."), reply_markup=menu.admin_search_menu())
         return
 
-    _safe_edit(admin_id, msg_id, "⏳ در حال پاکسازی کامل کاربر...")
+    _safe_edit(admin_id, msg_id, escape_markdown("⏳ در حال پاکسازی کامل کاربر..."))
 
     if db.purge_user_by_telegram_id(target_user_id):
         success_msg = f"✅ کاربر با شناسه {target_user_id} به طور کامل از دیتابیس ربات پاکسازی شد. اکنون می‌تواند دوباره ثبت نام کند."
