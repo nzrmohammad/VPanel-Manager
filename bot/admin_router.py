@@ -1,7 +1,7 @@
 import logging
 from telebot import types, telebot
-from .bot_instance import bot, admin_conversations # << تغییر اصلی
-from .admin_handlers import user_management, reporting, broadcast, backup, group_actions 
+from .bot_instance import bot, admin_conversations
+from .admin_handlers import user_management, reporting, broadcast, backup, group_actions, plan_management
 from .admin_hiddify_handlers import _start_add_hiddify_user_convo, initialize_hiddify_handlers, handle_add_user_back_step
 from .admin_marzban_handlers import _start_add_marzban_user_convo, initialize_marzban_handlers
 from .marzban_api_handler import marzban_handler
@@ -19,6 +19,7 @@ def register_admin_handlers(bot):
     reporting.initialize_reporting_handlers(bot)
     broadcast.initialize_broadcast_handlers(bot, admin_conversations)
     backup.initialize_backup_handlers(bot)
+    plan_management.initialize_plan_management_handlers(bot, admin_conversations)
 
 # ===================================================================
 # Simple Menu Functions
@@ -98,6 +99,10 @@ ADMIN_CALLBACK_HANDLERS = {
     "user_analysis_menu": _handle_user_analysis_menu,
     "system_status_menu": _handle_system_status_menu,
     "ep": user_management.handle_select_panel_for_edit,
+    "plan_manage": plan_management.handle_plan_management_menu,
+    "plan_details": plan_management.handle_plan_details_menu,
+    "plan_delete_confirm": plan_management.handle_delete_plan_confirm,
+    "plan_delete_execute": plan_management.handle_delete_plan_execute,
 
     
     # User Actions

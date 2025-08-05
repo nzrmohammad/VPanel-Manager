@@ -343,3 +343,16 @@ def reset_all_templates():
     logger.info("Executing service to reset all config templates.")
     db.reset_templates_table()
     return True
+
+def save_service_plans(plans: list) -> bool:
+    """لیست پلن‌ها را در فایل plans.json ذخیره می‌کند."""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        json_path = os.path.join(script_dir, 'plans.json')
+        
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(plans, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception as e:
+        logger.error(f"CRITICAL ERROR: Failed to save 'plans.json'. Error: {e}")
+        return False

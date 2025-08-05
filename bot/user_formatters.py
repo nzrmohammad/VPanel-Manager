@@ -246,9 +246,8 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int, lang_cod
     total_payments = len(payments)
     title_action = get_string("fmt_payment_history_title_single" if total_payments == 1 else "fmt_payment_history_title_multi", lang_code)
     title_template = get_string("fmt_payment_history_header", lang_code)
-    title_str = title_template.format(action=title_action, user_name=escape_markdown(user_name))
-    
-    header_text = f"*{escape_markdown(title_str)}*"
+    title_str_raw = title_template.format(action=title_action, user_name=user_name)
+    header_text = f"*{escape_markdown(title_str_raw)}*"
 
     if not payments:
         no_info_text = escape_markdown(get_string('fmt_payment_history_no_info', lang_code))

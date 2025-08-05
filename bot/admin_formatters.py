@@ -310,17 +310,20 @@ def fmt_users_by_plan_list(users: list, plan_name: str, page: int) -> str:
 
     return "\n".join(user_lines)
 
+
 def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
-    title = f"سابقه پرداخت‌های کاربر: {escape_markdown(user_name)}"
+    title_raw = f"سابقه پرداخت‌های کاربر: {user_name}"
+    title = f"*{escape_markdown(title_raw)}*"
 
     if not payments:
-        return f"*{escape_markdown(title)}*\n\nهیچ پرداخت ثبت‌شده‌ای برای این کاربر یافت نشد."
+        no_payments_text = "هیچ پرداخت ثبت‌شده‌ای برای این کاربر یافت نشد."
+        return f"{title}\n\n{escape_markdown(no_payments_text)}"
 
-    header_text = f"*{title}*"
+    header_text = title
     if len(payments) > PAGE_SIZE:
         total_pages = (len(payments) + PAGE_SIZE - 1) // PAGE_SIZE
         pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
-        header_text += f"\n{pagination_text}"
+        header_text += f"\n{escape_markdown(pagination_text)}"
 
     lines = [header_text]
     paginated_payments = payments[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]

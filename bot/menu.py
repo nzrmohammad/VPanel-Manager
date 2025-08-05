@@ -167,12 +167,13 @@ class Menu:
         btn6 = types.InlineKeyboardButton("💾 پشتیبان‌گیری", callback_data="admin:backup_menu")
         btn7 = types.InlineKeyboardButton("🖥️ وضعیت سیستم", callback_data="admin:system_status_menu")
         btn8 = types.InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back")
+        btn9 = types.InlineKeyboardButton("🗂️ مدیریت پلن‌ها", callback_data="admin:plan_manage")
 
         kb.add(btn_dashboard)
         kb.add(btn2,btn1)
         kb.add(btn4, btn3)
         kb.add(btn6, btn5)
-        kb.add(btn7)
+        kb.add(btn7, btn9)
         kb.add(btn8)
 
         return kb
