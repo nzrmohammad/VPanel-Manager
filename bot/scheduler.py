@@ -146,7 +146,7 @@ class SchedulerManager:
                                     server_name = details['name']
                                     remaining_gb_escaped = escape_markdown(f"{remaining_gb:.2f}")
                                     msg = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\n"
-                                        f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{server_name}* رو به اتمام است.\n"
+                                        f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{server_name}* رو به اتمام است\\.\n"
                                         f"{list_bullet}حجم باقیمانده: *{remaining_gb_escaped} GB*")
                                     try:
                                         self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
@@ -163,9 +163,9 @@ class SchedulerManager:
                         if not db.has_recent_warning(uuid_id_in_db, warning_type, hours=24):
                             list_bullet = escape_markdown("- ")
                             alert_msg = (f"{EMOJIS['warning']} *هشدار مصرف غیرعادی روزانه*\n\n"
-                                        f"کاربر *{user_name}* (`{escape_markdown(uuid_str)}`) از حد مجاز مصرف روزانه عبور کرده است.\n\n"
-                                        f"{list_bullet}*میزان مصرف امروز:* `{escape_markdown(format_daily_usage(total_daily_usage))}`\n"
-                                        f"{list_bullet}*حد مجاز تعریف شده:* `{DAILY_USAGE_ALERT_THRESHOLD_GB} GB`")
+                            f"کاربر *{user_name}* \\(`{escape_markdown(uuid_str)}`\\) از حد مجاز مصرف روزانه عبور کرده است\\.\n\n"
+                            f"{list_bullet}*میزان مصرف امروز:* `{escape_markdown(format_daily_usage(total_daily_usage))}`\n"
+                            f"{list_bullet}*حد مجاز تعریف شده:* `{DAILY_USAGE_ALERT_THRESHOLD_GB} GB`")
                             for admin_id in ADMIN_IDS:
                                 try:
                                     self.bot.send_message(admin_id, alert_msg, parse_mode="MarkdownV2")
