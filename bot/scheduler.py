@@ -144,9 +144,10 @@ class SchedulerManager:
                                 if not db.has_recent_warning(uuid_id_in_db, warning_type):
                                     remaining_gb = max(0, limit - usage)
                                     server_name = details['name']
+                                    remaining_gb_escaped = escape_markdown(f"{remaining_gb:.2f}")
                                     msg = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\n"
                                         f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{server_name}* رو به اتمام است.\n"
-                                        f"{list_bullet}حجم باقیمانده: *{remaining_gb:.2f} GB*")
+                                        f"{list_bullet}حجم باقیمانده: *{remaining_gb_escaped} GB*")
                                     try:
                                         self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
                                         db.log_warning(uuid_id_in_db, warning_type)

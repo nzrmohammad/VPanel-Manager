@@ -117,7 +117,7 @@
 
     <div class="profile-form-container">
         <form method="POST" action="{{ url_for('user.user_profile_page', uuid=uuid) }}">
-            
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-card">
                 <div class="form-header">
                     <i class="ri-user-settings-line icon"></i>
