@@ -14,7 +14,7 @@
     .kpi-card .card-content .label { font-size: 0.9rem; color: var(--text-secondary); }
     .charts-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.5rem; }
     .chart-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 1.5rem; }
-    .chart-card h3 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.2rem; }
+    .chart-card h3, .chart-card h4 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.2rem; display: flex; align-items: center; gap: .5rem; }
     
     .grid-col-12, .grid-col-6 { grid-column: span 12; }
     @media (min-width: 992px) {
@@ -56,24 +56,18 @@
             <h3>🧑‍🤝‍🧑 مقایسه کاربران فعال روزانه</h3>
             <div id="active-users-panel-chart"></div>
         </div>
-        <div class="chart-card">
-        <div class="chart-header">
+        
+        <div class="chart-card grid-col-6">
             <h4><i class="ri-user-add-line"></i> روند رشد کاربران (۶ ماه اخیر)</h4>
+            <div id="new-users-chart"></div>
         </div>
-        <div id="new-users-chart"></div>
-        </div>
-
-        <div class="chart-card">
-            <div class="chart-header">
-                <h4><i class="ri-wallet-3-line"></i> روند پرداخت‌ها (۶ ماه اخیر)</h4>
-            </div>
+        <div class="chart-card grid-col-6">
+            <h4><i class="ri-wallet-3-line"></i> روند پرداخت‌ها (۶ ماه اخیر)</h4>
             <div id="revenue-chart"></div>
         </div>
 
-        <div class="chart-card large-card">
-            <div class="chart-header">
-                <h4><i class="ri-line-chart-line"></i> کاربران فعال روزانه (۳۰ روز اخیر)</h4>
-            </div>
+        <div class="chart-card grid-col-12">
+            <h4><i class="ri-line-chart-line"></i> کاربران فعال روزانه (۳۰ روز اخیر)</h4>
             <div id="daily-active-users-chart"></div>
         </div>
     </div>
@@ -82,14 +76,12 @@
 {% block extra_js %}
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    // یک متغیر برای هر نمونه نمودار تعریف می‌کنیم
     let usageComparisonChart, expirationChart, planDistChart, topConsumersChart, 
         activeUsersByPanelChart, newUsersChart, revenueChart, dailyActiveUsersChart;
 
     const renderOrUpdateCharts = () => {
         const isDark = document.body.classList.contains('dark-theme');
         
-        // تابع کمکی برای تولید تنظیمات پایه نمودارها بر اساس تم
         const getThemeOptions = (options = {}) => {
             const axisColor = isDark ? '#9ca3af' : '#6b7280';
             return {
@@ -103,11 +95,9 @@ document.addEventListener("DOMContentLoaded", function() {
             };
         };
 
-        // تابع کمکی برای ساخت یا آپدیت کردن یک نمودار
         const initOrUpdate = (chartInstance, selector, options) => {
             const container = document.querySelector(selector);
-            if (!container) return chartInstance; // اگر عنصر وجود نداشت، ادامه نده
-            
+            if (!container) return chartInstance;
             if (chartInstance) {
                 chartInstance.updateOptions(options);
             } else {
@@ -117,53 +107,52 @@ document.addEventListener("DOMContentLoaded", function() {
             return chartInstance;
         };
 
-        // ۱. نمودار توزیع پلن
         const planData = {{ analytics_data.plan_distribution_chart | tojson | safe }};
         const planOptions = { ...getThemeOptions({ chart: { type: 'donut', height: 350 } }), series: planData.series, labels: planData.labels, plotOptions: { pie: { donut: { labels: { show: true, total: { show: true, label: 'کل کاربران' } } } } }, dataLabels: { enabled: true, formatter: (val) => val.toFixed(1) + '%' }, legend: { position: 'bottom' }, tooltip: { y: { formatter: (val) => val + ' کاربر' } } };
         planDistChart = initOrUpdate(planDistChart, "#plan-dist-chart", planOptions);
 
-        // ۲. نمودار وضعیت انقضا
         const expData = {{ analytics_data.expiration_chart | tojson | safe }};
         const expOptions = { ...getThemeOptions({ chart: { type: 'bar', height: 350 } }), series: expData.series, plotOptions: { bar: { borderRadius: 4, horizontal: false, distributed: true } }, dataLabels: { enabled: false }, xaxis: { categories: expData.labels }, yaxis: { title: { text: 'تعداد کاربران' } }, legend: { show: false }, tooltip: { y: { formatter: (val) => val + ' کاربر' } } };
         expirationChart = initOrUpdate(expirationChart, "#expiration-chart", expOptions);
 
-        // ۳. نمودار کاربران پرمصرف
         const topConsumersData = {{ analytics_data.top_consumers_chart | tojson | safe }};
-        const topConsumersOptions = { ...getThemeOptions({ chart: { type: 'bar', height: 350 } }), series: topConsumersData.series, plotOptions: { bar: { borderRadius: 4, horizontal: true } }, dataLabels: { enabled: true, textAnchor: 'start', style: { colors: ['#fff'] }, offsetX: 5 }, xaxis: { categories: topConsumersData.labels, title: { text: 'مصرف (GB)' } }, legend: { show: false } };
+        // ✅ --- شروع اصلاح باگ ---
+        const topConsumersOptions = { 
+            ...getThemeOptions({ chart: { type: 'bar', height: 350 } }), 
+            series: topConsumersData.series, 
+            plotOptions: { bar: { borderRadius: 4, horizontal: true } }, 
+            // ✅ رنگ سفید حذف شد تا در هر دو تم خوانا باشد
+            dataLabels: { enabled: true, textAnchor: 'start', offsetX: 5 }, 
+            xaxis: { categories: topConsumersData.labels, title: { text: 'مصرف (GB)' } }, 
+            legend: { show: false } 
+        };
+        // ✅ --- پایان اصلاح باگ ---
         topConsumersChart = initOrUpdate(topConsumersChart, "#top-consumers-chart", topConsumersOptions);
         
-        // ۴. نمودار مقایسه مصرف پنل‌ها
         const usageCompData = {{ analytics_data.usage_comparison_chart | tojson | safe }};
         const usageCompOptions = { ...getThemeOptions({ chart: { type: 'area', height: 350, stacked: true } }), series: usageCompData.series, colors: ['#3b82f6', '#22c55e'], dataLabels: { enabled: false }, stroke: { curve: 'smooth', width: 2 }, fill: { type: 'gradient', gradient: { opacityFrom: 0.6, opacityTo: 0.1 } }, xaxis: { type: 'category', categories: usageCompData.labels }, yaxis: { title: { text: 'حجم مصرف (GB)' } }, legend: { position: 'top', horizontalAlign: 'center' } };
         usageComparisonChart = initOrUpdate(usageComparisonChart, "#usage-comparison-chart", usageCompOptions);
 
-        // ۵. نمودار کاربران فعال پنل‌ها
         const activeUsersData = {{ analytics_data.active_users_by_panel_chart | tojson | safe }};
         const activeUsersOptions = { ...getThemeOptions({ chart: { type: 'line', height: 350 } }), series: activeUsersData.series, colors: ['#8b5cf6', '#eab308'], stroke: { curve: 'smooth', width: 3 }, markers: { size: 0 }, xaxis: { type: 'category', categories: activeUsersData.labels }, yaxis: { title: { text: 'تعداد کاربران فعال' } }, legend: { position: 'top', horizontalAlign: 'center' } };
         activeUsersByPanelChart = initOrUpdate(activeUsersByPanelChart, "#active-users-panel-chart", activeUsersOptions);
 
-        // ۶. نمودار رشد کاربران
         const newUsersData = {{ analytics_data.new_users_chart | tojson | safe }};
         const newUsersOptions = { ...getThemeOptions({ chart: { type: 'bar', height: 350 } }), series: newUsersData.series, colors: ['#3b82f6'], plotOptions: { bar: { borderRadius: 4 } }, dataLabels: { enabled: false }, xaxis: { categories: newUsersData.labels }, yaxis: { title: { text: 'تعداد کاربران' } } };
         newUsersChart = initOrUpdate(newUsersChart, "#new-users-chart", newUsersOptions);
 
-        // ۷. نمودار درآمد ماهانه
         const revenueData = {{ analytics_data.revenue_chart | tojson | safe }};
         const revenueOptions = { ...getThemeOptions({ chart: { type: 'bar', height: 350 } }), series: revenueData.series, colors: ['#16a34a'], plotOptions: { bar: { borderRadius: 4 } }, dataLabels: { enabled: false }, xaxis: { categories: revenueData.labels }, yaxis: { title: { text: 'تعداد پرداخت' } } };
         revenueChart = initOrUpdate(revenueChart, "#revenue-chart", revenueOptions);
 
-        // ۸. نمودار کاربران فعال روزانه
         const dauData = {{ analytics_data.daily_active_users_chart | tojson | safe }};
         const dauOptions = { ...getThemeOptions({ chart: { type: 'area', height: 350 } }), series: dauData.series, colors: ['#f59e0b'], dataLabels: { enabled: false }, stroke: { curve: 'smooth', width: 2 }, fill: { type: 'gradient', gradient: { opacityFrom: 0.6, opacityTo: 0.1 } }, xaxis: { type: 'category', categories: dauData.labels }, yaxis: { title: { text: 'تعداد کاربران' } } };
         dailyActiveUsersChart = initOrUpdate(dailyActiveUsersChart, "#daily-active-users-chart", dauOptions);
     };
 
-    // اولین بار نمودارها را رندر کن
     renderOrUpdateCharts();
     
-    // اگر دکمه تغییر تم وجود دارد، به آن گوش بده
     document.getElementById('theme-toggle')?.addEventListener('click', () => { 
-        // با یک تاخیر کوتاه، نمودارها را آپدیت کن تا تغییر تم اعمال شود
         setTimeout(renderOrUpdateCharts, 150); 
     });
 });

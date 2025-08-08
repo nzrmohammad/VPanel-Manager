@@ -71,7 +71,7 @@
             </form>
         </section>
 
-        <section class="info-card data-table-container" style="margin-top: 2rem;">
+        <section class="info-card data-table-container" id="templates-list" style="margin-top: 2rem;">
             <div class="table-header">
                 <h3><i class="ri-list-settings-line" style="vertical-align: middle;"></i> لیست کانفیگ‌های موجود</h3>
                 <button id="reset-templates-btn" class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
@@ -159,9 +159,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const editIdInput = document.getElementById('edit-template-id');
     const editStrTextarea = document.getElementById('edit-template-str');
     const resetBtn = document.getElementById('reset-templates-btn');
-    
-    // خواندن توکن امنیتی برای استفاده در تمام درخواست‌ها
-    const csrfToken = addForm.elements.csrf_token.value;
 
     // --- Helper Functions ---
     function showFeedback(message, isSuccess) {
@@ -182,6 +179,9 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.disabled = true;
         submitBtn.textContent = 'در حال افزودن...';
         
+        // ✅ FIX: Get the token just before the fetch call
+        const csrfToken = addForm.elements.csrf_token.value;
+
         fetch(`/admin/api/templates`, { 
             method: 'POST', 
             headers: { 
@@ -219,22 +219,37 @@ document.addEventListener('DOMContentLoaded', function() {
         const templateId = button.dataset.id || row.dataset.templateId;
         if (!templateId) return;
 
+        // ✅ FIX: Get the token just before the fetch call
+        const csrfToken = addForm.elements.csrf_token.value;
+
         // --- Action Handlers ---
         if (button.classList.contains('toggle-btn')) {
             fetch(`/admin/api/templates/toggle_active/${templateId}`, {
                 method: 'POST',
                 headers: { 'X-CSRF-Token': csrfToken }
-            }).then(res => res.json()).then(result => {
+            })
+            .then(res => res.json())
+            .then(result => {
                 if (result.success) {
-                    button.classList.toggle('active');
-                    const statusCell = row.querySelector('.status-cell');
-                    statusCell.textContent = result.is_active ? 'فعال' : 'غیرفعال';
-                    statusCell.className = `status-cell ${result.is_active ? 'active' : 'inactive'}`;
-                } else {
-                    showFeedback('خطا در تغییر وضعیت.', false);
-                }
+                    const statusBadge = row.querySelector('.status-badge');
+                    if (statusBadge) {
+                        const isCurrentlyActive = statusBadge.classList.contains('status-active');
+                        if (isCurrentlyActive) {
+                            statusBadge.textContent = 'غیرفعال';
+                            statusBadge.className = 'status-badge status-inactive';
+                        } else {
+                            statusBadge.textContent = 'فعال';
+                            statusBadge.className = 'status-badge status-active';
+                        }
+                    }
+                } else { showFeedback('خطا در تغییر وضعیت.', false); }
+            })
+            .catch(err => {
+                console.error("Fetch Error:", err);
+                showFeedback('خطا در ارتباط با سرور. کنسول را بررسی کنید.', false);
             });
-        } else if (button.classList.contains('special-btn')) {
+        }
+        else if (button.classList.contains('special-btn')) {
             button.disabled = true;
             fetch(`/admin/api/templates/toggle_special/${templateId}`, {
                 method: 'POST',
@@ -287,6 +302,9 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.disabled = true;
         submitBtn.textContent = 'در حال ذخیره...';
 
+        // ✅ FIX: Get the token just before the fetch call
+        const csrfToken = addForm.elements.csrf_token.value;
+
         fetch(`/admin/api/templates/update/${templateId}`, {
             method: 'POST',
             headers: {
@@ -300,7 +318,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showFeedback(result.message, result.success);
             if (result.success) {
                 editModal.classList.remove('show');
-                window.location.reload(); // ساده‌ترین راه برای نمایش تغییرات
+                window.location.reload(); 
             }
         }).finally(() => {
             submitBtn.disabled = false;
@@ -315,6 +333,9 @@ document.addEventListener('DOMContentLoaded', function() {
             resetBtn.disabled = true;
             resetBtn.textContent = 'در حال ریست...';
             
+            // ✅ FIX: Get the token just before the fetch call
+            const csrfToken = addForm.elements.csrf_token.value;
+
             fetch('/admin/api/templates/reset', {
                 method: 'POST',
                 headers: { 'X-CSRF-Token': csrfToken } // ارسال توکن

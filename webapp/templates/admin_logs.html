@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}مشاهده لاگ‌ها{% endblock %}
+
+{% block extra_css %}
+<style>
+    .log-container {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        height: 75vh; /* ارتفاع ثابت برای کادر */
+        display: flex;
+        flex-direction: column;
+    }
+    .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .log-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+    .log-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+    .log-tab-btn {
+        padding: 0.8rem 1.5rem;
+        cursor: pointer;
+        border: none;
+        background: none;
+        color: var(--text-secondary);
+        font-size: 1rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -1px;
+    }
+    .log-tab-btn.active {
+        color: var(--accent-color);
+        border-bottom-color: var(--accent-color);
+    }
+    .log-content-wrapper {
+        flex-grow: 1;
+        overflow-y: auto; /* اسکرول داخلی برای محتوای لاگ */
+        direction: ltr;
+        text-align: left;
+    }
+    .log-content {
+        display: none;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.9rem;
+        white-space: pre-wrap; /* شکستن خطوط طولانی */
+        word-break: break-all;
+        line-height: 1.6;
+    }
+    .log-content.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='ارتباط کاربران مرزبان' %}
+    {% include 'partials/_header.html' %}
+
+
+    <div class="log-header">
+        <div class="log-actions">
+            <button id="refresh-logs-btn" class="btn btn-secondary">
+                <i class="ri-refresh-line"></i> <span>بارگذاری مجدد</span>
+            </button>
+            <button id="clear-logs-btn" class="btn btn-danger">
+                <i class="ri-delete-bin-line"></i> <span>پاک کردن لاگ‌ها</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="log-container">
+        <div class="log-tabs">
+            <button class="log-tab-btn active" data-target="#bot-log-content">
+                <i class="ri-file-list-3-line"></i> لاگ اصلی (bot.log)
+            </button>
+            <button class="log-tab-btn" data-target="#error-log-content">
+                <i class="ri-error-warning-line"></i> لاگ خطا (error.log)
+            </button>
+        </div>
+        <div class="log-content-wrapper">
+            <pre id="bot-log-content" class="log-content active"><code>در حال بارگذاری...</code></pre>
+            <pre id="error-log-content" class="log-content"><code>در حال بارگذاری...</code></pre>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tabButtons = document.querySelectorAll('.log-tab-btn');
+    const logContents = document.querySelectorAll('.log-content');
+    const clearLogsBtn = document.getElementById('clear-logs-btn');
+    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+    const csrfToken = '{{ csrf_token() }}';
+
+    function showToast(message, type = 'success') {
+        // A simple toast notification function
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type}`;
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: ${type === 'success' ? '#28a745' : '#dc3545'};
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.style.opacity = '1', 10);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    async function fetchLogs() {
+        refreshLogsBtn.disabled = true;
+        refreshLogsBtn.querySelector('i').classList.add('ri-spin');
+        try {
+            const response = await fetch('/admin/api/logs');
+            if (!response.ok) {
+                throw new Error('Server responded with an error!');
+            }
+            const data = await response.json();
+            document.querySelector('#bot-log-content code').textContent = data.bot_log || 'فایل لاگ خالی است یا یافت نشد.';
+            document.querySelector('#error-log-content code').textContent = data.error_log || 'فایل لاگ خطا خالی است یا یافت نشد.';
+        } catch (error) {
+            showToast('خطا در بارگذاری لاگ‌ها.', 'error');
+            console.error('Fetch logs error:', error);
+        } finally {
+            refreshLogsBtn.disabled = false;
+            refreshLogsBtn.querySelector('i').classList.remove('ri-spin');
+        }
+    }
+
+    // Tab switching logic
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            logContents.forEach(content => content.classList.remove('active'));
+            button.classList.add('active');
+            const targetContent = document.querySelector(button.dataset.target);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+    });
+
+    // Clear logs button logic
+    clearLogsBtn.addEventListener('click', async () => {
+        if (!confirm('آیا مطمئن هستید؟ این عمل محتوای تمام فایل‌های لاگ را برای همیشه پاک می‌کند و غیرقابل بازگشت است.')) {
+            return;
+        }
+        clearLogsBtn.disabled = true;
+        clearLogsBtn.querySelector('span').textContent = 'در حال پاکسازی...';
+
+        try {
+            const response = await fetch('/admin/api/logs/clear', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                showToast(result.message, 'success');
+                await fetchLogs(); // Refresh logs after clearing
+            } else {
+                throw new Error(result.message || 'Unknown error occurred.');
+            }
+        } catch (error) {
+            showToast(`خطا: ${error.message}`, 'error');
+        } finally {
+            clearLogsBtn.disabled = false;
+            clearLogsBtn.querySelector('span').textContent = 'پاک کردن لاگ‌ها';
+        }
+    });
+
+    // Refresh logs button logic
+    refreshLogsBtn.addEventListener('click', fetchLogs);
+
+    // Initial load
+    fetchLogs();
+});
+</script>
+{% endblock %}

@@ -156,8 +156,10 @@
   "btn_usage_history": "Usage History",
   "usage_history_title": "📊 Last 7 Days Usage History for {name}",
   "usage_history_no_data": "No usage has been recorded for this account in the last 7 days.",
-  "btn_web_login": "Login to Web Panel"
-
-
+  "btn_web_login": "Login to Web Panel",
+  "btn_change_name": "Change Name",
+  "prompt_enter_new_name": "Please enter the new display name for this config (at least 3 characters):",
+  "err_name_too_short": "The entered name is too short. Operation cancelled.",
+  "msg_name_changed_success": "✅ Your config name has been successfully changed.\n\n⚠️ To see the change, please update your subscription link in your application."
 
 }

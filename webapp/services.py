@@ -9,6 +9,7 @@ from bot.utils import to_shamsi, format_relative_time, format_usage, days_until_
 import logging
 from bot.config import DAILY_REPORT_TIME, USAGE_WARNING_CHECK_HOURS
 from html import unescape
+from html import escape as html_escape
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,8 @@ def get_dashboard_data():
         [u for u in all_users_data if u.get('daily_usage_gb', 0) > 0], 
         key=lambda u: u.get('daily_usage_gb', 0), 
         reverse=True
-    )[:5]
+    )[:10]
+    # ✅ --- پایان اصلاح ---
     
     panel_distribution_data = {
         "labels": ["فقط آلمان 🇩🇪", "فقط فرانسه 🇫🇷", "هر دو پنل (مشترک)"],
@@ -479,8 +481,9 @@ def add_templates_from_text(raw_text: str):
 
 def toggle_template(template_id: int):
     logger.info(f"Toggling status for template ID: {template_id}")
-    db.toggle_template_status(template_id)
-    return True
+    # فرض می‌کنیم تابع دیتابیس، وضعیت جدید را برمی‌گرداند
+    new_status = db.toggle_template_status(template_id) 
+    return new_status
 
 def update_template(template_id: int, template_str: str):
     logger.info(f"Attempting to update template ID: {template_id}")
@@ -590,8 +593,9 @@ def toggle_user_vip_status(uuid: str):
 
 def toggle_template_special_status(template_id: int):
     logger.info(f"Toggling Special status for template ID: {template_id}")
-    db.toggle_template_special(template_id)
-    return True
+    # فرض می‌کنیم این تابع وضعیت جدید (true/false) را برمی‌گرداند
+    new_status = db.toggle_template_special(template_id) 
+    return new_status
 
 def get_marzban_mappings_service():
     """سرویس برای دریافت تمام مپ‌های مرزبان."""
@@ -655,3 +659,54 @@ def get_schedule_info_service():
     ]
     
     return schedule_list
+
+def get_logs_service(lines_count=500):
+    """
+    محتوای فایل‌های لاگ ربات را می‌خواند و برای نمایش در وب آماده می‌کند.
+    """
+    log_files = {
+        'bot_log': 'bot.log',
+        'error_log': 'error.log'
+    }
+    logs_content = {}
+
+    for key, filename in log_files.items():
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                # خواندن تمام خطوط و گرفتن تعداد مشخصی از انتهای لیست
+                lines = f.readlines()
+                last_lines = lines[-lines_count:]
+                # هر خط را برای نمایش امن در HTML، escape می‌کنیم
+                logs_content[key] = ''.join(html_escape(line) for line in last_lines)
+        except FileNotFoundError:
+            logs_content[key] = f"فایل '{filename}' یافت نشد."
+        except Exception as e:
+            logger.error(f"خطا در خواندن فایل لاگ {filename}: {e}")
+            logs_content[key] = f"خطا در بارگذاری فایل '{filename}'."
+            
+    return logs_content
+
+def clear_logs_service():
+    """محتوای فایل‌های لاگ ربات را پاک می‌کند."""
+    log_files = ['bot.log', 'error.log']
+    cleared_files = []
+    errors = []
+
+    for filename in log_files:
+        try:
+            # باز کردن فایل در حالت 'w' محتوای آن را خالی می‌کند
+            with open(filename, 'w') as f:
+                pass  # نیازی به نوشتن چیزی نیست
+            cleared_files.append(filename)
+            logger.info(f"Log file '{filename}' has been cleared by admin.")
+        except FileNotFoundError:
+            # اگر فایل وجود نداشت، مشکلی نیست
+            cleared_files.append(filename)
+            pass
+        except Exception as e:
+            logger.error(f"Error clearing log file {filename}: {e}")
+            errors.append(filename)
+            
+    if errors:
+        return False, f"خطا در پاک کردن فایل‌های: {', '.join(errors)}"
+    return True, "تمام فایل‌های لاگ با موفقیت پاک شدند."

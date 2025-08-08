@@ -22,7 +22,9 @@ from .services import (
     get_marzban_mappings_service, 
     add_marzban_mapping_service,
     delete_marzban_mapping_service,
-    get_schedule_info_service
+    get_schedule_info_service,
+    get_logs_service,
+    clear_logs_service
 )
 
 logger = logging.getLogger(__name__)
@@ -154,12 +156,18 @@ def add_templates_api():
         logger.error(f"API Failed to add batch templates: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در افزودن کانفیگ‌ها.'}), 500
 
-@admin_bp.route('/api/templates/toggle/<int:template_id>', methods=['POST'])
+@admin_bp.route('/api/templates/toggle_active/<int:template_id>', methods=['POST'])
+# یا toggle/<int:template_id>
 @admin_required
 def toggle_template_api(template_id):
     try:
-        toggle_template(template_id)
-        return jsonify({'success': True, 'message': 'وضعیت کانفیگ تغییر کرد.'})
+        # وضعیت جدید را از سرویس دریافت می‌کنیم
+        is_now_active = toggle_template(template_id) 
+        return jsonify({
+            'success': True, 
+            'message': 'وضعیت کانفیگ تغییر کرد.',
+            'is_active': is_now_active # <-- این کلید به پاسخ اضافه شد
+        })
     except Exception as e:
         logger.error(f"API Failed to toggle template {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت.'}), 500
@@ -300,3 +308,35 @@ def delete_marzban_mapping_route():
     else:
         flash(message, 'danger')
     return redirect(url_for('admin.marzban_mapping_page'))
+
+@admin_bp.route('/logs')
+@admin_required
+def view_logs_page():
+    """صفحه‌ای برای نمایش زنده لاگ‌های ربات."""
+    # این روت فقط قالب را رندر می‌کند، محتوای لاگ‌ها با جاوااسکریپت بارگذاری می‌شود
+    return render_template('admin_logs.html', is_admin=True)
+
+@admin_bp.route('/api/logs')
+@admin_required
+def get_logs_api():
+    """API endpoint برای دریافت محتوای لاگ‌ها."""
+    try:
+        log_data = get_logs_service()
+        return jsonify(log_data)
+    except Exception as e:
+        logger.error(f"Error fetching logs via API: {e}", exc_info=True)
+        return jsonify({'bot_log': 'Error fetching logs.', 'error_log': 'Error fetching logs.'}), 500
+
+@admin_bp.route('/api/logs/clear', methods=['POST'])
+@admin_required
+def clear_logs_api():
+    """API endpoint برای پاک کردن فایل‌های لاگ."""
+    try:
+        success, message = clear_logs_service()
+        if success:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'message': message}), 500
+    except Exception as e:
+        logger.error(f"Error clearing logs via API: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': 'یک خطای ناشناخته در سرور رخ داد.'}), 500

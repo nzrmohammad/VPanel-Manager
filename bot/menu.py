@@ -55,11 +55,15 @@ class Menu:
             types.InlineKeyboardButton(f"⏱ {get_string('btn_periodic_usage', lang_code)}", callback_data=f"win_select_{uuid_id}"),
             types.InlineKeyboardButton(f"{EMOJIS['globe']} {get_string('btn_get_links', lang_code)}", callback_data=f"getlinks_{uuid_id}")
         )
+        # ✅ دکمه جدید "تغییر نام" اضافه شد
         kb.add(
-            types.InlineKeyboardButton(f"💳 {get_string('btn_payment_history', lang_code)}", callback_data=f"payment_history_{uuid_id}_0"),
-            types.InlineKeyboardButton(f"🗑 {get_string('btn_delete', lang_code)}", callback_data=f"del_{uuid_id}")
+            types.InlineKeyboardButton(f"✏️ {get_string('btn_change_name', lang_code)}", callback_data=f"changename_{uuid_id}"),
+            types.InlineKeyboardButton(f"💳 {get_string('btn_payment_history', lang_code)}", callback_data=f"payment_history_{uuid_id}_0")
         )
-        kb.add(types.InlineKeyboardButton(f"📈 {get_string('btn_usage_history', lang_code)}", callback_data=f"usage_history_{uuid_id}"))
+        kb.add(
+            types.InlineKeyboardButton(f"🗑 {get_string('btn_delete', lang_code)}", callback_data=f"del_{uuid_id}"),
+            types.InlineKeyboardButton(f"📈 {get_string('btn_usage_history', lang_code)}", callback_data=f"usage_history_{uuid_id}")
+        )
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('btn_back_to_list', lang_code)}", callback_data="manage"))
         return kb
 

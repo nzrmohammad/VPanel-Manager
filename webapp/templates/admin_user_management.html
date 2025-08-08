@@ -7,16 +7,12 @@
     .btn-primary { background-color: var(--accent-color); color: white; padding: 0.7rem 1.3rem; border-radius: 8px; text-decoration: none; font-weight: bold; border: none; cursor: pointer; display: inline-flex; justify-content: center; align-items: center; gap: 0.5rem; transition: all 0.2s ease; }
     .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3); }
     .btn-primary .icon { font-size: 1.2rem; }
-    .btn-info { background-color: var(--info-color); color: white; }
-    .btn-info:hover { background-color: #1a7bb9; }
+    .btn-info { background-color: #0ea5e9; color: white; } /* رنگ info اصلاح شد */
+    .btn-info:hover { background-color: #0284c7; }
     .btn-danger { background-color: var(--danger-color); color: white; }
     .btn-danger:hover { background-color: #d03838; }
-    .table-header {display: flex;justify-content: space-between;align-items: center;padding: 1rem 1.5rem;gap: 1.5rem;flex-wrap: wrap-reverse;}
-    .search-box-wrapper { position: relative; width: 100%; max-width: 350px; }
-    .search-box-wrapper .ri-search-line {position: absolute;left: -25px;top: 50%;transform: translateY(-50%);color: var(--text-secondary);z-index: 2;}
-    #user-search-input {width: 100%;background-color: var(--bg-color);border: 1px solid var(--border-color);border-radius: 8px;padding: 0.75rem 1rem 0.75rem 3rem;transition: border-color 0.2s, box-shadow 0.2s;margin-right: -25px;}
-    #user-search-input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2); outline: none; margin-right: -25px ; }
-    .table-filters {display: flex; gap: 1rem; align-items: center;margin-right: -25px; }
+    .table-header {display: flex;justify-content: space-between;align-items: center;padding: 1rem 0rem;gap: 1.5rem;flex-wrap: wrap;}
+    .table-filters {display: flex; gap: 1rem; align-items: center;}
     .table-filters .filter-group { display: flex; align-items: center; gap: 0.5rem; }
     .table-filters label { font-size: 0.9rem; color: var(--text-secondary); white-space: nowrap; }
     .table-filters select, .form-group select {padding: 0.75rem;border-radius: 8px;border: 1px solid var(--border-color);background-color: var(--bg-color);color: var(--text-color);-webkit-appearance: none;-moz-appearance: none;appearance: none;background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");background-position: left 0.5rem center;background-repeat: no-repeat;background-size: 1.5em 1.5em;padding-left: 2.5rem;}
@@ -89,7 +85,7 @@
 
     <div class="info-card data-table-container">
         <div class="table-header">
-            <div class="search-box-wrapper">
+            <div class="search-box">
                 <i class="ri-search-line"></i>
                 <input type="text" id="user-search-input" placeholder="جستجو بر اساس نام یا UUID ...">
             </div>

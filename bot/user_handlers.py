@@ -80,6 +80,9 @@ def handle_user_callbacks(call: types.CallbackQuery):
         text = f'*{escape_markdown(get_string("settings_updated", lang_code))}*'
         _safe_edit(uid, msg_id, text, reply_markup=menu.settings(db.get_user_settings(uid), lang_code=lang_code))
 
+    elif data.startswith("changename_"):
+            _handle_change_name_request(call)
+
     elif data.startswith("getlinks_"):
         uuid_id = int(data.split("_")[1])
         raw_text = get_string("prompt_get_links", lang_code)
@@ -448,6 +451,66 @@ def _handle_web_login_request(call: types.CallbackQuery):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
     
     _safe_edit(uid, call.message.message_id, text, reply_markup=kb, parse_mode=None)
+
+
+def _handle_change_name_request(call: types.CallbackQuery):
+    """Asks the user for a new config name."""
+    global bot
+    uid, msg_id = call.from_user.id, call.message.message_id
+    lang_code = db.get_user_language(uid)
+    
+    try:
+        uuid_id = int(call.data.split("_")[1])
+        prompt = get_string("prompt_enter_new_name", lang_code)
+        
+        # از منوی "لغو عملیات" استفاده می‌کنیم که به منوی اکانت بازگردد
+        back_callback = f"acc_{uuid_id}"
+        kb = menu.user_cancel_action(back_callback=back_callback, lang_code=lang_code)
+        
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb, parse_mode="MarkdownV2")
+        
+        # ثبت مرحله بعدی برای دریافت پاسخ کاربر
+        bot.register_next_step_handler_by_chat_id(uid, _process_new_name, uuid_id=uuid_id, original_msg_id=msg_id)
+    except (ValueError, IndexError) as e:
+        logger.error(f"Error handling change name request for call data '{call.data}': {e}")
+        bot.answer_callback_query(call.id, get_string("err_try_again", lang_code), show_alert=True)
+
+# ✅ تابع جدید برای پردازش و ذخیره نام جدید
+def _process_new_name(message: types.Message, uuid_id: int, original_msg_id: int):
+    """Processes the new name sent by the user, updates the DB, and confirms."""
+    global bot
+    uid, new_name = message.from_user.id, message.text.strip()
+    lang_code = db.get_user_language(uid)
+
+    # ۱. پیام کاربر که حاوی نام جدید است حذف می‌شود
+    try:
+        bot.delete_message(chat_id=uid, message_id=message.message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete user's new name message {message.message_id}: {e}")
+
+    # ۲. اعتبار سنجی نام
+    if len(new_name) < 3:
+        err_text = escape_markdown(get_string("err_name_too_short", lang_code))
+        _safe_edit(uid, original_msg_id, err_text, reply_markup=menu.account_menu(uuid_id, lang_code))
+        return
+
+    # ۳. به‌روزرسانی نام در دیتابیس
+    if db.update_config_name(uuid_id, new_name):
+        # ۴. ارسال پیام موفقیت‌آمیز
+        success_text = escape_markdown(get_string("msg_name_changed_success", lang_code))
+        
+        # دکمه بازگشت به منوی اکانت
+        back_button_text = get_string('back', lang_code)
+        kb = types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton(f"🔙 {back_button_text}", callback_data=f"acc_{uuid_id}")
+        )
+        
+        _safe_edit(uid, original_msg_id, success_text, reply_markup=kb, parse_mode="MarkdownV2")
+    else:
+        # در صورت بروز خطا در دیتابیس
+        _safe_edit(uid, original_msg_id, escape_markdown(get_string("err_try_again", lang_code)), 
+                   reply_markup=menu.account_menu(uuid_id, lang_code))
+
 
 # =============================================================================
 # Main Registration Function

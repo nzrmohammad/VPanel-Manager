@@ -280,16 +280,34 @@ h3.section-title {
 .table-header h3 { margin: 0; font-size: 1.1rem; }
 
 .search-box {
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 0.3rem 0.6rem;
     display: flex;
     align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 1rem;
+    background-color: var(--card-bg);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-box:focus-within {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
+}
+
+.search-box .ri-search-line {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    margin-left: 0.75rem; /* فاصله بین آیکون و متن */
 }
 
 .search-box input {
-    border: none; background: transparent; outline: none;
+    border: none;
+    background: transparent;
+    outline: none;
+    flex: 1; /* باعث می‌شود اینپوت تمام فضای خالی را پر کند */
+    padding: 0.75rem 0;
     color: var(--text-color);
+    width: 100%;
 }
 
 .table-responsive {

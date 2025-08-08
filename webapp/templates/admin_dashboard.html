@@ -153,6 +153,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const isDarkTheme = document.body.classList.contains('dark-theme');
     const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim();
 
+    // ✅ --- تعریف متغیر themeColors ---
+    const themeColors = {
+        text: isDarkTheme ? '#f9fafb' : '#111827',
+        secondaryText: isDarkTheme ? '#9ca3af' : '#6b7280',
+        grid: isDarkTheme ? '#374151' : '#e5e7eb',
+        cardBg: isDarkTheme ? '#1f2937' : '#ffffff'
+    };
+    // ✅ ------------------------------
+
     function getPersianDayString(days) {
         if (days === 0) return `<span style="color: var(--danger-color); font-weight: bold;">امروز</span>`;
         const persianNumbers = ["یک", "دو", "سه", "چهار", "پنج", "شش", "هفت"];
@@ -177,18 +186,18 @@ document.addEventListener("DOMContentLoaded", () => {
         dataLabels: { enabled: false },
         stroke: { curve: 'smooth', width: 2 },
         grid: {
-            borderColor: isDarkTheme ? '#404040' : '#e0e0e0',
+            borderColor: themeColors.grid,
             xaxis: { lines: { show: false } },
             yaxis: { lines: { show: true } }
         },
         xaxis: {
             categories: {{ usage_chart_data.labels | tojson | safe }},
-            labels: { style: { colors: isDarkTheme ? '#b0b0b0' : '#555' } },
+            labels: { style: { colors: themeColors.secondaryText } },
             axisBorder: { show: false }, axisTicks: { show: false }
         },
         yaxis: {
             labels: {
-                style: { colors: isDarkTheme ? '#b0b0b0' : '#555' },
+                style: { colors: themeColors.secondaryText },
                 formatter: (val) => val.toFixed(0),
                 offsetX: -15
             },
@@ -204,7 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const topConsumersOptions = {
             series: [{
                 name: 'مصرف امروز',
-                data: topConsumersData.data.slice(0, 20).reverse()
+                data: topConsumersData.data.slice(0, 10).reverse()
             }],
             chart: {
                 type: 'bar',
@@ -217,34 +226,59 @@ document.addEventListener("DOMContentLoaded", () => {
                     borderRadius: 4,
                     horizontal: true,
                     barHeight: '60%',
-                    distributed: true,
-                    dataLabels: { position: 'center' }
+                    dataLabels: {
+                        position: 'top'
+                    }
                 }
             },
-            colors: ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#00BCD4', '#4CAF50', '#FF9800', '#795548', '#607D8B'],
+            colors: [accentColor],
             dataLabels: {
                 enabled: true,
-                style: { colors: ['#fff'], fontWeight: 'bold', fontSize: '1em', textAlign: 'center' },
-                textAnchor: 'middle',
-                formatter: function (val, opt) {
-                    return opt.w.globals.labels[opt.dataPointIndex] + "\n" + val + " GB";
+                formatter: function(val) {
+                    return val.toFixed(2) + " GB";
                 },
-                offsetX: 0,
-                offsetY: 0,
-                dropShadow: { enabled: true, left: 1, top: 1, color: 'rgba(44,44,44,0.25)', opacity: 0.35 }
+                offsetX: 40,
+                style: {
+                    fontSize: '12px',
+                    colors: [themeColors.text]
+                }
             },
-            stroke: { width: 1, colors: ['#fff'] },
+            stroke: {
+                show: true,
+                width: 1,
+                colors: ['transparent']
+            },
             xaxis: {
-                categories: topConsumersData.labels.slice(0, 20).reverse(),
-                labels: { show: false }
+                categories: topConsumersData.labels.slice(0, 10).reverse(),
+                labels: {
+                    show: true,
+                    style: { colors: themeColors.secondaryText }
+                },
+                title: {
+                    text: 'مصرف (GB)',
+                    style: { color: isDarkTheme ? '#888' : '#aaa', fontSize: '12px' }
+                }
             },
-            yaxis: { labels: { show: false } },
-            grid: { show: false },
+            yaxis: {
+                labels: {
+                    show: true,
+                    style: { colors: themeColors.secondaryText, fontSize: '13px' }
+                }
+            },
+            grid: {
+                borderColor: themeColors.grid,
+                xaxis: { lines: { show: true } },
+                yaxis: { lines: { show: false } }
+            },
             tooltip: {
                 theme: isDarkTheme ? 'dark' : 'light',
                 y: {
                     formatter: function(val) { return val + " GB" },
-                    title: { formatter: function () { return '' } }
+                    title: {
+                        formatter: function (seriesName, opt) {
+                            return opt.w.globals.labels[opt.dataPointIndex]
+                        }
+                    }
                 }
             },
             legend: { show: false }
@@ -273,7 +307,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         },
         dataLabels: { enabled: false },
-        legend: { position: 'bottom', fontFamily: 'Vazirmatn, sans-serif', labels: { colors: isDarkTheme ? '#b0b0b0' : '#555' } },
+        legend: { position: 'bottom', fontFamily: 'Vazirmatn, sans-serif', labels: { colors: themeColors.secondaryText } },
         tooltip: { theme: isDarkTheme ? 'dark' : 'light', y: { formatter: (val) => val + " کاربر فعال" }, style: { fontFamily: 'Vazirmatn, sans-serif' } },
         stroke: { show: false }
     };

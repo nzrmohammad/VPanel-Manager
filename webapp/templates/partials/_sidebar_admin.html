@@ -12,6 +12,7 @@
             <li><a href="{{ url_for('admin.analytics_page') }}" class="{% if request.endpoint == 'admin.analytics_page' %}active{% endif %}"><i class="ri-line-chart-line nav-icon"></i><span class="nav-text">تحلیل و گزارش</span></a></li>
             <li><a href="{{ url_for('admin.marzban_mapping_page') }}" class="{% if request.endpoint == 'admin.marzban_mapping_page' %}active{% endif %}"><i class="ri-links-line nav-icon"></i><span class="nav-text">ایجاد ارتباط</span></a></li>
             <li><a href="{{ url_for('admin.manage_templates_page') }}" class="{% if request.endpoint == 'admin.manage_templates_page' %}active{% endif %}"><i class="ri-server-line nav-icon"></i><span class="nav-text">مدیریت سرورها</span></a></li>
+            <li><a href="{{ url_for('admin.view_logs_page') }}" class="{% if request.endpoint == 'admin.view_logs_page' %}active{% endif %}"><i class="ri-file-text-line nav-icon"></i><span class="nav-text">مشاهده لاگ‌ها</span></a></li>
             <li><a href="{{ url_for('admin.admin_settings_page') }}" class="{% if request.endpoint == 'admin.admin_settings_page' %}active{% endif %}"><i class="ri-settings-3-line nav-icon"></i><span class="nav-text">تنظیمات کلی</span></a></li>
         </ul>
     </nav>
