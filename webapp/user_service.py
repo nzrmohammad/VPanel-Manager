@@ -3,17 +3,15 @@ from datetime import datetime, timedelta
 import pytz
 from bot.database import db
 from bot.combined_handler import get_combined_user_info
-from bot.utils import to_shamsi, days_until_next_birthday
+from bot.utils import to_shamsi, days_until_next_birthday, load_service_plans, parse_volume_string
 import logging
 
 logger = logging.getLogger(__name__)
 
 class UserService:
-    """سرویس مخصوص داشبورد کاربری - نسخه نهایی با تمام قابلیت‌های یکپارچه و امن‌شده"""
-    
+    # ... (متدهای دیگر مانند get_user_usage_stats و ... بدون تغییر باقی می‌مانند) ...
     @staticmethod
     def get_user_usage_stats(uuid_id):
-        # این تابع داده‌های عددی برای نمودار برمی‌گرداند و نیازی به امن‌سازی ندارد
         tehran_tz = pytz.timezone("Asia/Tehran")
         labels, hiddify_data, marzban_data = [], [], []
         total_usage_7_days = 0
@@ -42,6 +40,57 @@ class UserService:
         return chart_data, avg_daily_usage
 
     @staticmethod
+    def recommend_plan(uuid_id):
+        actual_usage_last_30_days = 0
+        with db._conn() as c:
+            thirty_days_ago = datetime.now(pytz.utc) - timedelta(days=30)
+            query = """
+                WITH ranked_snapshots AS (
+                    SELECT 
+                        hiddify_usage_gb, 
+                        marzban_usage_gb,
+                        ROW_NUMBER() OVER(ORDER BY taken_at ASC) as rn_asc,
+                        ROW_NUMBER() OVER(ORDER BY taken_at DESC) as rn_desc
+                    FROM usage_snapshots
+                    WHERE uuid_id = ? AND taken_at >= ?
+                )
+                SELECT hiddify_usage_gb, marzban_usage_gb
+                FROM ranked_snapshots
+                WHERE rn_asc = 1 OR rn_desc = 1
+                ORDER BY rn_asc;
+            """
+            rows = c.execute(query, (uuid_id, thirty_days_ago)).fetchall()
+
+            if len(rows) == 2:
+                start_h, start_m = rows[0]['hiddify_usage_gb'], rows[0]['marzban_usage_gb']
+                end_h, end_m = rows[1]['hiddify_usage_gb'], rows[1]['marzban_usage_gb']
+                h_diff = (end_h - start_h) if end_h is not None and start_h is not None else 0
+                m_diff = (end_m - start_m) if end_m is not None and start_m is not None else 0
+                actual_usage_last_30_days = max(0, h_diff) + max(0, m_diff)
+
+        if actual_usage_last_30_days < 1:
+            return None, 0
+
+        all_plans = load_service_plans()
+        best_plan = None
+        smallest_diff = float('inf')
+
+        for plan in all_plans:
+            total_volume_gb = parse_volume_string(plan.get('total_volume') or plan.get('volume_de') or plan.get('volume_fr') or '0')
+            if total_volume_gb > actual_usage_last_30_days:
+                diff = total_volume_gb - actual_usage_last_30_days
+                if diff < smallest_diff:
+                    smallest_diff = diff
+                    best_plan = plan
+        
+        # اگر هیچ پلنی حجمش بیشتر از مصرف کاربر نبود، بزرگترین پلن موجود را پیشنهاد بده
+        if not best_plan and all_plans:
+            best_plan = max(all_plans, key=lambda p: parse_volume_string(p.get('total_volume') or p.get('volume_de') or p.get('volume_fr') or '0'))
+
+        return best_plan, actual_usage_last_30_days
+    
+    # ... (بقیه متدهای کلاس بدون تغییر) ...
+    @staticmethod
     def get_birthday_info(user_basic):
         birthday = user_basic.get("birthday")
         days_until = days_until_next_birthday(birthday) if birthday else None
@@ -50,19 +99,16 @@ class UserService:
             if days_until == 0: message = "🎉 تولدتان مبارک!"
             elif days_until <= 7: message = f"🎂 {days_until} روز تا تولد شما!"
         
-        # ✅ امن‌سازی پیام تولد
         return {"days_until_birthday": days_until, "birthday_message": escape(message) if message else None, "has_birthday": birthday is not None}
     
     @staticmethod
     def get_general_status(is_active, expire_days, usage_percentage):
-        # این تابع متن‌های ثابت برمی‌گرداند و نیازی به امن‌سازی ندارد
         if not is_active: return {"text": "غیرفعال", "class": "status-inactive"}
         if expire_days is not None and (expire_days < 7 or usage_percentage >= 90): return {"text": "رو به اتمام", "class": "status-warning"}
         return {"text": "فعال", "class": "status-active"}
 
     @staticmethod
     def get_online_status(last_online):
-        # این تابع متن‌های ثابت برمی‌گرداند و نیازی به امن‌سازی ندارد
         online_status, online_class = "آفلاین", "offline"
         if last_online:
             now_utc = datetime.now(pytz.utc)
@@ -74,7 +120,6 @@ class UserService:
         
     @staticmethod
     def get_user_breakdown_data(combined_info, usage_today):
-        # این تابع هم بیشتر با داده‌های عددی و تاریخ کار دارد و خروجی متنی خاصی ندارد
         breakdown = combined_info.get('breakdown', {}).copy()
         if 'hiddify' in breakdown: breakdown['hiddify']['today_usage_GB'] = usage_today.get('hiddify', 0)
         if 'marzban' in breakdown: breakdown['marzban']['today_usage_GB'] = usage_today.get('marzban', 0)
@@ -127,11 +172,10 @@ class UserService:
             created_at_shamsi = to_shamsi(uuid_record.get('created_at'))
             expire_shamsi = to_shamsi(datetime.now() + timedelta(days=expire_days)) if expire_days is not None else "نامحدود"
 
-            # ✅ امن‌سازی تمام خروجی‌های متنی قبل از ارسال به قالب
             return {
                 "is_active": is_active,
                 "username": escape(uuid_record.get("name", "کاربر")),
-                "general_status": general_status, # این دیکشنری حاوی متن ثابت است
+                "general_status": general_status,
                 "expire_shamsi": escape(expire_shamsi),
                 "expire": expire_days if expire_days is not None and expire_days >= 0 else 0,
                 "last_payment_shamsi": escape(last_payment_shamsi),
@@ -155,7 +199,6 @@ class UserService:
 
     @staticmethod
     def update_user_profile(uuid, form_data):
-        """اطلاعات پروفایل کاربر را بر اساس داده‌های فرم به‌روزرسانی می‌کند."""
         try:
             uuid_record = db.get_user_uuid_record(uuid)
             if not uuid_record:
@@ -165,7 +208,6 @@ class UserService:
             user_id = uuid_record['user_id']
             user_basic = db.user(user_id)
 
-            # ✅ امن‌سازی نام جدید قبل از ذخیره در دیتابیس
             new_name = form_data.get('config_name')
             if new_name:
                 db.update_config_name(uuid_id, escape(new_name))
@@ -174,7 +216,6 @@ class UserService:
                 birthday_str = form_data.get('birthday')
                 if birthday_str:
                     try:
-                        # ورودی تاریخ تولد نیاز به escape ندارد چون فرمت آن (`YYYY-MM-DD`) محدود است
                         birthday_date = datetime.strptime(birthday_str, '%Y-%m-%d').date()
                         db.update_user_birthday(user_id, birthday_date)
                     except ValueError:
@@ -188,7 +229,6 @@ class UserService:
             return True, "تغییرات با موفقیت ذخیره شد."
         except Exception as e:
             logger.error(f"خطا در به‌روزرسانی پروفایل کاربر {uuid}: {e}", exc_info=True)
-            # ✅ امن‌سازی پیام خطا
             return False, escape(f"خطایی در هنگام ذخیره تغییرات رخ داد: {e}")
 
 user_service = UserService()

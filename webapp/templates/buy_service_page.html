@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %} خرید سرویس {% endblock %}
+{% block title %} خرید و تمدید سرویس {% endblock %}
 
 {% block extra_css %}
 <style>
@@ -17,60 +17,157 @@
         font-weight: normal;
         color: var(--text-secondary);
     }
-
-    /* --- مدیریت نمایش پرچم‌ها --- */
-    /* حالت پیش‌فرض (موبایل): نمایش ایموجی، مخفی کردن آیکون */
-    .flag-emoji {
-        display: inline;
-    }
-    .flag-icon {
-        display: none;
-    }
-
-    /* حالت دسکتاپ (صفحه‌های بزرگتر از 992 پیکسل) */
+    .flag-emoji { display: inline; }
+    .flag-icon { display: none; }
     @media (min-width: 992px) {
-        .flag-emoji {
-            display: none; /* ایموجی را مخفی کن */
-        }
-        .flag-icon {
-            display: inline-block; /* آیکون را نمایش بده */
-            vertical-align: middle;
-        }
+        .flag-emoji { display: none; }
+        .flag-icon { display: inline-block; vertical-align: middle; }
     }
+
+    /* --- استایل‌های کاملاً جدید و خفن برای کارت آنالیز --- */
+    .smart-analysis-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 1.5rem 2rem;
+        margin-bottom: 2.5rem;
+        box-shadow: 0 10px 25px -5px var(--shadow-color);
+    }
+    .smart-analysis-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .smart-analysis-header i {
+        color: var(--accent-color);
+        font-size: 1.8rem;
+    }
+    .smart-analysis-description {
+        font-size: 0.95rem;
+        color: var(--text-secondary);
+        margin-bottom: 2rem;
+        padding-right: 2.8rem; /* برای هم‌راستایی با متن هدر */
+    }
+    .analysis-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        align-items: center;
+    }
+    .current-stats-panel {
+        background: var(--bg-color);
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+    }
+    .current-stats-panel h5 {
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        font-size: 1rem;
+        font-weight: 500;
+    }
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.8rem 0;
+    }
+    .stat-row:not(:last-child) {
+        border-bottom: 1px dashed var(--border-color);
+    }
+    .stat-row .label { font-size: 0.9rem; color: var(--text-secondary); }
+    .stat-row .value { font-size: 1.1rem; font-weight: 700; }
+    .recommendation-panel .info-card {
+        border: 2px dashed var(--accent-color);
+        background: linear-gradient(135deg, rgba(var(--accent-rgb), .05), transparent);
+    }
+    @media (max-width: 767px) {
+        .analysis-content { grid-template-columns: 1fr; }
+    }
+
+    /* --- استایل‌های بخش سوالات متداول --- */
+    .faq-item {
+        background-color: var(--card-bg); border: 1px solid var(--border-color);
+        border-radius: var(--border-radius); margin-bottom: 1rem; overflow: hidden;
+    }
+    .faq-question {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 1.25rem 1.5rem; cursor: pointer; font-weight: 600;
+    }
+    .faq-question i { transition: transform 0.3s ease; }
+    .faq-item.active .faq-question i { transform: rotate(180deg); }
+    .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out; }
+    .faq-answer p { padding: 0 1.5rem 1.25rem; margin-top: 0; color: var(--text-secondary); line-height: 1.8; }
 </style>
 {% endblock %}
 
 {% block page_content %}
-    {% set page_title='خرید سرویس' %}
+    {% set page_title='خرید و تمدید سرویس' %}
     {% include 'partials/_header.html' %}
+
+    <section class="smart-analysis-section">
+        <div class="smart-analysis-header">
+            <i class="ri-line-chart-line"></i>
+            <span>آنالیز هوشمند سرویس شما</span>
+        </div>
+        <p class="smart-analysis-description">در این بخش می‌توانید وضعیت فعلی سرویس خود را مشاهده کرده و بر اساس مصرف واقعی‌تان، بهترین پلن را برای دوره بعد انتخاب کنید.</p>
+
+        <div class="analysis-content">
+            <div class="current-stats-panel">
+                <h5>آمار سرویس فعلی</h5>
+                <div class="stat-row">
+                    <span class="label">روز باقیمانده</span>
+                    <span class="value">{{ user.expire if user.expire is not none else '∞' }}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">حجم مصرف شده</span>
+                    <span class="value">{{ "%.1f"|format(user.current_usage_GB) }} <small>GB</small></span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">حجم کل سرویس</span>
+                    <span class="value">{{ "%.1f"|format(user.usage_limit_GB) if user.usage_limit_GB > 0 else '∞' }} <small>GB</small></span>
+                </div>
+            </div>
+            
+            <div class="recommendation-panel">
+            {% if recommended_plan %}
+                <div class="info-card panel-card">
+                    <div class="panel-header" style="justify-content: center; padding-bottom: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <h4 style="color: var(--accent-color); font-weight: bold;">پلن پیشنهادی ما</h4>
+                    </div>
+                     <p style="font-size: 0.85rem; text-align: center; color: var(--text-secondary); margin-top:-0.5rem; margin-bottom: 1.5rem;">بر اساس مصرف <b>{{ "%.1f"|format(actual_last_30_days_usage) }} گیگابایتی</b> شما در ماه گذشته</p>
+                    <ul class="server-stats" style="margin-top: 0;">
+                        {% if recommended_plan.total_volume %}<li><div class="stat-label"><span>حجم کل پلن</span></div><span class="stat-value">{{ recommended_plan.total_volume }}</span></li>{% endif %}
+                        {% if recommended_plan.duration %}<li><div class="stat-label"><span>مدت زمان</span></div><span class="stat-value">{{ recommended_plan.duration }}</span></li>{% endif %}
+                    </ul>
+                    <div class="plan-price" style="margin-top: 0.5rem;">{{ "{:,.0f}".format(recommended_plan.price) }} <small>تومان</small></div>
+                    <a href="{{ support_link }}" class="btn-action full-width-btn" target="_blank">مشاوره و خرید این پلن</a>
+                </div>
+            {% else %}
+                <div style="text-align: center; color: var(--text-secondary); padding: 1rem 0;">
+                    <i class="ri-information-line" style="font-size: 2rem; display: block; margin-bottom: 0.5rem;"></i>
+                    برای دریافت پیشنهاد هوشمند، حداقل باید مقداری مصرف در ۳۰ روز گذشته داشته باشید.
+                </div>
+            {% endif %}
+            </div>
+        </div>
+    </section>
 
     <h3 class="section-title">🚀 پلن‌های ترکیبی (پیشنهادی)</h3>
     <section class="details-grid">
         {% for plan in combined_plans %}
         <div class="info-card panel-card">
-            <div class="panel-header">
-                <h4>
-                    {# نمایش نام پلن بدون ایموجی #}
-                    {{ plan.name.replace('🥉', '').replace('🥈', '').replace('🥇', '').replace('✨', '').replace('💎', '') }}
-                    
-                    {# نمایش ایموجی مدال‌ها برای همه دستگاه‌ها #}
-                    {% if '🥉' in plan.name %}🥉
-                    {% elif '🥈' in plan.name %}🥈
-                    {% elif '🥇' in plan.name %}🥇
-                    {% elif '✨' in plan.name %}✨
-                    {% elif '💎' in plan.name %}💎
-                    {% endif %}
-                </h4>
-            </div>
+            <div class="panel-header"><h4>{{ plan.name.replace('🥉', '').replace('🥈', '').replace('🥇', '').replace('✨', '').replace('💎', '') }} {% if '🥉' in plan.name %}🥉{% elif '🥈' in plan.name %}🥈{% elif '🥇' in plan.name %}🥇{% elif '✨' in plan.name %}✨{% elif '💎' in plan.name %}💎{% endif %}</h4></div>
             <ul class="server-stats">
                 {% if plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ plan.total_volume }}</span></li>{% endif %}
                 {% if plan.volume_de %}<li><div class="stat-label"><span class="fi fi-de"></span><span>&nbsp; آلمان</span></div><span class="stat-value">{{ plan.volume_de.replace('(🇩🇪)', '') }}</span></li>{% endif %}
                 {% if plan.volume_fr %}<li><div class="stat-label"><span class="fi fi-fr"></span><span>&nbsp; فرانسه</span></div><span class="stat-value">{{ plan.volume_fr.replace('(🇫🇷)', '') }}</span></li>{% endif %}
                 {% if plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>{% endif %}
             </ul>
-            <div class="plan-price">
-                {{ "{:,.0f}".format(plan.price) }} <small>تومان</small>
-            </div>
+            <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
             <a href="{{ support_link }}" class="btn-action full-width-btn" target="_blank">خرید و مشاوره</a>
         </div>
         {% else %}
@@ -78,41 +175,63 @@
         {% endfor %}
     </section>
     
-     <h3 class="section-title">پلن‌های اختصاصی</h3>
-     <section class="details-grid">
+    <h3 class="section-title">پلن‌های اختصاصی</h3>
+    <section class="details-grid">
         {% for plan in dedicated_plans %}
         <div class="info-card panel-card">
-            <div class="panel-header">
-                <h4>
-                    {# نام پلن بدون ایموجی پرچم #}
-                    {{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '') }}
-
-                    {# ایموجی پرچم (فقط برای موبایل) #}
-                    <span class="flag-emoji">
-                        {% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% endif %}
-                    </span>
-
-                    {# آیکون پرچم (فقط برای دسکتاپ) #}
-                    <span class="flag-icon">
-                        {% if 'de' in plan.type or '🇩🇪' in plan.name %}
-                            <span class="fi fi-de"></span>
-                        {% elif 'fr' in plan.type or '🇫🇷' in plan.name %}
-                            <span class="fi fi-fr"></span>
-                        {% endif %}
-                    </span>
-                </h4>
-            </div>
-             <ul class="server-stats">
+            <div class="panel-header"><h4>{{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '') }}<span class="flag-emoji">{% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% endif %}</span><span class="flag-icon">{% if 'de' in plan.type or '🇩🇪' in plan.name %}<span class="fi fi-de"></span>{% elif 'fr' in plan.type or '🇫🇷' in plan.name %}<span class="fi fi-fr"></span>{% endif %}</span></h4></div>
+            <ul class="server-stats">
                 <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr }}</span></li>
                 <li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>
             </ul>
-            <div class="plan-price">
-                {{ "{:,.0f}".format(plan.price) }} <small>تومان</small>
-            </div>
+            <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
             <a href="{{ support_link }}" class="btn-action full-width-btn" target="_blank">خرید و مشاوره</a>
         </div>
         {% else %}
             <p>در حال حاضر پلن اختصاصی برای نمایش وجود ندارد.</p>
         {% endfor %}
     </section>
+
+    <div class="faq-container" style="margin-top: 3rem;">
+        <h3 class="section-title" style="text-align: center;">سوالات متداول</h3>
+        <div class="faq-item">
+            <div class="faq-question"><span>تفاوت پلن‌های ترکیبی و اختصاصی چیست؟</span><i class="ri-arrow-down-s-line"></i></div>
+            <div class="faq-answer"><p>پلن‌های <strong>ترکیبی</strong> به شما از هر دو سرور آلمان و فرانسه حجم می‌دهند که برای انعطاف‌پذیری بیشتر عالی است. پلن‌های <strong>اختصاصی</strong> فقط روی یک سرور تمرکز دارند و معمولا برای کاربرانی مناسب هستند که می‌دانند کدام کشور برای اینترنت آن‌ها پایداری بهتری دارد.</p></div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-question"><span>چطور بهترین پلن را انتخاب کنم؟</span><i class="ri-arrow-down-s-line"></i></div>
+            <div class="faq-answer"><p>کارت <strong>آنالیز سرویس</strong> در بالای همین صفحه بهترین راهنما برای شماست. این کارت بر اساس مصرف واقعی شما، بهینه‌ترین پلن را پیشنهاد می‌دهد. اگر هم نیاز به مشاوره دارید، همیشه می‌توانید از طریق دکمه "خرید و مشاوره" با ما در تماس باشید.</p></div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+        const question = item.querySelector('.faq-question');
+        question.addEventListener('click', () => {
+            const answer = item.querySelector('.faq-answer');
+            const isActive = item.classList.contains('active');
+            
+            faqItems.forEach(otherItem => {
+                if (otherItem !== item) {
+                    otherItem.classList.remove('active');
+                    otherItem.querySelector('.faq-answer').style.maxHeight = null;
+                }
+            });
+
+            if (isActive) {
+                item.classList.remove('active');
+                answer.style.maxHeight = null;
+            } else {
+                item.classList.add('active');
+                answer.style.maxHeight = answer.scrollHeight + 'px';
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

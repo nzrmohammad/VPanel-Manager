@@ -1,6 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from bot.database import db
 from bot.config import ADMIN_SECRET_KEY
+from .services import get_server_status # Add this import at the top
+import jdatetime # Add this import
+import pytz
+from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -48,6 +52,13 @@ def login_with_token(token):
         flash("لینک ورود نامعتبر یا منقضی شده است. لطفاً دوباره تلاش کنید.", "error")
         return redirect(url_for('auth.login'))
 
+@auth_bp.route('/status')
+def status_page():
+    server_statuses = get_server_status()
+    now_tehran = datetime.now(pytz.timezone("Asia/Tehran"))
+    last_updated = jdatetime.datetime.fromgregorian(datetime=now_tehran).strftime("%Y/%m/%d - %H:%M:%S")
+
+    return render_template('status_page.html', statuses=server_statuses, last_updated=last_updated)
 
 @auth_bp.route('/logout')
 def logout():

@@ -6,7 +6,7 @@ import base64
 import urllib.parse
 import logging
 from datetime import datetime, timedelta
-
+from bot.config import ADMIN_SUPPORT_CONTACT
 
 logger = logging.getLogger(__name__)
 user_bp = Blueprint('user', __name__, url_prefix='/user')
@@ -18,23 +18,6 @@ def inject_uuid_for_user_pages():
         return dict(uuid=uuid)
     return {}
 
-# # <<<<<<<<<<<<<<<< شروع بخش امنیتی >>>>>>>>>>>>>>>>
-# @user_bp.before_request
-# def require_login():
-#     # اگر کاربر وارد نشده بود، او را به صفحه ورود هدایت کن
-#     if 'uuid' not in session:
-#         return redirect(url_for('auth.login'))
-    
-#     # برای امنیت بیشتر، چک می‌کنیم UUID در URL با UUID ذخیره شده در سشن یکی باشد
-#     # این کار جلوی دسترسی یک کاربر به داشبورد کاربر دیگر را می‌گیرد
-#     if request.view_args and 'uuid' in request.view_args:
-#         if request.view_args['uuid'] != session.get('uuid'):
-#             # اگر یکی نبود، او را از سیستم خارج کرده و به صفحه ورود می‌فرستیم
-#             session.pop('uuid', None)
-#             flash("برای دسترسی به این صفحه، لطفاً با UUID خودتان وارد شوید.", "error")
-#             return redirect(url_for('auth.login'))
-# # <<<<<<<<<<<<<<<< پایان بخش امنیتی >>>>>>>>>>>>>>>>
-
 @user_bp.route('/<string:uuid>')
 def user_dashboard(uuid):
     user_data = user_service.get_processed_user_data(uuid)
@@ -42,24 +25,24 @@ def user_dashboard(uuid):
         abort(404, "کاربر یافت نشد")
     return render_template('user_dashboard.html', user=user_data)
 
-# <<<<<<<<<<<<<<<< روت جدید برای صفحه پرداخت‌ها >>>>>>>>>>>>>>>>
 @user_bp.route('/<string:uuid>/payments')
 def payment_history_page(uuid):
     user_data = user_service.get_processed_user_data(uuid)
     if not user_data:
         abort(404, "کاربر یافت نشد")
     
-    # تبدیل تاریخ‌های میلادی به شمسی برای نمایش
     for payment in user_data.get("payment_history", []):
         payment['shamsi_date'] = to_shamsi(payment['payment_date'], include_time=True)
         
     return render_template('user_payment_history.html', user=user_data)
-# <<<<<<<<<<<<<<<< پایان بخش جدید >>>>>>>>>>>>>>>>
 
 @user_bp.route('/sub/<string:uuid>')
 def serve_normal_subscription(uuid):
     from bot import combined_handler
     user_record = db.get_user_uuid_record(uuid)
+    if not user_record or not user_record.get('user_id'):
+        abort(404, "کاربر یا شناسه کاربری یافت نشد")
+        
     user_id = user_record['user_id']
     configs = generate_user_subscription_configs(uuid, user_id)
     if not configs:
@@ -67,22 +50,15 @@ def serve_normal_subscription(uuid):
     
     subscription_content = "\n".join(configs)
     
-    # ✅ START: افزودن هدرها
     response = Response(subscription_content, mimetype='text/plain; charset=utf-8')
     
-    user_record = db.get_user_uuid_record(uuid)
     user_info = combined_handler.get_combined_user_info(uuid)
 
     if user_record and user_info:
-        # هدر برای نام پروفایل
         profile_title = user_record.get('name', 'CloudVibe')
-        # این روش انکودینگ برای پشتیبانی از کاراکترهای فارسی در هدر ضروری است
         response.headers['Profile-Title'] = profile_title.encode('utf-8').decode('latin-1')
-        
-        # هدر برای به‌روزرسانی خودکار (هر ۲۴ ساعت)
         response.headers['Profile-Update-Interval'] = '24'
         
-        # هدر برای نمایش اطلاعات مصرف و انقضا در کلاینت
         usage = user_info.get('usage', {})
         total_usage_bytes = int(usage.get('total_usage_GB', 0) * (1024**3))
         data_limit_bytes = int(usage.get('data_limit_GB', 0) * (1024**3))
@@ -95,12 +71,14 @@ def serve_normal_subscription(uuid):
         response.headers['Subscription-Userinfo'] = userinfo_header
 
     return response
-    # ✅ END: پایان تغییرات
 
 @user_bp.route('/sub/b64/<string:uuid>')
 def serve_base64_subscription(uuid):
     from bot import combined_handler
     user_record = db.get_user_uuid_record(uuid)
+    if not user_record or not user_record.get('user_id'):
+        abort(404, "کاربر یا شناسه کاربری یافت نشد")
+
     user_id = user_record['user_id']
     configs = generate_user_subscription_configs(uuid, user_id)
     if not configs:
@@ -109,10 +87,8 @@ def serve_base64_subscription(uuid):
     subscription_content = "\n".join(configs)
     encoded_content = base64.b64encode(subscription_content.encode('utf-8')).decode('utf-8')
 
-    # ✅ START: افزودن هدرها (مشابه تابع قبلی)
     response = Response(encoded_content, mimetype='text/plain; charset=utf-8')
     
-    user_record = db.get_user_uuid_record(uuid)
     user_info = combined_handler.get_combined_user_info(uuid)
 
     if user_record and user_info:
@@ -132,10 +108,13 @@ def serve_base64_subscription(uuid):
         response.headers['Subscription-Userinfo'] = userinfo_header
         
     return response
-    # ✅ END: پایان تغییرات
+
 @user_bp.route('/<string:uuid>/links')
 def subscription_links_page(uuid):
     user_record = db.get_user_uuid_record(uuid)
+    if not user_record or not user_record.get('user_id'):
+        abort(404, "کاربر یا شناسه کاربری یافت نشد")
+    
     user_id = user_record['user_id']
     raw_configs = generate_user_subscription_configs(uuid, user_id)
     individual_configs = []
@@ -189,16 +168,37 @@ def usage_chart_page(uuid):
 @user_bp.route('/<string:uuid>/buy')
 def buy_service_page(uuid):
     all_plans = load_json_file('plans.json')
-    support_link = f"https://t.me/Nzrmohammad"
+    support_link = f"https://t.me/{ADMIN_SUPPORT_CONTACT.replace('@', '')}"
     
     combined_plans, dedicated_plans = [], []
     if isinstance(all_plans, list):
         for plan in all_plans:
-            if plan.get('type') == 'combined': combined_plans.append(plan)
-            else: dedicated_plans.append(plan)
+            if plan.get('type') == 'combined':
+                combined_plans.append(plan)
+            else:
+                dedicated_plans.append(plan)
     
-    user_data = {"username": "کاربر"}
-    return render_template('buy_service_page.html', user=user_data, combined_plans=combined_plans, dedicated_plans=dedicated_plans, support_link=support_link)
+    # دریافت اطلاعات کامل کاربر فعلی
+    current_user_data = user_service.get_processed_user_data(uuid)
+    if not current_user_data:
+        abort(404, "کاربر یافت نشد")
+
+    recommended_plan = None
+    actual_usage = 0
+    try:
+        uuid_record = db.get_user_uuid_record(uuid)
+        if uuid_record:
+            recommended_plan, actual_usage = user_service.recommend_plan(uuid_record['id'])
+    except Exception as e:
+        logger.error(f"Error recommending plan for {uuid}: {e}")
+
+    return render_template('buy_service_page.html', 
+                           user=current_user_data, # ارسال اطلاعات کامل کاربر
+                           combined_plans=combined_plans, 
+                           dedicated_plans=dedicated_plans, 
+                           support_link=support_link,
+                           recommended_plan=recommended_plan,
+                           actual_last_30_days_usage=actual_usage)
 
 @user_bp.route('/<string:uuid>/tutorials')
 def tutorials_page(uuid):
@@ -218,17 +218,16 @@ def user_profile_page(uuid):
             flash(message, 'error')
         return redirect(url_for('user.user_profile_page', uuid=uuid))
 
-    # برای متد GET
     user_data = user_service.get_processed_user_data(uuid)
     if not user_data:
         abort(404, "کاربر یافت نشد")
     
     uuid_record = db.get_user_uuid_record(uuid)
-    user_settings = db.get_user_settings(uuid_record['user_id']) if uuid_record else {}
-    
-    # <<<<<<<<<<<<<<<< شروع بخش اصلاح شده >>>>>>>>>>>>>>>>
-    # اطلاعات پایه کاربر (شامل تاریخ تولد) را نیز دریافت کرده و به صفحه ارسال می‌کنیم
-    user_basic = db.user(uuid_record.get('user_id')) if uuid_record else {}
+    if not uuid_record or not uuid_record.get('user_id'):
+        abort(404, "رکورد کاربر یافت نشد")
+
+    user_id = uuid_record['user_id']
+    user_settings = db.get_user_settings(user_id)
+    user_basic = db.user(user_id) or {}
     
     return render_template('user_profile.html', user=user_data, settings=user_settings, user_basic=user_basic)
-    # <<<<<<<<<<<<<<<< پایان بخش اصلاح شده >>>>>>>>>>>>>>>>

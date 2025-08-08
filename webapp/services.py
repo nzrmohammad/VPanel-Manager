@@ -10,6 +10,8 @@ import logging
 from bot.config import DAILY_REPORT_TIME, USAGE_WARNING_CHECK_HOURS
 from html import unescape
 from html import escape as html_escape
+from bot.config import HIDDIFY_DOMAIN, MARZBAN_API_BASE_URL
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -710,3 +712,36 @@ def clear_logs_service():
     if errors:
         return False, f"خطا در پاک کردن فایل‌های: {', '.join(errors)}"
     return True, "تمام فایل‌های لاگ با موفقیت پاک شدند."
+
+def get_server_status():
+    """
+    وضعیت سلامت سرویس‌های Hiddify و Marzban را با استفاده از API handler های خودشان
+    به صورت دقیق و قابل اعتماد بررسی می‌کند.
+    """
+    statuses = []
+
+    # ۱. بررسی دقیق پنل Hiddify
+    try:
+        # تابع check_connection مستقیماً به API پنل متصل می‌شود
+        is_hiddify_ok = hiddify_handler.check_connection()
+        if is_hiddify_ok:
+            statuses.append({'name': 'سرور آلمان 🇩🇪', 'status': 'آنلاین', 'class': 'online'})
+        else:
+            statuses.append({'name': 'سرور آلمان 🇩🇪', 'status': 'آفلاین', 'class': 'offline'})
+    except Exception as e:
+        logger.error(f"Error checking Hiddify connection for status page: {e}")
+        statuses.append({'name': 'سرور آلمان 🇩🇪', 'status': 'آفلاین', 'class': 'offline'})
+
+    # ۲. بررسی دقیق پنل Marzban
+    try:
+        # این تابع نیز تلاش می‌کند یک توکن از API دریافت کند
+        is_marzban_ok = marzban_handler.check_connection()
+        if is_marzban_ok:
+            statuses.append({'name': 'سرور فرانسه 🇫🇷', 'status': 'آنلاین', 'class': 'online'})
+        else:
+            statuses.append({'name': 'سرور فرانسه 🇫🇷', 'status': 'آفلاین', 'class': 'offline'})
+    except Exception as e:
+        logger.error(f"Error checking Marzban connection for status page: {e}")
+        statuses.append({'name': 'سرور فرانسه 🇫🇷', 'status': 'آفلاین', 'class': 'offline'})
+        
+    return statuses
