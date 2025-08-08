@@ -59,7 +59,9 @@ def payment_history_page(uuid):
 @user_bp.route('/sub/<string:uuid>')
 def serve_normal_subscription(uuid):
     from bot import combined_handler
-    configs = generate_user_subscription_configs(uuid)
+    user_record = db.get_user_uuid_record(uuid)
+    user_id = user_record['user_id']
+    configs = generate_user_subscription_configs(uuid, user_id)
     if not configs:
         abort(404, "کانفیگ یافت نشد")
     
@@ -98,7 +100,9 @@ def serve_normal_subscription(uuid):
 @user_bp.route('/sub/b64/<string:uuid>')
 def serve_base64_subscription(uuid):
     from bot import combined_handler
-    configs = generate_user_subscription_configs(uuid)
+    user_record = db.get_user_uuid_record(uuid)
+    user_id = user_record['user_id']
+    configs = generate_user_subscription_configs(uuid, user_id)
     if not configs:
         abort(404, "کانفیگ یافت نشد")
         
@@ -131,7 +135,9 @@ def serve_base64_subscription(uuid):
     # ✅ END: پایان تغییرات
 @user_bp.route('/<string:uuid>/links')
 def subscription_links_page(uuid):
-    raw_configs = generate_user_subscription_configs(uuid)
+    user_record = db.get_user_uuid_record(uuid)
+    user_id = user_record['user_id']
+    raw_configs = generate_user_subscription_configs(uuid, user_id)
     individual_configs = []
     
     if raw_configs:

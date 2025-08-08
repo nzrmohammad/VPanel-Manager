@@ -4,7 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import io
 import qrcode
 import jdatetime
-from .config import ADMIN_IDS, EMOJIS, ADMIN_SUPPORT_CONTACT, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT
+from .config import ADMIN_IDS, EMOJIS, ADMIN_SUPPORT_CONTACT, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT, TUTORIAL_LINKS
 from .database import db
 from . import combined_handler
 from .menu import menu
@@ -48,6 +48,7 @@ def handle_user_callbacks(call: types.CallbackQuery):
         "quick_stats": _show_quick_stats,
         "settings": _show_settings,
         "support": _handle_support_request,
+        "tutorials": _show_tutorial_main_menu,
         "back": _go_back_to_main,
         "birthday_gift": _handle_birthday_gift_request,
         "view_plans": _show_plan_categories,
@@ -228,6 +229,15 @@ def handle_user_callbacks(call: types.CallbackQuery):
             text = fmt_user_usage_history(history, row.get('name', 'اکانت'), lang_code)
             kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data=f"acc_{uuid_id}"))
             _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+    elif data.startswith("tutorial_os:"):
+        os_type = data.split(":")[1]
+        _show_tutorial_os_menu(call, os_type)
+        return
+    elif data.startswith("tutorial_app:"):
+        _, os_type, app_name = data.split(":")
+        _send_tutorial_link(call, os_type, app_name)
+        return
 
 
 # =============================================================================
@@ -510,6 +520,34 @@ def _process_new_name(message: types.Message, uuid_id: int, original_msg_id: int
         # در صورت بروز خطا در دیتابیس
         _safe_edit(uid, original_msg_id, escape_markdown(get_string("err_try_again", lang_code)), 
                    reply_markup=menu.account_menu(uuid_id, lang_code))
+
+def _show_tutorial_main_menu(call: types.CallbackQuery):
+    prompt = "لطفاً سیستم‌عامل خود را برای دریافت آموزش انتخاب کنید:"
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.tutorial_main_menu())
+
+def _show_tutorial_os_menu(call: types.CallbackQuery, os_type: str):
+    prompt = f"یکی از نرم‌افزارهای زیر را برای مشاهده آموزش انتخاب کنید:"
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.tutorial_os_menu(os_type))
+
+def _send_tutorial_link(call: types.CallbackQuery, os_type: str, app_name: str):
+    try:
+        link = TUTORIAL_LINKS[os_type][app_name]
+        app_display_name = f"{os_type.capitalize()} - {app_name.capitalize().replace('_', ' ')}"
+        
+        text = f"✅ آموزش کامل شما برای <b>{app_display_name}</b> آماده است.\n\n" \
+               f"لطفاً روی دکمه زیر کلیک کنید تا آموزش را در مرورگر خود مشاهده نمایید."
+               
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🔗 مشاهده آموزش کامل", url=link))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست نرم‌افزارها", callback_data=f"tutorial_os:{os_type}"))
+        
+        _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb, parse_mode="HTML")
+
+    except KeyError:
+        bot.answer_callback_query(call.id, "خطا: لینک آموزشی برای این مورد یافت نشد.", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error sending tutorial link: {e}")
+        bot.answer_callback_query(call.id, "خطایی در ارسال لینک رخ داد.", show_alert=True)
 
 
 # =============================================================================

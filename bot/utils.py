@@ -286,7 +286,7 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     encoded_name = urllib.parse.quote(config_name)
     return f"vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?type=ws&path=/&security=tls#{encoded_name}"
 
-def generate_user_subscription_configs(user_main_uuid: str) -> list[str]:
+def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> list[str]:
     from . import combined_handler
     import urllib.parse
 
@@ -297,17 +297,24 @@ def generate_user_subscription_configs(user_main_uuid: str) -> list[str]:
         logger.warning(f"Could not generate subscription for UUID {user_main_uuid}. User info or DB record not found.")
         return []
 
+    user_settings = db.get_user_settings(user_id)
+    show_info_conf = user_settings.get('show_info_config', True)
+
+    final_configs = []
+
+    if show_info_conf:
+        info_config = create_info_config(user_main_uuid)
+        if info_config:
+            final_configs.append(info_config)
+
     has_access_de = user_info.get('on_hiddify', False)
     has_access_fr = user_info.get('on_marzban', False)
     user_name = user_record.get('name', 'کاربر')
     is_user_vip = user_record.get('is_vip', False)
 
     all_active_templates = db.get_active_config_templates()
-    final_configs = []
 
-    info_config = create_info_config(user_main_uuid)
-    if info_config:
-        final_configs.append(info_config)
+    # The redundant info_config call is removed from here.
 
     for template in all_active_templates:
         config_str = template['template_str']

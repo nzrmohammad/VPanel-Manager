@@ -22,6 +22,25 @@ class DatabaseManager:
 
     def _init_db(self) -> None:
         with self._conn() as c:
+
+            try:
+                with self._conn() as c:
+                    # Get the list of columns in the 'users' table
+                    cursor = c.execute("PRAGMA table_info(users);")
+                    columns = [row['name'] for row in cursor.fetchall()]
+
+                    # Check if our new column exists
+                    if 'show_info_config' not in columns:
+                        logger.info("Database Update: 'show_info_config' column not found, adding it to 'users' table...")
+                        # If it doesn't exist, add it with a default value of 1 (True)
+                        c.execute("ALTER TABLE users ADD COLUMN show_info_config INTEGER DEFAULT 1;")
+                        logger.info("Database Update: Column 'show_info_config' added successfully.")
+
+            except Exception as e:
+                logger.error(f"Failed to update database schema: {e}")
+                # If something goes wrong, we stop to avoid further issues.
+                raise
+
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY,
@@ -33,6 +52,7 @@ class DatabaseManager:
                     expiry_warnings INTEGER DEFAULT 1,
                     data_warning_hiddify INTEGER DEFAULT 1,
                     data_warning_marzban INTEGER DEFAULT 1,
+                    show_info_config INTEGER DEFAULT 1,        
                     admin_note TEXT,
                     lang_code TEXT DEFAULT 'fa'
                 );
@@ -241,21 +261,23 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self._conn() as c:
-            row = c.execute("SELECT daily_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 return {
                     'daily_reports': bool(row['daily_reports']), 
                     'expiry_warnings': bool(row['expiry_warnings']),
                     'data_warning_hiddify': bool(row['data_warning_hiddify']),
-                    'data_warning_marzban': bool(row['data_warning_marzban'])
+                    'data_warning_marzban': bool(row['data_warning_marzban']),
+                    'show_info_config': bool(row['show_info_config'])
                 }
             return {
                 'daily_reports': True, 'expiry_warnings': True, 
-                'data_warning_hiddify': True, 'data_warning_marzban': True
+                'data_warning_hiddify': True, 'data_warning_marzban': True,
+                'show_info_config': True
             }
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
-            if setting not in ['daily_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban']: return
+            if setting not in ['daily_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban', 'show_info_config']: return
             with self._conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
 

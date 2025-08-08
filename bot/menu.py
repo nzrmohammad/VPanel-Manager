@@ -18,10 +18,13 @@ class Menu:
         btn_settings = types.InlineKeyboardButton(f"{EMOJIS['bell']} {get_string('settings', lang_code)}", callback_data="settings")
         btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
+        btn_tutorials = types.InlineKeyboardButton(f"📚 آموزش اتصال", callback_data="tutorials")
+
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_settings, btn_services)
         kb.add(btn_birthday, btn_support)
+        kb.add(btn_tutorials)
         kb.add(btn_web_login)
 
         if is_admin:
@@ -55,7 +58,6 @@ class Menu:
             types.InlineKeyboardButton(f"⏱ {get_string('btn_periodic_usage', lang_code)}", callback_data=f"win_select_{uuid_id}"),
             types.InlineKeyboardButton(f"{EMOJIS['globe']} {get_string('btn_get_links', lang_code)}", callback_data=f"getlinks_{uuid_id}")
         )
-        # ✅ دکمه جدید "تغییر نام" اضافه شد
         kb.add(
             types.InlineKeyboardButton(f"✏️ {get_string('btn_change_name', lang_code)}", callback_data=f"changename_{uuid_id}"),
             types.InlineKeyboardButton(f"💳 {get_string('btn_payment_history', lang_code)}", callback_data=f"payment_history_{uuid_id}_0")
@@ -134,6 +136,32 @@ class Menu:
         kb.add(btn_back)
         return kb
 
+    # --- NEW MENUS FOR TUTORIALS ---
+    def tutorial_main_menu(self) -> types.InlineKeyboardMarkup:
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            types.InlineKeyboardButton("🤖 Android", callback_data="tutorial_os:android"),
+            types.InlineKeyboardButton("🖥️ Windows", callback_data="tutorial_os:windows"),
+            types.InlineKeyboardButton("🍏 iOS", callback_data="tutorial_os:ios")
+        )
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+        return kb
+
+    def tutorial_os_menu(self, os_type: str) -> types.InlineKeyboardMarkup:
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        if os_type == 'android':
+            kb.add(types.InlineKeyboardButton("V2rayNG (پیشنهادی)", callback_data="tutorial_app:android:v2rayng"))
+            kb.add(types.InlineKeyboardButton("Hiddify Next", callback_data="tutorial_app:android:hiddify_next"))
+        elif os_type == 'windows':
+            kb.add(types.InlineKeyboardButton("V2rayN (پیشنهادی)", callback_data="tutorial_app:windows:v2rayn"))
+            kb.add(types.InlineKeyboardButton("Hiddify Next", callback_data="tutorial_app:windows:hiddify_next"))
+        elif os_type == 'ios':
+            kb.add(types.InlineKeyboardButton("Streisand (رایگان)", callback_data="tutorial_app:ios:streisand"))
+            kb.add(types.InlineKeyboardButton("Shadowrocket (پولی)", callback_data="tutorial_app:ios:shadowrocket"))
+
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به سیستم‌عامل‌ها", callback_data="tutorials"))
+        return kb
+    # --- END NEW MENUS ---
 
     def settings(self, settings_dict: dict, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
@@ -151,7 +179,14 @@ class Menu:
             types.InlineKeyboardButton(hiddify_text, callback_data="toggle_data_warning_hiddify"),
             types.InlineKeyboardButton(marzban_text, callback_data="toggle_data_warning_marzban")
         )
-        
+
+        # --- NEW BUTTON ---
+        info_config_text = f"ℹ️ کانفیگ اطلاعات: {'✅' if settings_dict.get('show_info_config', True) else '❌'}"
+        kb.add(
+            types.InlineKeyboardButton(info_config_text, callback_data="toggle_show_info_config")
+        )
+        # --- END NEW BUTTON ---
+
         kb.add(types.InlineKeyboardButton(f"🌐 {get_string('change_language', lang_code)}", callback_data="change_language"))
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
         return kb
