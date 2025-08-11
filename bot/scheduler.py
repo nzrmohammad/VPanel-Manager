@@ -118,7 +118,7 @@ class SchedulerManager:
                     if expire_days is not None and 0 <= expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
                         if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
                             msg = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\n"
-                                f"اکانت *{user_name}* شما تا *{expire_days}* روز دیگر منقضی می‌شود.")
+                                f"اکانت *{user_name}* شما تا *{expire_days}* روز دیگر منقضی می‌شود\\.")
                             try:
                                 self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
                                 db.log_warning(uuid_id_in_db, 'expiry')
