@@ -1045,4 +1045,12 @@ class DatabaseManager:
                 return row['uuid']
         return None
 
+    def delete_old_snapshots(self, days_to_keep: int = 3) -> int:
+        """Deletes usage snapshots older than a specified number of days."""
+        time_limit = datetime.now(pytz.utc) - timedelta(days=days_to_keep)
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at < ?", (time_limit,))
+            logger.info(f"Cleaned up {cursor.rowcount} old usage snapshots (older than {days_to_keep} days).")
+            return cursor.rowcount
+
 db = DatabaseManager()

@@ -240,14 +240,14 @@ class SchedulerManager:
                             logger.warning(f"SCHEDULER: No active accounts found in API for user {user_id} after matching. No user report will be sent.")
 
                     # --- Cleanup Snapshots ---
-                    if user_uuids_from_db:
-                        for info in user_uuids_from_db:
-                            db.delete_daily_snapshots(info['id'])
-                        logger.info(f"Scheduler: Cleaned up daily snapshots for user {user_id}.")
+                    # if user_uuids_from_db:
+                    #     for info in user_uuids_from_db:
+                    #         db.delete_daily_snapshots(info['id'])
+                    #     logger.info(f"Scheduler: Cleaned up daily snapshots for user {user_id}.")
                             
                 except Exception as e:
                     logger.error(f"SCHEDULER: CRITICAL FAILURE while processing main loop for user {user_id}: {e}", exc_info=True)
-                    continue # Go to the next user
+                    continue
 
     def _update_online_reports(self) -> None:
         logger.info("Scheduler: Running 3-hourly online user report update.")
@@ -312,6 +312,15 @@ class SchedulerManager:
                     logger.error(f"Scheduler: Failed to send birthday message to user {user_id}: {e}")
 
     def _run_monthly_vacuum(self) -> None:
+        # 1. Daily cleanup of old snapshots
+        logger.info("Scheduler: Running daily job to clean up old snapshots.")
+        try:
+            # We keep 3 days of data to be safe for calculations.
+            db.delete_old_snapshots(days_to_keep=3)
+        except Exception as e:
+            logger.error(f"Scheduler: Daily snapshot cleanup failed: {e}")
+
+        # 2. Monthly VACUUM on the first day of the month
         today = datetime.now(self.tz)
         if today.day == 1:
             logger.info("Scheduler: It's the first of the month, running database VACUUM job.")
