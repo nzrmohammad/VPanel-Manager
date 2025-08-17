@@ -1,31 +1,12 @@
 from flask import Blueprint, render_template, request, abort, jsonify, session, redirect, url_for, flash
-
 from functools import wraps
 import logging
 from bot.config import ADMIN_SECRET_KEY
 from bot.database import db
 from bot.utils import set_template_server_type_service, reset_all_templates
 from bot.config import ADMIN_SUPPORT_CONTACT,BIRTHDAY_GIFT_GB,BIRTHDAY_GIFT_DAYS,WARNING_USAGE_THRESHOLD,WARNING_DAYS_BEFORE_EXPIRY,DAILY_USAGE_ALERT_THRESHOLD_GB,NOTIFY_ADMIN_ON_USAGE
-from .services import (
-    get_dashboard_data,
-    generate_comprehensive_report_data,
-    get_paginated_users,
-    create_user_in_panel,
-    delete_user_from_panels,
-    add_templates_from_text,
-    update_user_in_panels,
-    toggle_template,
-    update_template,
-    delete_template,
-    get_all_payments_for_admin,
-    get_analytics_data,
-    get_marzban_mappings_service, 
-    add_marzban_mapping_service,
-    delete_marzban_mapping_service,
-    get_schedule_info_service,
-    get_logs_service,
-    clear_logs_service
-)
+
+# Note: The main 'from .services import ...' block is removed from here.
 
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -35,7 +16,6 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('is_admin'):
-            # ری‌دایرکت به صفحه لاگین ادمین (اختیاری: پیام خطا بده)
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -44,6 +24,7 @@ def admin_required(f):
 @admin_bp.route('/dashboard')
 @admin_required
 def admin_dashboard():
+    from .services import get_dashboard_data  # Import moved inside
     try:
         context = get_dashboard_data()
         return render_template('admin_dashboard.html', **context, is_admin=True)
@@ -54,6 +35,7 @@ def admin_dashboard():
 @admin_bp.route('/reports/comprehensive')
 @admin_required
 def comprehensive_report_page():
+    from .services import generate_comprehensive_report_data  # Import moved inside
     try:
         report_data = generate_comprehensive_report_data()
         return render_template('admin_comprehensive_report.html', report_data=report_data, is_admin=True)
@@ -64,9 +46,8 @@ def comprehensive_report_page():
 @admin_bp.route('/payments')
 @admin_required
 def payment_list_page():
-    """صفحه جدید برای نمایش لیست تمام پرداخت‌ها به ادمین."""
+    from .services import get_all_payments_for_admin  # Import moved inside
     try:
-        # دریافت تمام پرداخت‌ها از سرویس
         all_payments = get_all_payments_for_admin()
         return render_template('admin_payment_list.html',
                                payments=all_payments,
@@ -79,7 +60,7 @@ def payment_list_page():
 @admin_bp.route('/analytics')
 @admin_required
 def analytics_page():
-    """صفحه جدید برای نمایش نمودارهای تحلیل و گزارش‌های پیشرفته."""
+    from .services import get_analytics_data  # Import moved inside
     try:
         analytics_data = get_analytics_data()
         return render_template('admin_analytics.html',
@@ -99,6 +80,7 @@ def user_management_page():
 @admin_bp.route('/api/users')
 @admin_required
 def get_users_api_paginated():
+    from .services import get_paginated_users  # Import moved inside
     try:
         data = get_paginated_users(request.args)
         return jsonify(data)
@@ -109,6 +91,7 @@ def get_users_api_paginated():
 @admin_bp.route('/api/users/create', methods=['POST'])
 @admin_required
 def create_user_api():
+    from .services import create_user_in_panel  # Import moved inside
     try:
         create_user_in_panel(request.json)
         return jsonify({'success': True, 'message': 'کاربر با موفقیت ساخته شد.'})
@@ -120,6 +103,7 @@ def create_user_api():
 @admin_bp.route('/api/users/update', methods=['POST'])
 @admin_required
 def update_user_api():
+    from .services import update_user_in_panels  # Import moved inside
     try:
         update_user_in_panels(request.json)
         return jsonify({'success': True, 'message': 'کاربر با موفقیت به‌روزرسانی شد.'})
@@ -130,6 +114,7 @@ def update_user_api():
 @admin_bp.route('/api/users/delete/<string:uuid>', methods=['DELETE'])
 @admin_required
 def delete_user_api(uuid):
+    from .services import delete_user_from_panels  # Import moved inside
     try:
         delete_user_from_panels(uuid)
         return jsonify({'success': True, 'message': 'کاربر با موفقیت حذف شد.'})
@@ -147,6 +132,7 @@ def manage_templates_page():
 @admin_bp.route('/api/templates', methods=['POST'])
 @admin_required
 def add_templates_api():
+    from .services import add_templates_from_text  # Import moved inside
     try:
         added_count = add_templates_from_text(request.json.get('templates_str'))
         return jsonify({'success': True, 'message': f"{added_count} کانفیگ جدید اضافه شد."})
@@ -157,25 +143,24 @@ def add_templates_api():
         return jsonify({'success': False, 'message': 'خطا در افزودن کانفیگ‌ها.'}), 500
 
 @admin_bp.route('/api/templates/toggle_active/<int:template_id>', methods=['POST'])
-# یا toggle/<int:template_id>
 @admin_required
 def toggle_template_api(template_id):
+    from .services import toggle_template  # Import moved inside
     try:
-        # وضعیت جدید را از سرویس دریافت می‌کنیم
         is_now_active = toggle_template(template_id) 
         return jsonify({
             'success': True, 
             'message': 'وضعیت کانفیگ تغییر کرد.',
-            'is_active': is_now_active # <-- این کلید به پاسخ اضافه شد
+            'is_active': is_now_active
         })
     except Exception as e:
         logger.error(f"API Failed to toggle template {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت.'}), 500
 
-# ✅ روت جدید برای ویرایش
 @admin_bp.route('/api/templates/update/<int:template_id>', methods=['POST'])
 @admin_required
 def update_template_api(template_id):
+    from .services import update_template  # Import moved inside
     try:
         data = request.get_json()
         if not data or 'template_str' not in data:
@@ -192,6 +177,7 @@ def update_template_api(template_id):
 @admin_bp.route('/api/templates/<int:template_id>', methods=['DELETE'])
 @admin_required
 def delete_template_api(template_id):
+    from .services import delete_template  # Import moved inside
     try:
         delete_template(template_id)
         return jsonify({'success': True, 'message': 'کانفیگ حذف شد.'})
@@ -199,16 +185,12 @@ def delete_template_api(template_id):
         logger.error(f"API Failed to delete template {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در حذف کانفیگ.'}), 500
     
-
 @admin_bp.route('/settings')
 @admin_required
 def admin_settings_page():
-    """صفحه‌ای برای نمایش تنظیمات فعلی ربات."""
+    from .services import get_schedule_info_service  # Import moved inside
     try:
-        # فراخوانی سرویس برای دریافت اطلاعات زمان‌بندی
         schedule_information = get_schedule_info_service()
-
-        # خواندن مستقیم تنظیمات از ماژول config و ساخت یک دیکشنری خوانا
         current_settings = {
             "شناسه پشتیبانی ادمین": ADMIN_SUPPORT_CONTACT,
             "حجم هدیه تولد (GB)": BIRTHDAY_GIFT_GB,
@@ -218,8 +200,6 @@ def admin_settings_page():
             "آستانه هشدار مصرف غیرعادی روزانه (GB)": DAILY_USAGE_ALERT_THRESHOLD_GB,
             "اطلاع‌رسانی به ادمین در مورد مصرف بالا": NOTIFY_ADMIN_ON_USAGE
         }
-
-        # ارسال داده‌ها به قالب برای نمایش
         return render_template(
             'admin_settings.html',
             settings=current_settings,
@@ -231,12 +211,10 @@ def admin_settings_page():
         flash("خطا در بارگذاری صفحه تنظیمات. لطفاً لاگ‌ها را بررسی کنید.", "error")
         return redirect(url_for('admin.admin_dashboard'))
 
-
 @admin_bp.route('/api/users/toggle_vip/<string:uuid>', methods=['POST'])
 @admin_required
 def toggle_user_vip_api(uuid):
-    """API برای تغییر وضعیت VIP کاربر."""
-    from .services import toggle_user_vip_status  # ایمپورت محلی
+    from .services import toggle_user_vip_status
     try:
         toggle_user_vip_status(uuid)
         return jsonify({'success': True, 'message': 'وضعیت VIP کاربر تغییر کرد.'})
@@ -244,12 +222,10 @@ def toggle_user_vip_api(uuid):
         logger.error(f"API Failed to toggle user VIP status {uuid}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت VIP.'}), 500
 
-
 @admin_bp.route('/api/templates/toggle_special/<int:template_id>', methods=['POST'])
 @admin_required
 def toggle_template_special_api(template_id):
-    """API برای تغییر وضعیت "ویژه" بودن کانفیگ."""
-    from .services import toggle_template_special_status # ایمپورت محلی
+    from .services import toggle_template_special_status
     try:
         toggle_template_special_status(template_id)
         return jsonify({'success': True, 'message': 'وضعیت "ویژه" کانفیگ تغییر کرد.'})
@@ -257,10 +233,10 @@ def toggle_template_special_api(template_id):
         logger.error(f"API Failed to toggle template special status {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت.'}), 500
 
-
-@admin_bp.route('/api/templates/set_server_type/<int:template_id>', methods=['POST']) # ✅ این خط باید اضافه شود
+@admin_bp.route('/api/templates/set_server_type/<int:template_id>', methods=['POST'])
 @admin_required
 def set_template_server_type_api(template_id):
+    from .services import set_template_server_type_service
     server_type = request.json.get('server_type')
     try:
         set_template_server_type_service(template_id, server_type)
@@ -268,14 +244,13 @@ def set_template_server_type_api(template_id):
     except Exception as e:
         return jsonify({'success': False, 'message': 'خطا در به‌روزرسانی.'}), 500
 
-
 @admin_bp.route('/api/templates/reset', methods=['POST'])
 @admin_required
 def reset_templates_api():
-    """API برای ریست کردن تمام کانفیگ‌ها."""
+    from .services import reset_all_templates
     try:
         reset_all_templates()
-        return jsonify({'success': True, 'message': 'تمام کانفیGها با موفقیت حذف و شمارنده ریست شد.'})
+        return jsonify({'success': True, 'message': 'تمام کانفیگ‌ها با موفقیت حذف و شمارنده ریست شد.'})
     except Exception as e:
         logger.error(f"API Failed to reset templates: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در عملیات ریست.'}), 500
@@ -283,12 +258,14 @@ def reset_templates_api():
 @admin_bp.route('/marzban-mapping')
 @admin_required
 def marzban_mapping_page():
+    from .services import get_marzban_mappings_service
     mappings = get_marzban_mappings_service()
     return render_template('admin_marzban_mapping.html', mappings=mappings, is_admin=True)
 
 @admin_bp.route('/marzban-mapping/add', methods=['POST'])
 @admin_required
 def add_marzban_mapping_route():
+    from .services import add_marzban_mapping_service
     hiddify_uuid = request.form.get('hiddify_uuid')
     marzban_username = request.form.get('marzban_username')
     success, message = add_marzban_mapping_service(hiddify_uuid, marzban_username)
@@ -301,6 +278,7 @@ def add_marzban_mapping_route():
 @admin_bp.route('/marzban-mapping/delete', methods=['POST'])
 @admin_required
 def delete_marzban_mapping_route():
+    from .services import delete_marzban_mapping_service
     hiddify_uuid = request.form.get('hiddify_uuid')
     success, message = delete_marzban_mapping_service(hiddify_uuid)
     if success:
@@ -312,14 +290,12 @@ def delete_marzban_mapping_route():
 @admin_bp.route('/logs')
 @admin_required
 def view_logs_page():
-    """صفحه‌ای برای نمایش زنده لاگ‌های ربات."""
-    # این روت فقط قالب را رندر می‌کند، محتوای لاگ‌ها با جاوااسکریپت بارگذاری می‌شود
     return render_template('admin_logs.html', is_admin=True)
 
 @admin_bp.route('/api/logs')
 @admin_required
 def get_logs_api():
-    """API endpoint برای دریافت محتوای لاگ‌ها."""
+    from .services import get_logs_service
     try:
         log_data = get_logs_service()
         return jsonify(log_data)
@@ -330,7 +306,7 @@ def get_logs_api():
 @admin_bp.route('/api/logs/clear', methods=['POST'])
 @admin_required
 def clear_logs_api():
-    """API endpoint برای پاک کردن فایل‌های لاگ."""
+    from .services import clear_logs_service
     try:
         success, message = clear_logs_service()
         if success:

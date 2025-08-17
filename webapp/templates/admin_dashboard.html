@@ -176,7 +176,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     const usageChartOptions = {
-        series: [{ name: "کل مصرف کاربران جدید", data: {{ usage_chart_data.data | tojson | safe }} }],
+        series: [{ name: "مجموع کل مصرف", data: {{ usage_chart_data.data | tojson | safe }} }],
         chart: {
             type: 'area', height: 250, toolbar: { show: false }, fontFamily: 'Vazirmatn, sans-serif',
             background: 'transparent', zoom: { enabled: false }, parentHeightOffset: 15, padding: { left: 10, right: 0 }

@@ -216,21 +216,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         users.forEach(user => {
-            // --- ✅ بخش اصلاح شده ---
-            let dailyDE = '0 MB';
-            let dailyFR = '0 MB';
-            if (user.breakdown) {
-                for (const panelKey in user.breakdown) {
-                    const panel = user.breakdown[panelKey];
-                    if (panel.type === 'hiddify') {
-                        dailyDE = panel.data?.daily_usage_formatted || '0 MB';
-                    } else if (panel.type === 'marzban') {
-                        dailyFR = panel.data?.daily_usage_formatted || '0 MB';
-                    }
-                }
-            }
-            // --- ✅ پایان بخش اصلاح شده ---
-            
             let panelIcons = (user.on_hiddify ? '🇩🇪 ' : '') + (user.on_marzban ? '🇫🇷' : '');
             const statusEmoji = user.is_active ? '🟢' : '🔴';
 
@@ -241,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button class="action-btn delete-btn" title="حذف کاربر"><i class="ri-delete-bin-line"></i></button>
                 <a href="/user/${user.uuid}" target="_blank" class="action-btn" title="مشاهده پنل کاربر"><i class="ri-external-link-line"></i></a>
             `;
-            
+
             let expiryText;
             if (user.expire < 0) {
                 expiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
@@ -250,14 +235,14 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 expiryText = 'نامحدود';
             }
-            
+
             const row = document.createElement('tr');
             row.dataset.uuid = user.uuid;
-            
+
             row.innerHTML = `
                 <td><button class="text-btn user-details-btn">${statusEmoji} ${user.name || 'ناشناس'}</button></td>
                 <td>${panelIcons.trim()}</td>
-                <td><span title="مصرف روزانه آلمان">🇩🇪 ${dailyDE}</span> / <span title="مصرف روزانه فرانسه">🇫🇷 ${dailyFR}</span></td>
+                <td>${user.total_daily_usage_formatted || '0 MB'}</td>
                 <td>${user.payment_count || 0}</td>
                 <td>${expiryText}</td>
                 <td>${user.last_online_relative || 'هرگز'}</td>
@@ -268,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.querySelector('.edit-btn').addEventListener('click', () => openEditModal(user));
             row.querySelector('.delete-btn').addEventListener('click', () => openDeleteModal(user));
             row.querySelector('.add-payment-btn').addEventListener('click', () => openAddPaymentModal(user));
-            
+
             row.querySelector('.vip-btn').addEventListener('click', (e) => {
                 const button = e.currentTarget;
                 button.disabled = true;

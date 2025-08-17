@@ -28,7 +28,12 @@ def _process_and_merge_user_data(all_users_map: dict) -> List[Dict[str, Any]]:
         data['remaining_GB'] = max(0, limit - usage)
         data['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
         
-        # ✅ **اصلاح کلیدی: تبدیل set به list**
+        # Add the 'usage' dictionary for template compatibility
+        data['usage'] = {
+            'total_usage_GB': usage,
+            'data_limit_GB': limit
+        }
+
         if 'panels' in data and isinstance(data['panels'], set):
             data['panels'] = list(data['panels'])
 
