@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, abort
 from bot.database import db
 from bot.config import ADMIN_SECRET_KEY
 from .services import get_server_status # Add this import at the top
@@ -65,3 +65,21 @@ def logout():
     session.clear()
     flash("شما با موفقیت خارج شدید.", 'success')
     return redirect(url_for('auth.login'))
+
+@auth_bp.route('/app/redirect')
+def app_redirect():
+    """
+    یک صفحه وب واسط برای ریدایرکت کردن کاربر به لینک‌های هوشمند (deep links) اپلیکیشن‌ها.
+    """
+    redirect_url = request.args.get('url')
+    app_name = request.args.get('app_name', 'اپلیکیشن') # دریافت نام اپلیکیشن
+
+    if not redirect_url:
+        abort(400, "URL parameter is missing.")
+    
+    allowed_protocols = ['v2rayng://', 'hiddify://', 'hap://', 'happ://', 'streisand://']
+    if not any(redirect_url.startswith(p) for p in allowed_protocols):
+        abort(400, "Unsupported URL protocol.")
+
+    # ارسال نام اپلیکیشن به قالب
+    return render_template('app_redirect.html', redirect_url=redirect_url, app_name=app_name)

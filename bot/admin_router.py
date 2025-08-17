@@ -60,6 +60,9 @@ def _handle_user_analysis_menu(call, params):
 def _handle_system_status_menu(call, params):
     _safe_edit(call.from_user.id, call.message.message_id, "📊 لطفاً پنل مورد نظر برای مشاهده وضعیت را انتخاب کنید:", reply_markup=menu.admin_system_status_menu())
 
+def _handle_group_actions_menu(call, params):
+    _safe_edit(call.from_user.id, call.message.message_id, "⚙️ لطفاً نوع دستور گروهی را انتخاب کنید:", reply_markup=menu.admin_group_actions_menu())
+
 def _handle_panel_management_menu(call, params):
     bot.clear_step_handler_by_chat_id(call.from_user.id)
     panel_type = params[0]
@@ -100,6 +103,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "panel_add_start": panel_management.handle_start_add_panel,
     "panel_set_type": panel_management.handle_set_panel_type,
     "panel_toggle": panel_management.handle_panel_toggle_status,
+    "panel_edit_start": panel_management.handle_panel_edit_start,
     "panel_delete_confirm": panel_management.handle_panel_delete_confirm,
     "panel_delete_execute": panel_management.handle_panel_delete_execute,
     

@@ -8,67 +8,55 @@ from .utils import (
     format_relative_time , to_shamsi, days_until_next_birthday
 )
 
-
 def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
-    # ——— اول تعریف یک تابع پرانتز escape شده ———
+    if not info:
+        return escape_markdown("❌ خطا در دریافت اطلاعات کاربر.")
+
     def esc(text):
-        # فقط برای مقادیر داینامیک!
         return escape_markdown(str(text))
 
-    # اگر info تهی بود پیام خطا بده
-    if not info:
-        return "❌ خطا در دریافت اطلاعات کاربر."
-
-    report_parts = []
+    report = []
+    
+    # بخش ۱: اطلاعات کلی و هدر
     name = esc(info.get("name", "کاربر ناشناس"))
-    report_parts.append(f"👤 *نام:* {name}")
+    is_active = info.get('is_active', False)
+    status_text = "فعال 🟢" if is_active else "غیرفعال 🔴"
+    report.append(f"👤 *نام:* {name}  \\(وضعیت کلی: {status_text}\\)")
 
-    # یادداشت ادمین
     if db_user and db_user.get('admin_note'):
-        note = esc(db_user['admin_note'])
-        report_parts.append(f"🗒️ *یادداشت:* {note}")
+        report.append(f"🗒️ *یادداشت:* {esc(db_user['admin_note'])}")
+    
+    report.append("")
 
-    report_parts.append("")  # فاصله
+    # بخش ۲: جزئیات هر پنل
+    breakdown = info.get('breakdown', {})
 
-    h_info = info.get('breakdown', {}).get('hiddify')
-    m_info = info.get('breakdown', {}).get('marzban')
-
-    def panel_block(panel_info, country, flag):
-        status = "فعال 🟢" if panel_info.get('is_active') else "غیرفعال 🔴"
-        panel_header = f"*{country}* {flag}  \\(وضعیت : {status}\\)"
-        limit = esc(f"{panel_info.get('usage_limit_GB', 0):g}".replace('.', ','))
-        usage = esc(f"{panel_info.get('current_usage_GB', 0):g}".replace('.', ','))
-        remaining = esc(f"{panel_info.get('usage_limit_GB', 0) - panel_info.get('current_usage_GB', 0):g}".replace('.', ','))
-        last_online = esc(to_shamsi(panel_info.get('last_online'), include_time=True))
-
+    def panel_block(panel_data, panel_name_str):
+        status = "فعال 🟢" if panel_data.get('is_active') else "غیرفعال 🔴"
+        limit = panel_data.get('usage_limit_GB', 0)
+        usage = panel_data.get('current_usage_GB', 0)
+        
         return [
-            panel_header,
-            f"🗂️ *حجم کل :* {limit} GB",
-            f"🔥 *مصرف شده :* {usage} GB",
-            f"📥 *باقی‌مانده :* {remaining} GB",
-            f"⏰ *آخرین اتصال :* {last_online}",
+            f"*{esc(panel_name_str)}* \\(وضعیت: {status}\\)",
+            f"▫️ {esc('حجم:')} `{esc(f'{usage:g}')}` / `{esc(f'{limit:g} GB')}`",
+            f"▫️ {esc('آخرین اتصال:')} `{esc(to_shamsi(panel_data.get('last_online'), include_time=True))}`",
             ""
         ]
 
-    if h_info:
-        report_parts += panel_block(h_info, "آلمان", "🇩🇪")
-    if m_info:
-        report_parts += panel_block(m_info, "فرانسه", "🇫🇷")
+    for panel_name, panel_details in breakdown.items():
+        panel_data = panel_details.get('data', {})
+        report.extend(panel_block(panel_data, panel_name))
 
-    # انقضا
+    # بخش ۳: اطلاعات نهایی و مشترک
     expire_days = info.get("expire")
     if expire_days is not None:
-        expire_label = esc(f"{int(expire_days)} روز" if int(expire_days) >= 0 else "منقضی شده")
-        report_parts.append(f"📅 *انقضا :* {expire_label}")
+        expire_label = esc(f"{int(expire_days)} روز") if expire_days >= 0 else "منقضی شده"
+        report.append(f"📅 *انقضا:* {expire_label}")
 
-    # UUID
     if info.get('uuid'):
-        uuid = esc(info['uuid'])
-        report_parts.append(f"🔑 *شناسه یکتا :* `{uuid}`")
+        report.append(f"🔑 *شناسه:* `{esc(info['uuid'])}`")
 
-    return "\n".join(report_parts).strip()
-
-
+    return "\n".join(report).strip()
 
 def fmt_users_list(users: list, list_type: str, page: int) -> str:
     title_map = {
@@ -125,7 +113,6 @@ def fmt_users_list(users: list, list_type: str, page: int) -> str:
 
 
 def fmt_online_users_list(users: list, page: int) -> str:
-    # <<<< اصلاح ۱: پرانتزها در عنوان به صورت دستی escape شدند >>>>
     title = "⚡️ کاربران آنلاین \\(۳ دقیقه اخیر\\)"
 
     if not users:
@@ -134,13 +121,11 @@ def fmt_online_users_list(users: list, page: int) -> str:
     header_text = f"*{title}*"
     if len(users) > PAGE_SIZE:
         total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
-        # <<<< اصلاح ۱: پرانتز و خط جداکننده در شماره صفحه هم escape شدند >>>>
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
     paginated_users = users[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
     user_lines = []
-    # <<<< اصلاح ۲: کاراکتر | به درستی escape شد >>>>
     separator = " \\| "
 
     uuid_to_bot_user = db.get_uuid_to_bot_user_map()
@@ -206,8 +191,7 @@ def fmt_bot_users_list(bot_users: list, page: int) -> str:
         username = user.get('username')
         user_id = user.get('user_id') or user.get('id')
 
-        if username:  # اگر یوزرنیم داشت
-            # یوزرنیم باید escape نشه، فقط اسم escape بشه
+        if username:
             link_name = f"[{escape_markdown(first_name)}](https://t.me/{username})"
         elif user_id:
             try:
@@ -286,14 +270,12 @@ def fmt_users_by_plan_list(users: list, plan_name: str, page: int) -> str:
     for user in paginated_users:
         name = escape_markdown(user.get('name', 'کاربر ناشناس'))
 
-        h_info = user.get('breakdown', {}).get('hiddify')
-        m_info = user.get('breakdown', {}).get('marzban')
+        h_info = user.get('breakdown', {}).get('hiddify', {}).get('data', {})
+        m_info = user.get('breakdown', {}).get('marzban', {}).get('data', {})
         
         panel_usage_parts = []
         
-        # <<<<<<<<<<<<<<<< تغییر اصلی اینجاست >>>>>>>>>>>>>>>>
         if h_info:
-            # روندن کردن به ۲ رقم اعشار و حذف .00 برای اعداد صحیح
             h_usage_gb = f"{h_info.get('current_usage_GB', 0.0):.2f}".replace('.00', '')
             h_limit_gb = f"{h_info.get('usage_limit_GB', 0.0):.2f}".replace('.00', '')
             panel_usage_parts.append(f"🇩🇪 `{h_usage_gb}/{h_limit_gb} GB`")
@@ -302,7 +284,6 @@ def fmt_users_by_plan_list(users: list, plan_name: str, page: int) -> str:
             m_usage_gb = f"{m_info.get('current_usage_GB', 0.0):.2f}".replace('.00', '')
             m_limit_gb = f"{m_info.get('usage_limit_GB', 0.0):.2f}".replace('.00', '')
             panel_usage_parts.append(f"🇫🇷 `{m_usage_gb}/{m_limit_gb} GB`")
-        # <<<<<<<<<<<<<<<< پایان تغییر اصلی >>>>>>>>>>>>>>>>
 
         usage_str = separator.join(panel_usage_parts)
         line = f"`•` *{name}*{separator}{usage_str}"
@@ -339,41 +320,25 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     if not all_users_from_api:
         return "هیچ کاربری در پنل یافت نشد"
 
-    # --- Data Calculation ---
     active_users = 0
-    active_hiddify_users, active_marzban_users = 0, 0
     total_daily_hiddify, total_daily_marzban = 0.0, 0.0
     online_users, expiring_soon_users, new_users_today, expired_recently_users = [], [], [], []
-    hiddify_user_count, marzban_user_count = 0, 0
-
+    
     now_utc = datetime.now(pytz.utc)
     online_deadline = now_utc - timedelta(minutes=3)
-
     db_users_map = {u['uuid']: u.get('created_at') for u in db_manager.all_active_uuids()}
 
     for user_info in all_users_from_api:
-        breakdown = user_info.get('breakdown', {})
-        is_on_hiddify = 'hiddify' in breakdown and breakdown['hiddify']
-        is_on_marzban = 'marzban' in breakdown and breakdown['marzban']
-        if is_on_hiddify:
-            hiddify_user_count += 1
-        if is_on_marzban:
-            marzban_user_count += 1
-
         if user_info.get("is_active"):
             active_users += 1
-            if is_on_hiddify: active_hiddify_users += 1
-            if is_on_marzban: active_marzban_users += 1
 
         if user_info.get('uuid'):
             daily_usage_dict = db_manager.get_usage_since_midnight_by_uuid(user_info['uuid'])
             total_daily_hiddify += daily_usage_dict.get('hiddify', 0.0)
             total_daily_marzban += daily_usage_dict.get('marzban', 0.0)
-        else:
-            daily_usage_dict = {}
+            user_info['daily_usage_dict'] = daily_usage_dict
 
         if user_info.get('is_active') and user_info.get('last_online') and isinstance(user_info.get('last_online'), datetime) and user_info['last_online'].astimezone(pytz.utc) >= online_deadline:
-            user_info['daily_usage_dict'] = daily_usage_dict
             online_users.append(user_info)
 
         expire_days = user_info.get('expire')
@@ -383,7 +348,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             elif -2 <= expire_days < 0:
                 expired_recently_users.append(user_info)
 
-
         created_at = db_users_map.get(user_info.get('uuid'))
         if created_at and isinstance(created_at, datetime) and (now_utc - created_at.astimezone(pytz.utc)).days < 1:
             new_users_today.append(user_info)
@@ -391,13 +355,10 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     total_daily_all = total_daily_hiddify + total_daily_marzban
     list_bullet = escape_markdown("- ")
     
-    # --- Report Formatting ---
     report_lines = [
         f"{EMOJIS['gear']} *{escape_markdown('خلاصه وضعیت کل پنل')}*",
         f"{list_bullet}{EMOJIS['user']} تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
-        f"{list_bullet} 🇩🇪 : *{hiddify_user_count}* {escape_markdown('|')} 🇫🇷 : *{marzban_user_count}*",
         f"{list_bullet}{EMOJIS['success']} اکانت‌های فعال : *{active_users}*",
-        f"{list_bullet} 🇩🇪 : *{active_hiddify_users}* {escape_markdown('|')} 🇫🇷 : *{active_marzban_users}*",
         f"{list_bullet}{EMOJIS['wifi']} کاربران آنلاین : *{len(online_users)}*",
         f"{list_bullet}{EMOJIS['lightning']} *مصرف کل امروز :* `{escape_markdown(format_daily_usage(total_daily_all))}`",
         f"{list_bullet} 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
@@ -413,13 +374,13 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             
             usage_parts = []
             breakdown = user.get('breakdown', {})
-            if 'hiddify' in breakdown and breakdown['hiddify']:
-                h_daily_str = escape_markdown(format_daily_usage(daily_dict.get('hiddify', 0.0)))
-                usage_parts.append(f"🇩🇪 `{h_daily_str}`")
-            if 'marzban' in breakdown and breakdown['marzban']:
-                m_daily_str = escape_markdown(format_daily_usage(daily_dict.get('marzban', 0.0)))
-                usage_parts.append(f"🇫🇷 `{m_daily_str}`")
-            
+            for panel_name, panel_details in breakdown.items():
+                panel_type = panel_details.get('type')
+                if panel_type:
+                    flag = "🇩🇪" if panel_type == "hiddify" else "🇫🇷" if panel_type == "marzban" else ""
+                    daily_str = escape_markdown(format_daily_usage(daily_dict.get(panel_type, 0.0)))
+                    usage_parts.append(f"{flag} `{daily_str}`")
+
             usage_str = escape_markdown(" | ").join(usage_parts)
             report_lines.append(f"`•` *{user_name} :* {usage_str}")
 

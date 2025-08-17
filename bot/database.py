@@ -1099,4 +1099,20 @@ class DatabaseManager:
             cursor = c.execute("UPDATE panels SET is_active = 1 - is_active WHERE id = ?", (panel_id,))
             return cursor.rowcount > 0
 
+    def get_panel_by_id(self, panel_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieves a single panel's details by its ID."""
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM panels WHERE id = ?", (panel_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_panel_name(self, panel_id: int, new_name: str) -> bool:
+        """Updates the name of a specific panel."""
+        with self._conn() as c:
+            try:
+                cursor = c.execute("UPDATE panels SET name = ? WHERE id = ?", (new_name, panel_id))
+                return cursor.rowcount > 0
+            except sqlite3.IntegrityError: # In case new name is a duplicate
+                logger.warning(f"Attempted to rename panel {panel_id} to an existing name: {new_name}")
+                return False
+
 db = DatabaseManager()

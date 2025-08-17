@@ -16,93 +16,54 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     if not info:
         return escape_markdown(get_string("fmt_err_getting_info", lang_code))
 
-    # --- شروع بخش اصلاح شده اصلی ---
-    # ابتدا نام خام و بدون تغییر را می‌گیریم
+    # بخش ۱: اطلاعات کلی و هدر
     raw_name = info.get("name", get_string('unknown_user', lang_code))
     is_active_overall = info.get("is_active", False)
-    status_emoji = "🟢" if is_active_overall else "🔴"
-    status_text = get_string("fmt_status_active", lang_code) if is_active_overall else get_string("fmt_status_inactive", lang_code)
-    
-    # متن کامل هدر را با نام خام می‌سازیم
-    header_text_raw = f"{get_string('fmt_user_name_header', lang_code)}: {raw_name} ({status_emoji} {status_text})"
-    # و در نهایت، کل متن ساخته شده را یک بار escape می‌کنیم
-    header_line = f"*{escape_markdown(header_text_raw)}*"
-    # --- پایان بخش اصلاح شده اصلی ---
+    status_emoji = get_string("fmt_status_active", lang_code) if is_active_overall else get_string("fmt_status_inactive", lang_code)
+    header_raw = f"{get_string('fmt_user_name_header', lang_code)} : {raw_name} ({EMOJIS['success'] if is_active_overall else EMOJIS['error']} {status_emoji})"
+    header_line = f"*{escape_markdown(header_raw)}*"
 
     report = [header_line]
+
+    separator = "`──────────────────`"
+    report.append(separator)
     
-    h_info = info.get('breakdown', {}).get('hiddify', {})
-    m_info = info.get('breakdown', {}).get('marzban', {})
-
-    if h_info and m_info:
-        total_limit_gb = escape_markdown(f"{info.get('usage_limit_GB', 0):g} GB")
-        total_usage_gb = escape_markdown(f"{info.get('current_usage_GB', 0):g} GB")
-        total_remaining_gb = escape_markdown(f"{info.get('remaining_GB', 0):g} GB")
-        total_daily_gb_str = escape_markdown(format_daily_usage(sum(daily_usage_dict.values())))
-        report.extend([
-            "",
-            f'{get_string("fmt_total_volume_new", lang_code)}: `{total_limit_gb}`',
-            f'{get_string("fmt_total_usage_new", lang_code)}: `{total_usage_gb}`',
-            f'{get_string("fmt_total_remaining_new", lang_code)}: `{total_remaining_gb}`',
-            f'{get_string("fmt_total_daily_usage_new", lang_code)}: `{total_daily_gb_str}`',
-        ])
-
-    if h_info or m_info:
-        report.append(f"\n*{get_string('fmt_server_details_header_new', lang_code)}*")
-
-    def format_panel_details(panel_info, daily_usage, server_flag, server_lang_key):
-        is_panel_active = panel_info.get('is_active', False)
-        panel_status_text = get_string("fmt_status_active", lang_code) if is_panel_active else get_string("fmt_status_inactive", lang_code)
-        
-        server_name_template = get_string(server_lang_key, lang_code)
-        server_name_raw = server_name_template.format(status=panel_status_text)
-        server_name = f"*{escape_markdown(server_name_raw)}*"
-
-        limit_str = f"`{escape_markdown(f'{panel_info.get("usage_limit_GB", 0.0):g} GB')}`"
-        usage_in_gb = panel_info.get('current_usage_GB', 0.0)
-        if usage_in_gb < 1 and usage_in_gb > 0:
-            usage_str = f"`{escape_markdown(f'{usage_in_gb * 1024:.0f} MB')}`"
-        else:
-            usage_str = f"`{escape_markdown(f'{usage_in_gb:.3f} GB')}`"
-
-        remaining_gb = max(0, panel_info.get('usage_limit_GB', 0.0) - panel_info.get('current_usage_GB', 0.0))
-        remaining_str = f"`{escape_markdown(f'{remaining_gb:g} GB')}`"
-        daily_str = f"`{escape_markdown(format_daily_usage(daily_usage))}`"
-        last_online = f"`{escape_markdown(to_shamsi(panel_info.get('last_online'), include_time=True))}`"
+    # بخش ۲: جزئیات هر پنل به صورت جداگانه
+    breakdown = info.get('breakdown', {})
+    
+    def format_panel_details(panel_data, daily_usage, panel_type):
+        flag = "🇩🇪" if panel_type == 'hiddify' else "🇫🇷"
+        limit = panel_data.get("usage_limit_GB", 0.0)
+        usage = panel_data.get("current_usage_GB", 0.0)
+        remaining = max(0, limit - usage)
         
         return [
-            "",
-            server_name,
-            f'{get_string("fmt_server_volume_new", lang_code)}: {limit_str}',
-            f'{get_string("fmt_server_usage_new", lang_code)}: {usage_str}',
-            f'{get_string("fmt_total_remaining_new", lang_code)}: {remaining_str}',
-            f'{get_string("fmt_server_daily_usage_new", lang_code)}: {daily_str}',
-            f'{get_string("fmt_server_last_online_new", lang_code)}: {last_online}',
+            f"*سرور {flag}*",
+            f"  {EMOJIS['database']} {escape_markdown('حجم کل :')} {escape_markdown(f'{limit:g} GB')}",
+            f"  {EMOJIS['fire']} {escape_markdown('حجم مصرف شده :')} {escape_markdown(f'{usage:g} GB')}",
+            f"  {EMOJIS['download']} {escape_markdown('حجم باقیمانده :')} {escape_markdown(f'{remaining:g} GB')}",
+            f"  {EMOJIS['lightning']} {escape_markdown('مصرف امروز :')} {escape_markdown(format_daily_usage(daily_usage))}",
+            f"  {EMOJIS['time']} {escape_markdown('آخرین اتصال :')} {escape_markdown(to_shamsi(panel_data.get('last_online'), include_time=True))}",
+            separator
         ]
 
-    if h_info:
-        report.extend(format_panel_details(h_info, daily_usage_dict.get('hiddify', 0.0), "🇩🇪", 'server_de_new'))
-    if m_info:
-        report.extend(format_panel_details(m_info, daily_usage_dict.get('marzban', 0.0), "🇫🇷", 'server_fr_new'))
+    for panel_name, panel_details in breakdown.items():
+        panel_data = panel_details.get('data', {})
+        panel_type = panel_details.get('type')
+        daily_usage = daily_usage_dict.get(panel_type, 0.0) if panel_type else 0.0
+        report.extend(format_panel_details(panel_data, daily_usage, panel_type))
 
+    # بخش ۳: اطلاعات نهایی و مشترک
     expire_days = info.get("expire")
     expire_label = get_string("fmt_expire_unlimited", lang_code)
     if expire_days is not None:
-        if expire_days < 0:
-            expire_label = get_string("fmt_status_expired", lang_code)
-        else:
-            expire_label = get_string("fmt_expire_days", lang_code).format(days=expire_days)
-
-
-    uuid = escape_markdown(info.get('uuid', ''))
-    bar = create_progress_bar(info.get("usage_percentage", 0))
+        expire_label = get_string("fmt_status_expired", lang_code) if expire_days < 0 else get_string("fmt_expire_days", lang_code).format(days=expire_days)
 
     report.extend([
+        f'{get_string("fmt_expiry_date_new", lang_code)} :* {escape_markdown(expire_label)}',
+        f'{get_string("fmt_uuid_new", lang_code)} :* `{escape_markdown(info.get("uuid", ""))}`',
         "",
-        f'*{get_string("fmt_expiry_date_new", lang_code)}:* {escape_markdown(expire_label)}',
-        f'*{get_string("fmt_uuid_new", lang_code)}:* `{uuid}`',
-        "",
-        f'*{get_string("fmt_status_bar_new", lang_code)}:* {bar}'
+        f'*{get_string("fmt_status_bar_new", lang_code)} :* {create_progress_bar(info.get("usage_percentage", 0))}'
     ])
     
     return "\n".join(report)
@@ -129,7 +90,6 @@ def quick_stats(uuid_rows: list, page: int, lang_code: str) -> tuple[str, dict]:
     
     return report_text, menu_data
 
-
 def fmt_user_report(user_infos: list, lang_code: str) -> str:
     if not user_infos:
         return ""
@@ -142,28 +102,30 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         header = f'*{get_string("fmt_report_account_header", lang_code).format(name=name)}*'
         account_lines = [header]
         
-        daily_usage_dict = db.get_usage_since_midnight(info['db_id'])
-        total_daily_usage_all_accounts += sum(daily_usage_dict.values())
-        
-        h_info = info.get('breakdown', {}).get('hiddify', {})
-        m_info = info.get('breakdown', {}).get('marzban', {})
+        if 'db_id' in info:
+            daily_usage_dict = db.get_usage_since_midnight(info['db_id'])
+            total_daily_usage_all_accounts += sum(daily_usage_dict.values())
+        else:
+            daily_usage_dict = {}
 
-        panel_info = h_info or m_info
-        if panel_info:
-            account_lines.append(get_string("fmt_report_total_volume", lang_code).format(volume=escape_markdown(f'{panel_info.get("usage_limit_GB", 0):.2f} GB')))
-            account_lines.append(get_string("fmt_report_used_volume", lang_code).format(usage=escape_markdown(f'{panel_info.get("current_usage_GB", 0):.2f} GB')))
-            account_lines.append(get_string("fmt_report_remaining_volume", lang_code).format(remaining=escape_markdown(f'{max(0, panel_info.get("usage_limit_GB", 0) - panel_info.get("current_usage_GB", 0)):.2f} GB')))
+        account_lines.append(f'{get_string("fmt_report_total_volume", lang_code)}: {escape_markdown(f"{info.get("usage_limit_GB", 0):.2f} GB")}')
+        account_lines.append(f'{get_string("fmt_report_used_volume", lang_code)}: {escape_markdown(f"{info.get("current_usage_GB", 0):.2f} GB")}')
+        account_lines.append(f'{get_string("fmt_report_remaining_volume", lang_code)}: {escape_markdown(f"{max(0, info.get("usage_limit_GB", 0) - info.get("current_usage_GB", 0)):.2f} GB")}')
         
         account_lines.append(get_string("fmt_report_daily_usage_header", lang_code))
-        if h_info:
-            account_lines.append(f" 🇩🇪 : {escape_markdown(format_daily_usage(daily_usage_dict.get('hiddify', 0.0)))}")
-        if m_info:
-            account_lines.append(f" 🇫🇷 : {escape_markdown(format_daily_usage(daily_usage_dict.get('marzban', 0.0)))}")
+        
+        breakdown = info.get('breakdown', {})
+        for panel_name, panel_details in breakdown.items():
+            panel_type = panel_details.get('type')
+            if panel_type:
+                panel_daily_usage = daily_usage_dict.get(panel_type, 0.0)
+                flag = "🇩🇪" if panel_type == "hiddify" else "🇫🇷" if panel_type == "marzban" else ""
+                account_lines.append(f" {flag} : {escape_markdown(format_daily_usage(panel_daily_usage))}")
 
         expire_days = info.get("expire")
         expire_str = f"`{get_string('fmt_expire_unlimited', lang_code)}`"
         if expire_days is not None:
-            expire_word = get_string('expire_summary', lang_code).split(' ')[-1] # Gets "Days" or "روز"
+            expire_word = get_string('expire_summary', lang_code).split(' ')[-1]
             expire_str = f"{expire_days} {expire_word}" if expire_days >= 0 else get_string("fmt_status_expired", lang_code)
         
         account_lines.append(get_string("fmt_report_expiry", lang_code).format(expiry=escape_markdown(expire_str)))

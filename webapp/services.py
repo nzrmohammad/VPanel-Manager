@@ -2,8 +2,8 @@ from markupsafe import escape
 from datetime import datetime, timedelta
 import pytz
 from bot.database import db
-from bot.hiddify_api_handler import hiddify_handler
-from bot.marzban_api_handler import marzban_handler
+from bot.hiddify_api_handler import HiddifyAPIHandler  
+from bot.marzban_api_handler import MarzbanAPIHandler 
 from bot.combined_handler import get_all_users_combined, get_combined_user_info
 from bot.utils import to_shamsi, format_relative_time, format_usage, days_until_next_birthday
 import logging
@@ -15,6 +15,25 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+try:
+    active_panels = db.get_active_panels()
+    
+    hiddify_panel_config = next((p for p in active_panels if p['panel_type'] == 'hiddify'), None)
+    marzban_panel_config = next((p for p in active_panels if p['panel_type'] == 'marzban'), None)
+
+    hiddify_handler = HiddifyAPIHandler(hiddify_panel_config) if hiddify_panel_config else None
+    marzban_handler = MarzbanAPIHandler(marzban_panel_config) if marzban_panel_config else None
+    
+    if hiddify_handler:
+        logger.info(f"WebApp services initialized default Hiddify handler for panel: {hiddify_panel_config.get('name')}")
+    if marzban_handler:
+        logger.info(f"WebApp services initialized default Marzban handler for panel: {marzban_panel_config.get('name')}")
+
+except Exception as e:
+    logger.error(f"Could not initialize default handlers for webapp: {e}", exc_info=True)
+    hiddify_handler = None
+    marzban_handler = None
+
 # ===================================================================
 # == توابع کمکی برای داشبورد ==
 # ===================================================================
@@ -22,20 +41,21 @@ logger = logging.getLogger(__name__)
 def _check_system_health():
     """وضعیت سلامت سرویس‌های خارجی را با مدیریت خطا بررسی می‌کند."""
     health = {}
-    for name, handler in [('hiddify', hiddify_handler), ('marzban', marzban_handler), ('database', db)]:
+    
+    # استفاده از نمونه‌های ساخته شده در بالا
+    handlers_to_check = [('database', db)]
+    if hiddify_handler:
+        handlers_to_check.append(('hiddify', hiddify_handler))
+    if marzban_handler:
+        handlers_to_check.append(('marzban', marzban_handler))
+
+    for name, handler in handlers_to_check:
         try:
             result = handler.check_connection()
-            if isinstance(result, bool):
-                health[name] = {'ok': result}
-            else:
-                # ✅ امن‌سازی پیام خطا
-                if 'error' in result:
-                    result['error'] = escape(result['error'])
-                health[name] = result
+            health[name] = {'ok': result}
         except Exception as e:
             logger.error(f"An exception occurred while checking connection for '{name}': {e}", exc_info=True)
-            # ✅ امن‌سازی پیام خطا
-            health[name] = {'ok': False, 'error': escape(str(e))}
+            health[name] = {'ok': False, 'error': html_escape(str(e))}
     return health
 
 
@@ -50,15 +70,16 @@ def _process_user_data(all_users_data):
     now_utc = datetime.now(pytz.utc)
 
     for user in all_users_data:
-        # ✅ امن‌سازی نام کاربر در ابتدای پردازش
-        user['name'] = escape(user.get('name', 'کاربر ناشناس'))
+        user['name'] = html_escape(user.get('name', 'کاربر ناشناس'))
         
         daily_usage = db.get_usage_since_midnight_by_uuid(user.get('uuid', ''))
         user['daily_usage_gb'] = sum(daily_usage.values())
         stats['total_usage_today_gb'] += user['daily_usage_gb']
 
-        is_on_hiddify = 'hiddify' in user.get('breakdown', {})
-        is_on_marzban = 'marzban' in user.get('breakdown', {})
+        # تشخیص حضور در پنل‌ها بر اساس breakdown
+        user_breakdown = user.get('breakdown', {})
+        is_on_hiddify = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
+        is_on_marzban = any(p.get('type') == 'marzban' for p in user_breakdown.values())
 
         if user.get('is_active'):
             stats['active_users'] += 1
@@ -69,20 +90,13 @@ def _process_user_data(all_users_data):
             elif is_on_hiddify and is_on_marzban:
                 stats['both_panels_active'] += 1
 
-        is_online_in_any_panel = False
-        for panel_name, online_list in [('hiddify', online_users_hiddify), ('marzban', online_users_marzban)]:
-            panel_info = user.get('breakdown', {}).get(panel_name, {})
-            if panel_info:
-                last_online = panel_info.get('last_online')
-                if last_online and isinstance(last_online, datetime):
-                    last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
-                    if (now_utc - last_online_aware).total_seconds() < 180:
-                        if not any(u['uuid'] == user['uuid'] for u in online_list):
-                            online_list.append(user)
-                        is_online_in_any_panel = True
-
-        if is_online_in_any_panel:
-            stats['online_users'] += 1
+        last_online = user.get('last_online')
+        if last_online and isinstance(last_online, datetime):
+            last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
+            if (now_utc - last_online_aware).total_seconds() < 180:
+                stats['online_users'] += 1
+                if is_on_hiddify: online_users_hiddify.append(user)
+                if is_on_marzban: online_users_marzban.append(user)
 
         expire_days = user.get('expire')
         if expire_days is not None and 0 <= expire_days <= 7:
@@ -126,8 +140,6 @@ def get_dashboard_data():
         daily_usage_summary = []
 
     if not all_users_data:
-        # ... (بخش مدیریت خطا در صورت خالی بودن لیست کاربران)
-        # این بخش نیازی به امن‌سازی ندارد چون داده‌ای از کاربر نمایش نمی‌دهد
         return {
            "stats": empty_stats, "new_users_last_24h": [], "expiring_soon_users": [], 
            "top_consumers_today": [], "online_users_hiddify": [], "online_users_marzban": [],
@@ -144,7 +156,6 @@ def get_dashboard_data():
         key=lambda u: u.get('daily_usage_gb', 0), 
         reverse=True
     )[:10]
-    # ✅ --- پایان اصلاح ---
     
     panel_distribution_data = {
         "labels": ["فقط آلمان 🇩🇪", "فقط فرانسه 🇫🇷", "هر دو پنل (مشترک)"],
@@ -160,13 +171,13 @@ def get_dashboard_data():
         usage_chart_data = {"labels": [], "data": []}
     
     top_consumers_chart_data = {
-        "labels": [escape(user['name']) for user in top_consumers_today],
+        "labels": [html_escape(user['name']) for user in top_consumers_today],
         "data": [round(user.get('daily_usage_gb', 0), 2) for user in top_consumers_today]
     }
 
     users_with_birthdays = db.get_users_with_birthdays()
     for user in users_with_birthdays:
-        user['name'] = escape(user.get('first_name', 'کاربر'))
+        user['name'] = html_escape(user.get('first_name', 'کاربر'))
         user['days_to_birthday'] = days_until_next_birthday(user.get('birthday'))
 
     return {

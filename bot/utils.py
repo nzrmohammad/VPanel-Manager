@@ -307,30 +307,32 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
         if info_config:
             final_configs.append(info_config)
 
-    has_access_de = user_info.get('on_hiddify', False)
-    has_access_fr = user_info.get('on_marzban', False)
-    user_name = user_record.get('name', 'کاربر')
+    # --- START OF FIX ---
+    # خواندن صحیح دسترسی‌های کاربر از دیتابیس
+    has_access_de = user_record.get('has_access_de', False)
+    has_access_fr = user_record.get('has_access_fr', False)
     is_user_vip = user_record.get('is_vip', False)
+    user_name = user_record.get('name', 'کاربر')
+    # --- END OF FIX ---
 
     all_active_templates = db.get_active_config_templates()
-
-    # The redundant info_config call is removed from here.
 
     for template in all_active_templates:
         config_str = template['template_str']
         is_template_special = template.get('is_special', False)
         server_type = template.get('server_type', 'none')
 
+        # بررسی دسترسی کاربر به نوع سرور کانفیگ
         if server_type == 'fr' and not has_access_fr:
             continue
         if server_type == 'de' and not has_access_de:
             continue
+        
+        # بررسی دسترسی کاربر به کانفیگ‌های ویژه (VIP)
+        if is_template_special and not is_user_vip:
+            continue
 
-        if is_template_special:
-            if is_user_vip:
-                final_configs.append(config_str)
-        else:
-            final_configs.append(config_str)
+        final_configs.append(config_str)
 
     processed_configs = []
     for config_str in final_configs:

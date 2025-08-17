@@ -215,8 +215,8 @@ class Menu:
         kb.add(btn4, btn3)
         kb.add(btn6, btn5)
         kb.add(btn7, btn9)
-        kb.add(btn8)
         kb.add(btn10)
+        kb.add(btn8)
         return kb
 
 

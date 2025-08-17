@@ -12,6 +12,7 @@ from .utils import validate_uuid, escape_markdown, _safe_edit
 from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history
 from .utils import load_service_plans
 from .language import get_string
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -117,28 +118,47 @@ def handle_user_callbacks(call: types.CallbackQuery):
             bot.answer_callback_query(call.id, get_string("err_acc_not_found", lang_code), show_alert=True)
             return
 
-        # Safely build the subscription link message
         try:
             user_uuid = row['uuid']
-            WEBAPP_BASE_URL = "https://panel.cloudvibe.ir"
-            link_path = f"user/sub/{user_uuid}"
-            if link_type == 'b64':
-                link_path = f"user/sub/b64/{user_uuid}"
-                
-            full_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/{link_path}"
+            WEBAPP_BASE_URL = "https://panel.cloudvibe.ir" 
+            
+            is_base64 = (link_type == 'b64')
+            normal_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/{user_uuid}"
+            final_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/b64/{user_uuid}" if is_base64 else normal_sub_link
 
-            qr_img = qrcode.make(full_sub_link)
-            stream = io.BytesIO(); qr_img.save(stream, 'PNG'); stream.seek(0)
+            qr_img = qrcode.make(final_sub_link)
+            stream = io.BytesIO()
+            qr_img.save(stream, 'PNG')
+            stream.seek(0)
             
             raw_template = get_string("msg_link_ready", lang_code)
-            escaped_link = f"`{escape_markdown(full_sub_link)}`"
+            escaped_link = f"`{escape_markdown(final_sub_link)}`"
             message_text = f'*{escape_markdown(raw_template.splitlines()[0].format(link_type=link_type.capitalize()))}*\n\n' + \
-                           f'{escape_markdown(raw_template.splitlines()[2])}\n{escaped_link}\n\n' + \
-                           f'{escape_markdown(raw_template.splitlines()[4])}'
+                           f'{escape_markdown(raw_template.splitlines()[2])}\n{escaped_link}'
+
+            # --- بخش اصلی تغییرات: ساخت دکمه‌های شیشه‌ای با لینک واسط ---
+            kb = types.InlineKeyboardMarkup(row_width=2)
             
-            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
+            def create_redirect_button(app_name: str, deep_link: str):
+                redirect_page_url = f"{WEBAPP_BASE_URL}/app/redirect?url={urllib.parse.quote(deep_link)}&app_name={urllib.parse.quote(app_name)}"
+                return types.InlineKeyboardButton(f"📲 افزودن به {app_name}", url=redirect_page_url)
+
+            if not is_base64:
+                # دکمه‌ها برای لینک Normal
+                kb.add(create_redirect_button("V2rayNG", f"v2rayng://install-sub/?url={normal_sub_link}"))
+                kb.add(create_redirect_button("HAP", f"happ://add/{normal_sub_link}"))
+                kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{normal_sub_link}"))
+            else:
+                # دکمه‌ها برای لینک Base64
+                kb.add(create_redirect_button("Streisand", f"streisand://import/{final_sub_link}"))
+                kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{normal_sub_link}"))
+
+            kb.add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
+            # --- پایان تغییرات ---
+
             bot.delete_message(call.message.chat.id, call.message.message_id)
             bot.send_photo(uid, photo=stream, caption=message_text, reply_markup=kb, parse_mode="MarkdownV2")
+        
         except Exception as e:
             logger.error(f"Failed to generate/send subscription link for UUID {user_uuid}: {e}", exc_info=True)
             bot.answer_callback_query(call.id, escape_markdown(get_string("err_link_generation", lang_code)), show_alert=True)
@@ -147,7 +167,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
     elif data.startswith("del_"):
         uuid_id = int(data.split("_")[1])
         db.deactivate_uuid(uuid_id)
-        # Pass the raw string, _show_manage_menu will handle formatting.
         _show_manage_menu(call=call, override_text=get_string("msg_account_deleted", lang_code))
 
     elif data.startswith("win_select_"):
@@ -158,14 +177,12 @@ def handle_user_callbacks(call: types.CallbackQuery):
             h_info = info.get('breakdown', {}).get('hiddify', {})
             m_info = info.get('breakdown', {}).get('marzban', {})
             text = get_string("prompt_select_server_stats", lang_code)
-            # parse_mode=None is safe as the string is plain
             _safe_edit(uid, msg_id, text, reply_markup=menu.server_selection_menu(uuid_id, bool(h_info), bool(m_info), lang_code=lang_code), parse_mode=None)
 
     elif data.startswith(("win_hiddify_", "win_marzban_")):
         parts = data.split("_")
         panel_code, uuid_id = parts[1], int(parts[2])
         if db.uuid_by_id(uid, uuid_id):
-            # fmt_panel_quick_stats is already refactored
             panel_db_name = f"{panel_code}_usage_gb"
             panel_display_name = get_string('server_de' if panel_code == "hiddify" else 'server_fr', lang_code)
             stats = db.get_panel_usage_in_intervals(uuid_id, panel_db_name)
@@ -175,7 +192,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
 
     elif data.startswith("qstats_acc_page_"):
         page = int(data.split("_")[3])
-        # quick_stats is already refactored
         text, menu_data = quick_stats(db.uuids(uid), page=page, lang_code=lang_code)
         reply_markup = menu.quick_stats_menu(menu_data['num_accounts'], menu_data['current_page'], lang_code=lang_code)
         _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
@@ -184,7 +200,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
         parts = data.split('_'); uuid_id, page = int(parts[2]), int(parts[3])
         row = db.uuid_by_id(uid, uuid_id)
         if row:
-            # fmt_user_payment_history is already refactored
             payment_history = db.get_user_payment_history(uuid_id)
             text = fmt_user_payment_history(payment_history, row.get('name', get_string('unknown_user', lang_code)), page, lang_code=lang_code)
             kb = menu.create_pagination_menu(f"payment_history_{uuid_id}", page, len(payment_history), f"acc_{uuid_id}", lang_code)
@@ -197,7 +212,7 @@ def handle_user_callbacks(call: types.CallbackQuery):
 
     elif data == "show_card_details":
         if not (CARD_PAYMENT_INFO and CARD_PAYMENT_INFO.get("card_number")):
-            return # اگر اطلاعاتی وجود نداشت، کاری نکن
+            return
 
         title = get_string("payment_card_details_title", lang_code)
         holder_label = get_string("payment_card_holder", lang_code)

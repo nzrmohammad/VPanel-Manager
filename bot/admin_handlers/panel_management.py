@@ -45,7 +45,7 @@ def handle_start_add_panel(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id
     admin_conversations[uid] = {'step': 'type', 'msg_id': msg_id, 'data': {}}
     
-    prompt = "1️⃣ لطفاً نوع پنلی که می‌خواهید اضافه کنید را انتخاب کنید:"
+    prompt = escape_markdown("1️⃣ لطفاً نوع پنلی که می‌خواهید اضافه کنید را انتخاب کنید:")
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("Hiddify", callback_data="admin:panel_set_type:hiddify"),
@@ -63,7 +63,7 @@ def handle_set_panel_type(call, params):
     admin_conversations[uid]['data']['panel_type'] = panel_type
     admin_conversations[uid]['step'] = 'name'
     
-    prompt = "2️⃣ یک نام منحصر به فرد برای این پنل انتخاب کنید (مثال: سرور آلمان، پنل اصلی):"
+    prompt = escape_markdown("2️⃣ یک نام منحصر به فرد برای این پنل انتخاب کنید (مثال: سرور آلمان):")
     _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
     bot.register_next_step_handler_by_chat_id(uid, get_panel_name)
 
@@ -77,7 +77,7 @@ def get_panel_name(message: types.Message):
     admin_conversations[uid]['step'] = 'url'
     msg_id = admin_conversations[uid]['msg_id']
     
-    prompt = f"3️⃣ لطفاً آدرس کامل پنل را وارد کنید:\n\n*مثال برای Hiddify:*\n`https://mypanel.domain.com`\n\n*مثال برای Marzban:*\n`https://mypanel.domain.com:8000`"
+    prompt = escape_markdown(f"3️⃣ لطفاً آدرس کامل پنل را وارد کنید:\n\n*مثال برای Hiddify:*\n`https://mypanel.domain.com`\n\n*مثال برای Marzban:*\n`https://mypanel.domain.com:8000`")
     _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
     bot.register_next_step_handler_by_chat_id(uid, get_panel_url)
 
@@ -92,13 +92,13 @@ def get_panel_url(message: types.Message):
     msg_id = admin_conversations[uid]['msg_id']
     panel_type = admin_conversations[uid]['data']['panel_type']
 
-    prompt = "4️⃣ "
+    prompt_text = "4️⃣ "
     if panel_type == 'hiddify':
-        prompt += "لطفاً `Admin UUID` پنل هیدیفای را وارد کنید:"
+        prompt_text += "لطفاً `Admin UUID` پنل هیدیفای را وارد کنید:"
     else: # Marzban
-        prompt += "لطفاً `Username` ادمین پنل مرزبان را وارد کنید:"
+        prompt_text += "لطفاً `Username` ادمین پنل مرزبان را وارد کنید:"
         
-    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
+    _safe_edit(uid, msg_id, escape_markdown(prompt_text), reply_markup=menu.admin_cancel_action("admin:panel_manage"))
     bot.register_next_step_handler_by_chat_id(uid, get_panel_token1)
 
 def get_panel_token1(message: types.Message):
@@ -113,12 +113,12 @@ def get_panel_token1(message: types.Message):
 
     if panel_type == 'hiddify':
         admin_conversations[uid]['step'] = 'token2_hiddify'
-        prompt = "5️⃣ (اختیاری) لطفاً `Admin Proxy Path` را وارد کنید. اگر ندارید، کلمه `ندارم` را ارسال کنید:"
+        prompt = escape_markdown("5️⃣ (اختیاری) لطفاً `Admin Proxy Path` را وارد کنید. اگر ندارید، کلمه `ندارم` را ارسال کنید:")
         _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
         bot.register_next_step_handler_by_chat_id(uid, get_panel_token2)
     else: # Marzban
         admin_conversations[uid]['step'] = 'token2_marzban'
-        prompt = "5️⃣ لطفاً `Password` ادمین پنل مرزبان را وارد کنید:"
+        prompt = escape_markdown("5️⃣ لطفاً `Password` ادمین پنل مرزبان را وارد کنید:")
         _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
         bot.register_next_step_handler_by_chat_id(uid, get_panel_token2)
 
@@ -128,15 +128,16 @@ def get_panel_token2(message: types.Message):
     _delete_user_message(message)
     if uid not in admin_conversations: return
 
-    panel_data = admin_conversations[uid]['data']
-    msg_id = admin_conversations[uid]['msg_id']
+    # اطلاعات مکالمه را در متغیرهای محلی ذخیره می‌کنیم
+    convo_data = admin_conversations[uid]
+    panel_data = convo_data['data']
+    msg_id = convo_data['msg_id']
 
     if panel_data['panel_type'] == 'hiddify' and token2.lower() in ['ندارم', 'none', 'no']:
         panel_data['api_token2'] = None
     else:
         panel_data['api_token2'] = token2
-    
-    # ذخیره در دیتابیس
+
     success = db.add_panel(
         name=panel_data['name'],
         panel_type=panel_data['panel_type'],
@@ -144,26 +145,25 @@ def get_panel_token2(message: types.Message):
         token1=panel_data['api_token1'],
         token2=panel_data['api_token2']
     )
-    
-    admin_conversations.pop(uid, None) # پایان مکالمه
-    
+
     if success:
-        bot.answer_callback_query(message.id if hasattr(message, 'id') else admin_conversations[uid]['msg_id'], "✅ پنل با موفقیت اضافه شد.")
-        # فراخوانی منوی اصلی مدیریت پنل‌ها برای نمایش لیست آپدیت شده
-        # چون message آبجکت call نیست، یک call ساختگی میسازیم
-        fake_call = types.CallbackQuery(id=0, from_user=message.from_user, data="", chat_instance="", json_string="", message=message)
-        fake_call.message.message_id = msg_id
-        handle_panel_management_menu(fake_call, [])
+        # ساخت یک پیام موفقیت‌آمیز خوانا
+        success_message = escape_markdown("✅ پنل با موفقیت اضافه شد. برای مشاهده لیست جدید، به منوی مدیریت پنل‌ها بازگردید.")
+        # ویرایش پیام قبلی با پیام موفقیت
+        _safe_edit(uid, msg_id, success_message, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
     else:
-        _safe_edit(uid, msg_id, "❌ خطا: پنلی با این نام از قبل وجود دارد. لطفاً نام دیگری انتخاب کنید.", reply_markup=menu.admin_cancel_action("admin:panel_manage"))
+        error_message = escape_markdown("❌ خطا: پنلی با این نام از قبل وجود دارد. لطفاً نام دیگری انتخاب کنید.")
+        _safe_edit(uid, msg_id, error_message, reply_markup=menu.admin_cancel_action("admin:panel_manage"))
+
+    # مکالمه را در انتهای تابع پاک می‌کنیم
+    admin_conversations.pop(uid, None)
 
 def handle_panel_details(call, params):
     """نمایش جزئیات پنل و گزینه‌های مدیریت."""
     uid, msg_id = call.from_user.id, call.message.message_id
     panel_id = int(params[0])
     
-    panels = {p['id']: p for p in db.get_all_panels()}
-    panel = panels.get(panel_id)
+    panel = db.get_panel_by_id(panel_id)
     
     if not panel:
         bot.answer_callback_query(call.id, "❌ پنل یافت نشد.", show_alert=True)
@@ -180,10 +180,15 @@ def handle_panel_details(call, params):
     
     kb = types.InlineKeyboardMarkup(row_width=2)
     toggle_text = "غیرفعال کردن" if panel['is_active'] else "فعال کردن"
+    
+    # دکمه جدید مشاهده پنل
+    kb.add(types.InlineKeyboardButton(f"🌐 مشاهده پنل", url=panel['api_url']))
+    
     kb.add(
-        types.InlineKeyboardButton(f"🗑 حذف پنل", callback_data=f"admin:panel_delete_confirm:{panel_id}"),
+        types.InlineKeyboardButton(f"🗑 حذف", callback_data=f"admin:panel_delete_confirm:{panel_id}"),
         types.InlineKeyboardButton(f"🔄 {toggle_text}", callback_data=f"admin:panel_toggle:{panel_id}")
     )
+    kb.add(types.InlineKeyboardButton(f"✏️ تغییر نام", callback_data=f"admin:panel_edit_start:{panel_id}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin:panel_manage"))
     
     _safe_edit(uid, msg_id, "\n".join(details), reply_markup=kb)
@@ -191,7 +196,7 @@ def handle_panel_details(call, params):
 def handle_panel_delete_confirm(call, params):
     """نمایش پیام تایید برای حذف پنل."""
     panel_id = int(params[0])
-    prompt = "⚠️ *آیا از حذف این پنل اطمینان دارید؟* این عمل غیرقابل بازگشت است."
+    prompt = "⚠️ *آیا از حذف این پنل اطمینان دارید؟* این عمل غیرقابل بازگشت است\\."
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("❌ بله، حذف کن", callback_data=f"admin:panel_delete_execute:{panel_id}"),
@@ -213,7 +218,91 @@ def handle_panel_toggle_status(call, params):
     panel_id = int(params[0])
     if db.toggle_panel_status(panel_id):
         bot.answer_callback_query(call.id, "✅ وضعیت پنل تغییر کرد.")
-        # Refresh the details view
         handle_panel_details(call, params)
     else:
         bot.answer_callback_query(call.id, "❌ خطا در تغییر وضعیت پنل.", show_alert=True)
+
+def handle_panel_edit_start(call, params):
+    """مرحله اول ویرایش: پرسیدن نام جدید."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    panel_id = int(params[0])
+    
+    panel = db.get_panel_by_id(panel_id)
+    if not panel:
+        bot.answer_callback_query(call.id, "❌ پنل یافت نشد.", show_alert=True)
+        return
+
+    admin_conversations[uid] = {'step': 'panel_rename', 'msg_id': msg_id, 'panel_id': panel_id}
+    
+    prompt = f"لطفاً نام جدید را برای پنل «{escape_markdown(panel['name'])}» وارد کنید:"
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action(f"admin:panel_details:{panel_id}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_new_panel_name)
+
+
+def get_new_panel_name(message: types.Message):
+    """مرحله دوم ویرایش: دریافت و ذخیره نام جدید."""
+    uid, new_name = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+
+    convo_data = admin_conversations.get(uid, {})
+    panel_id = convo_data.get('panel_id')
+    msg_id = convo_data.get('msg_id')
+
+    admin_conversations.pop(uid, None)
+
+    if not all([panel_id, msg_id]):
+        logger.error(f"Incomplete conversation data for renaming panel for user {uid}")
+        bot.send_message(uid, "❌ خطایی در جریان مکالمه رخ داد. لطفاً دوباره تلاش کنید.", reply_markup=menu.admin_cancel_action("admin:panel_manage"))
+        return
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به جزئیات پنل", callback_data=f"admin:panel_details:{panel_id}"))
+
+    if db.update_panel_name(panel_id, new_name):
+        success_message = escape_markdown(f"✅ نام پنل با موفقیت به «{new_name}» تغییر کرد.")
+        _safe_edit(uid, msg_id, success_message, reply_markup=kb)
+    else:
+        error_message = escape_markdown("❌ خطا در تغییر نام پنل. ممکن است نام تکراری باشد.")
+        _safe_edit(uid, msg_id, error_message, reply_markup=kb)
+
+
+def handle_panel_details(call, params):
+    """نمایش جزئیات پنل و گزینه‌های مدیریت."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    panel_id = int(params[0])
+    
+    panel = db.get_panel_by_id(panel_id)
+    
+    if not panel:
+        bot.answer_callback_query(call.id, "❌ پنل یافت نشد.", show_alert=True)
+        return
+
+    panel_view_url = panel['api_url']
+    if panel['panel_type'] == 'hiddify' and panel.get('api_token2'):
+        base_url = panel['api_url'].rstrip('/')
+        proxy_path = panel['api_token2'].lstrip('/')
+        panel_view_url = f"{base_url}/{proxy_path}/"
+
+    status = "✅" if panel['is_active'] else "❌"
+    details = [
+        f"⚙️ *جزئیات پنل: {escape_markdown(panel['name'])}*",
+        f"`──────────────────`",
+        f"🔸 *نوع :* {escape_markdown(panel['panel_type'])}",
+        f"🔹 *وضعیت :* {status}",
+        f"🔗 *آدرس :* `{escape_markdown(panel['api_url'])}`"
+    ]
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    toggle_text = "غیرفعال کردن" if panel['is_active'] else "فعال کردن"
+    
+    kb.add(types.InlineKeyboardButton(f"🌐 مشاهده پنل", url=panel_view_url))
+    
+    kb.add(
+        types.InlineKeyboardButton(f"🗑 حذف", callback_data=f"admin:panel_delete_confirm:{panel_id}"),
+        types.InlineKeyboardButton(f"🔄 {toggle_text}", callback_data=f"admin:panel_toggle:{panel_id}")
+    )
+    kb.add(types.InlineKeyboardButton(f"✏️ تغییر نام", callback_data=f"admin:panel_edit_start:{panel_id}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin:panel_manage"))
+    
+    _safe_edit(uid, msg_id, "\n".join(details), reply_markup=kb)

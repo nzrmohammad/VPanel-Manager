@@ -30,7 +30,8 @@ def _process_and_merge_user_data(all_users_map: dict) -> List[Dict[str, Any]]:
         
         final_name = "کاربر ناشناس"
         if data.get('breakdown'):
-            for panel_name, panel_data in data['breakdown'].items():
+            for panel_name, panel_details in data['breakdown'].items():
+                panel_data = panel_details.get('data', {})
                 if panel_data.get('name'):
                     final_name = panel_data['name']
                     break
@@ -72,7 +73,10 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
                     'panels': set()
                 }
 
-            all_users_map[identifier]['breakdown'][panel_name] = user
+            all_users_map[identifier]['breakdown'][panel_name] = {
+                "data": user,
+                "type": panel_config['panel_type']
+            }
             all_users_map[identifier]['panels'].add(panel_name)
             all_users_map[identifier]['is_active'] |= user.get('is_active', False)
             all_users_map[identifier]['current_usage_GB'] += user.get('current_usage_GB', 0)
@@ -81,7 +85,7 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
             new_expire = user.get('expire')
             if new_expire is not None:
                 current_expire = all_users_map[identifier]['expire']
-                if current_expire is None or new_expire > current_expire:
+                if current_expire is None or new_expire < current_expire:
                     all_users_map[identifier]['expire'] = new_expire
     
     return _process_and_merge_user_data(all_users_map)
@@ -98,32 +102,36 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
         if not handler: continue
 
         user_info = None
+        # منطق پیدا کردن کاربر بر اساس نوع پنل
         if panel_config['panel_type'] == 'hiddify' and is_uuid:
             user_info = handler.user_info(identifier)
         elif panel_config['panel_type'] == 'marzban':
-            if is_uuid:
-                 # get_user_info از مپینگ دیتابیس برای پیدا کردن یوزرنیم استفاده می‌کند
-                 user_info = handler.get_user_info(identifier)
-            else:
-                 # اگر ورودی UUID نبود، خود شناسه را نام کاربری در نظر می‌گیریم
-                 user_info = handler.get_user_by_username(identifier)
+            marzban_username = db.get_marzban_username_by_uuid(identifier) if is_uuid else identifier
+            if marzban_username:
+                user_info = handler.get_user_by_username(marzban_username)
 
         if user_info:
-            user_data_map[panel_config['name']] = user_info
+            user_data_map[panel_config['name']] = {
+                "data": user_info,
+                "type": panel_config['panel_type']
+            }
 
     if not user_data_map:
         return None
 
-    # ترکیب اطلاعات پیدا شده
+    # --- START OF FIX ---
+    # ترکیب اطلاعات پیدا شده با منطق اصلاح شده
     final_info = {
         'breakdown': user_data_map,
-        'is_active': any(p.get('is_active') for p in user_data_map.values()),
-        'current_usage_GB': sum(p.get('current_usage_GB', 0) for p in user_data_map.values()),
-        'usage_limit_GB': sum(p.get('usage_limit_GB', 0) for p in user_data_map.values()),
-        'expire': max([p.get('expire') for p in user_data_map.values() if p.get('expire') is not None] or [None]),
-        'uuid': identifier if is_uuid else next((p.get('uuid') for p in user_data_map.values() if p.get('uuid')), None),
-        'name': identifier if not is_uuid else next((p.get('name') for p in user_data_map.values() if p.get('name')), "کاربر ناشناس")
+        'is_active': any(p['data'].get('is_active') for p in user_data_map.values()),
+        'current_usage_GB': sum(p['data'].get('current_usage_GB', 0) for p in user_data_map.values()),
+        'usage_limit_GB': sum(p['data'].get('usage_limit_GB', 0) for p in user_data_map.values()),
+        # انتخاب کمترین (زودترین) تاریخ انقضا به عنوان تاریخ انقضای نهایی
+        'expire': min([p['data'].get('expire') for p in user_data_map.values() if p['data'].get('expire') is not None] or [None]),
+        'uuid': identifier if is_uuid else next((p['data'].get('uuid') for p in user_data_map.values() if p['data'].get('uuid')), None),
+        'name': identifier if not is_uuid else next((p['data'].get('name') for p in user_data_map.values() if p['data'].get('name')), "کاربر ناشناس")
     }
+    # --- END OF FIX ---
     
     limit = final_info['usage_limit_GB']
     usage = final_info['current_usage_GB']
@@ -140,7 +148,6 @@ def search_user(query: str) -> List[Dict[str, Any]]:
     all_users = get_all_users_combined()
     
     for user in all_users:
-        # جستجو در نام کاربر و UUID
         match_name = query_lower in user.get('name', '').lower()
         match_uuid = user.get('uuid') and query_lower in user.get('uuid')
         
@@ -168,16 +175,21 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
         handler = _get_handler_for_panel(panel_config)
         if not handler: continue
 
-        user_panel_data = user_info['breakdown'][panel_name]
+        user_panel_details = user_info['breakdown'][panel_name]
+        user_panel_data = user_panel_details.get('data', {})
         
-        if panel_config['panel_type'] == 'hiddify':
+        if panel_config['panel_type'] == 'hiddify' and user_panel_data.get('uuid'):
             payload = {}
             if add_gb: payload['usage_limit_GB'] = user_panel_data.get('usage_limit_GB', 0) + add_gb
-            if add_days: payload['package_days'] = max(0, user_panel_data.get('expire') or 0) + add_days
+            if add_days: 
+                current_expire = user_panel_data.get('expire')
+                # If expire is None or negative, base the addition on today
+                base_days = max(0, current_expire) if current_expire is not None else 0
+                payload['package_days'] = base_days + add_days
             if handler.modify_user(user_panel_data['uuid'], payload):
                 any_success = True
         
-        elif panel_config['panel_type'] == 'marzban':
+        elif panel_config['panel_type'] == 'marzban' and user_panel_data.get('username'):
             if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
                 any_success = True
                 
@@ -191,17 +203,20 @@ def delete_user_from_all_panels(identifier: str) -> bool:
     all_panels_map = {p['name']: p for p in db.get_all_panels()}
     all_success = True
 
-    for panel_name, user_panel_data in user_info.get('breakdown', {}).items():
+    for panel_name, panel_details in user_info.get('breakdown', {}).items():
         panel_config = all_panels_map.get(panel_name)
         if not panel_config: continue
         
         handler = _get_handler_for_panel(panel_config)
         if not handler: continue
 
-        if panel_config['panel_type'] == 'hiddify':
+        user_panel_data = panel_details.get('data', {})
+        panel_type = panel_details.get('type')
+
+        if panel_type == 'hiddify' and user_panel_data.get('uuid'):
             if not handler.delete_user(user_panel_data['uuid']):
                 all_success = False
-        elif panel_config['panel_type'] == 'marzban':
+        elif panel_type == 'marzban' and user_panel_data.get('username'):
             if not handler.delete_user(user_panel_data['username']):
                 all_success = False
     

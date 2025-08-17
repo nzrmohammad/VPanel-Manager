@@ -68,21 +68,21 @@
     {
         "name": "FR Economy 🇫🇷",
         "type": "france",
-        "volume_de": "۲۰ گیگابایت",
+        "volume_fr": "۲۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 60000
     },
     {
         "name": "FR Standard 🇫🇷",
         "type": "france",
-        "volume_de": "۳۰ گیگابایت",
+        "volume_fr": "۳۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 90000
     },
     {
         "name": "FR Pro 🇫🇷",
         "type": "france",
-        "volume_de": "۵۰ گیگابایت",
+        "volume_fr": "۵۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 150000
     }

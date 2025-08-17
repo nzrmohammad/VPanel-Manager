@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>انتقال به اپلیکیشن</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f2f5; color: #333; text-align: center; padding: 1rem; box-sizing: border-box; }
+        .container { background-color: #fff; padding: 2.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
+        h1 { font-size: 1.5rem; margin-top: 0; margin-bottom: 0.75rem; color: #1c1e21; }
+        p { color: #606770; margin-bottom: 2rem; font-size: 1rem; line-height: 1.5; }
+        .btn { display: inline-block; background-color: #007aff; color: white; padding: 1rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1rem; transition: background-color 0.2s ease; }
+        .btn:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>آماده برای افزودن اشتراک</h1>
+        <p>برای افزودن خودکار لینک اشتراک به نرم‌افزار <strong>{{ app_name }}</strong>، روی دکمه زیر کلیک کنید.</p>
+        <a id="redirect-link" href="{{ redirect_url }}" class="btn">🚀 باز کردن در اپلیکیشن</a>
+    </div>
+</body>
+</html>
