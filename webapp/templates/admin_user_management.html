@@ -211,8 +211,11 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         users.forEach(user => {
-            const dailyDE = user.breakdown?.hiddify?.daily_usage_formatted || '0 GB';
-            const dailyFR = user.breakdown?.marzban?.daily_usage_formatted || '0 GB';
+            // --- بخش اصلاح شده ---
+            const dailyDE = user.breakdown?.hiddify?.data?.daily_usage_formatted || '0 MB';
+            const dailyFR = user.breakdown?.marzban?.data?.daily_usage_formatted || '0 MB';
+            // --- پایان بخش اصلاح شده ---
+            
             let panelIcons = (user.on_hiddify ? '🇩🇪 ' : '') + (user.on_marzban ? '🇫🇷' : '');
             const statusEmoji = user.is_active ? '🟢' : '🔴';
 
@@ -226,12 +229,14 @@ document.addEventListener('DOMContentLoaded', function() {
             
             let expiryText;
             if (user.expire < 0) {
-                expiryText = "<span class='text-danger'>منقضی شده</span>";
+                expiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
             } else if (user.expire_shamsi) {
                 expiryText = `${user.expire_shamsi} <small class='text-secondary'>(${user.expire} روز)</small>`;
             } else {
                 expiryText = 'نامحدود';
-            }            const row = document.createElement('tr');
+            }
+            
+            const row = document.createElement('tr');
             row.dataset.uuid = user.uuid;
             
             row.innerHTML = `
@@ -244,13 +249,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 <td class="actions-cell">${actions}</td>
             `;
 
-            // افزودن شنونده رویدادها
             row.querySelector('.user-details-btn').addEventListener('click', () => populateDetailsModal(user));
             row.querySelector('.edit-btn').addEventListener('click', () => openEditModal(user));
             row.querySelector('.delete-btn').addEventListener('click', () => openDeleteModal(user));
             row.querySelector('.add-payment-btn').addEventListener('click', () => openAddPaymentModal(user));
             
-            // منطق کلیک دکمه VIP
             row.querySelector('.vip-btn').addEventListener('click', (e) => {
                 const button = e.currentTarget;
                 button.disabled = true;

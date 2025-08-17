@@ -301,7 +301,7 @@ def get_all_payments_for_admin():
 # ===================================================================
 
 def get_paginated_users(args: dict):
-    # ۱. دریافت پارامترها (بدون تغییر)
+    # ۱. دریافت پارامترها
     page = args.get('page', 1, type=int)
     per_page = args.get('per_page', 15, type=int)
     search_query = args.get('search', '', type=str).lower()
@@ -310,7 +310,7 @@ def get_paginated_users(args: dict):
 
     logger.info(f"Fetching users. Page: {page}, Query: '{search_query}', Panel: '{panel_filter}', Filter: '{main_filter}'")
 
-    # ۲. دریافت داده‌های اولیه (بدون تغییر)
+    # ۲. دریافت داده‌های اولیه
     all_users_data = get_all_users_combined()
     payment_counts = db.get_payment_counts()
 
@@ -323,27 +323,32 @@ def get_paginated_users(args: dict):
         } for u in db_user_details_list if u.get('uuid')
     }
 
+    # ۳. پردازش و تکمیل اطلاعات کاربران
     for user in all_users_data:
         user['name'] = escape(user.get('name', ''))
         user['payment_count'] = payment_counts.get(user.get('name'), 0)
         
+        # --- بخش کلیدی اصلاح شده ---
+        user_breakdown = user.get('breakdown', {})
+        user['on_hiddify'] = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
+        user['on_marzban'] = any(p.get('type') == 'marzban' for p in user_breakdown.values())
+
         user_uuid = user.get('uuid')
         if user_uuid:
             details = db_user_details_map.get(user_uuid, {'is_vip': False, 'has_access_de': True, 'has_access_fr': True})
             user.update(details)
 
-            # تغییر نام تابع برای محاسبه هفتگی
-            weekly_usage = db.get_weekly_usage_by_uuid(user_uuid) 
+            # محاسبه مصرف روزانه برای هر کاربر
+            daily_usage = db.get_usage_since_midnight_by_uuid(user_uuid)
             
-            # حلقه داینامیک برای پردازش هر پنل
-            for panel_name, panel_details in user.get('breakdown', {}).items():
+            for panel_name, panel_details in user_breakdown.items():
                 panel_data = panel_details.get('data', {})
                 panel_type = panel_details.get('type')
 
-                # افزودن اطلاعات پردازش‌شده به دیتای هر پنل
-                weekly_usage_raw = weekly_usage.get(panel_type, 0)
-                panel_data['weekly_usage'] = weekly_usage_raw
-                panel_data['weekly_usage_formatted'] = format_usage(weekly_usage_raw)
+                # افزودن اطلاعات مصرف روزانه به دیتای هر پنل
+                daily_usage_raw = daily_usage.get(panel_type, 0.0)
+                panel_data['daily_usage'] = daily_usage_raw
+                panel_data['daily_usage_formatted'] = format_usage(daily_usage_raw)
                 panel_data['last_online_shamsi'] = to_shamsi(panel_data.get('last_online'), include_time=True)
         else:
             user.update({'is_vip': False, 'has_access_de': False, 'has_access_fr': False})
@@ -355,15 +360,14 @@ def get_paginated_users(args: dict):
             user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=user.get('expire')))
         
         user['last_online_relative'] = format_relative_time(user.get('last_online'))
-    # --- END: CRITICAL FIX ---
 
-    # ۴. اعمال فیلترها (بدون تغییر)
+    # ۴. اعمال فیلترها
     filtered_users = all_users_data
 
     if panel_filter == 'de':
-        filtered_users = [u for u in filtered_users if any(p['type'] == 'hiddify' for p in u.get('breakdown', {}).values())]
+        filtered_users = [u for u in filtered_users if u.get('on_hiddify')]
     elif panel_filter == 'fr':
-        filtered_users = [u for u in filtered_users if any(p['type'] == 'marzban' for p in u.get('breakdown', {}).values())]
+        filtered_users = [u for u in filtered_users if u.get('on_marzban')]
     
     if main_filter == 'active':
         filtered_users = [u for u in filtered_users if u.get('is_active')]
@@ -377,7 +381,7 @@ def get_paginated_users(args: dict):
     if search_query:
         filtered_users = [u for u in filtered_users if search_query in (u.get('name') or '').lower() or search_query in (u.get('uuid') or '').lower()]
 
-    # ۵. مرتب‌سازی و صفحه‌بندی (بدون تغییر)
+    # ۵. مرتب‌سازی و صفحه‌بندی
     filtered_users.sort(key=lambda u: (u.get('name') or '').lower())
     total_items = len(filtered_users)
     paginated_users = filtered_users[(page - 1) * per_page : page * per_page]
