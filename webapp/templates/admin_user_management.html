@@ -216,7 +216,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         users.forEach(user => {
-            let panelIcons = (user.on_hiddify ? '🇩🇪 ' : '') + (user.on_marzban ? '🇫🇷' : '');
+            // --- START: FIX for Panel Icons ---
+            let panelIcons = '';
+            if (user.on_hiddify) panelIcons += '🇩🇪 ';
+            if (user.on_marzban) panelIcons += '🇫🇷';
+            // --- END: FIX for Panel Icons ---
+            
             const statusEmoji = user.is_active ? '🟢' : '🔴';
 
             const actions = `
@@ -239,6 +244,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const row = document.createElement('tr');
             row.dataset.uuid = user.uuid;
 
+            // --- START: FIX for Daily Usage Display ---
             row.innerHTML = `
                 <td><button class="text-btn user-details-btn">${statusEmoji} ${user.name || 'ناشناس'}</button></td>
                 <td>${panelIcons.trim()}</td>
@@ -248,6 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <td>${user.last_online_relative || 'هرگز'}</td>
                 <td class="actions-cell">${actions}</td>
             `;
+            // --- END: FIX for Daily Usage Display ---
 
             row.querySelector('.user-details-btn').addEventListener('click', () => populateDetailsModal(user));
             row.querySelector('.edit-btn').addEventListener('click', () => openEditModal(user));

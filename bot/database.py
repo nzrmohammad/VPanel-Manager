@@ -150,55 +150,51 @@ class DatabaseManager:
             )
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
-            """Calculates daily usage for both panels with a more robust method."""
-            tehran_tz = pytz.timezone("Asia/Tehran")
-            now_in_tehran = datetime.now(tehran_tz)
-            today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
-            yesterday_midnight_tehran = today_midnight_tehran - timedelta(days=1)
+        """Calculates daily usage for both panels with a more robust method."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_in_tehran = datetime.now(tehran_tz)
+        today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
-            today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
-            yesterday_midnight_utc = yesterday_midnight_tehran.astimezone(pytz.utc)
+        result = {'hiddify': 0.0, 'marzban': 0.0}
 
-            result = {'hiddify': 0.0, 'marzban': 0.0}
+        with self._conn() as c:
+            # Get the last snapshot from *before* today's midnight
+            yesterday_last_snapshot_query = """
+                SELECT hiddify_usage_gb, marzban_usage_gb
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at < ?
+                ORDER BY taken_at DESC
+                LIMIT 1;
+            """
+            yesterday_row = c.execute(yesterday_last_snapshot_query, (uuid_id, today_midnight_utc)).fetchone()
+            
+            start_hiddify = yesterday_row['hiddify_usage_gb'] if yesterday_row else 0
+            start_marzban = yesterday_row['marzban_usage_gb'] if yesterday_row else 0
 
-            with self._conn() as c:
-                # Get the last snapshot from yesterday
-                yesterday_last_snapshot_query = """
-                    SELECT hiddify_usage_gb, marzban_usage_gb
-                    FROM usage_snapshots
-                    WHERE uuid_id = ? AND taken_at < ?
-                    ORDER BY taken_at DESC
-                    LIMIT 1;
-                """
-                yesterday_row = c.execute(yesterday_last_snapshot_query, (uuid_id, today_midnight_utc)).fetchone()
-                
-                start_hiddify = yesterday_row['hiddify_usage_gb'] if yesterday_row else 0
-                start_marzban = yesterday_row['marzban_usage_gb'] if yesterday_row else 0
+            # Get the first and last snapshots from *today*
+            today_snapshots_query = """
+                SELECT 
+                    MIN(hiddify_usage_gb) as h_min, MAX(hiddify_usage_gb) as h_max,
+                    MIN(marzban_usage_gb) as m_min, MAX(marzban_usage_gb) as m_max
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at >= ?
+            """
+            today_row = c.execute(today_snapshots_query, (uuid_id, today_midnight_utc)).fetchone()
 
-                # Get the last snapshot from today
-                today_last_snapshot_query = """
-                    SELECT hiddify_usage_gb, marzban_usage_gb
-                    FROM usage_snapshots
-                    WHERE uuid_id = ? AND taken_at >= ?
-                    ORDER BY taken_at DESC
-                    LIMIT 1;
-                """
-                today_row = c.execute(today_last_snapshot_query, (uuid_id, today_midnight_utc)).fetchone()
+            if today_row and today_row['h_max'] is not None:
+                # If the first snapshot of today is smaller than yesterday's last, it means usage was reset
+                if today_row['h_min'] < start_hiddify:
+                    start_hiddify = 0
+                result['hiddify'] = max(0, today_row['h_max'] - start_hiddify)
 
-                if today_row:
-                    # If usage has been reset (today's usage is less than yesterday's), start from 0
-                    end_hiddify = today_row['hiddify_usage_gb']
-                    if end_hiddify < start_hiddify:
-                        start_hiddify = 0
+            if today_row and today_row['m_max'] is not None:
+                if today_row['m_min'] < start_marzban:
+                    start_marzban = 0
+                result['marzban'] = max(0, today_row['m_max'] - start_marzban)
 
-                    end_marzban = today_row['marzban_usage_gb']
-                    if end_marzban < start_marzban:
-                        start_marzban = 0
-                    
-                    result['hiddify'] = max(0, end_hiddify - start_hiddify)
-                    result['marzban'] = max(0, end_marzban - start_marzban)
-
-            return result
+        return result
     
     def get_panel_usage_in_intervals(self, uuid_id: int, panel_name: str) -> Dict[int, float]:
         if panel_name not in ['hiddify_usage_gb', 'marzban_usage_gb']:

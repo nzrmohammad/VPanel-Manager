@@ -309,61 +309,94 @@ def get_all_payments_for_admin():
 
 def get_paginated_users(args):
     """
-    لیستی از کاربران را برای نمایش در پنل ادمین با قابلیت جستجو، فیلتر و صفحه‌بندی برمی‌گرداند.
-    ورودی این تابع دیکشنری args از درخواست وب است.
+    لیستی از کاربران را برای نمایش در پنل ادمین با قابلیت جستجو، فیلتر، صفحه‌بندی و تمام اطلاعات تکمیلی لازم برمی‌گرداند.
     """
+    from .services import search_user, get_all_users_combined
+    from bot.utils import to_shamsi, format_relative_time, format_usage
+    from datetime import datetime, timedelta
+    import pytz
+
     try:
         page = int(args.get('page', 1))
     except (ValueError, TypeError):
         page = 1
     
     per_page = 15
-    sort_by = args.get('sort_by', 'name')
-    sort_order = args.get('sort_order', 'asc')
-    search_query = args.get('search', None)
-    filter_by = args.get('filter', None)
+    search_query = args.get('search', '').strip()
+    panel_filter = args.get('panel', 'all')
+    main_filter = args.get('filter', 'all')
 
     if search_query:
         all_users = search_user(search_query)
     else:
         all_users = get_all_users_combined()
 
-    # (بخش فیلتر و مرتب‌سازی بدون تغییر باقی می‌ماند)
+    # --- START: Data Enrichment ---
+    # اضافه کردن اطلاعات تکمیلی به هر کاربر
+    for user in all_users:
+        uuid = user.get('uuid')
+        if not uuid:
+            user['total_daily_usage_gb'] = 0
+            user['payment_count'] = 0
+            user['is_vip'] = False
+        else:
+            uuid_record = db.get_user_uuid_record(uuid)
+            if uuid_record:
+                uuid_id = uuid_record['id']
+                daily_usage_dict = db.get_usage_since_midnight(uuid_id)
+                user['total_daily_usage_gb'] = sum(daily_usage_dict.values())
+                user['payment_count'] = len(db.get_user_payment_history(uuid_id))
+                user['is_vip'] = uuid_record.get('is_vip', False)
+            else:
+                user['total_daily_usage_gb'] = 0
+                user['payment_count'] = 0
+                user['is_vip'] = False
+        
+        user['total_daily_usage_formatted'] = format_usage(user.get('total_daily_usage_gb', 0))
+        
+        breakdown = user.get('breakdown', {})
+        user['on_hiddify'] = any(p.get('type') == 'hiddify' for p in breakdown.values())
+        user['on_marzban'] = any(p.get('type') == 'marzban' for p in breakdown.values())
+        
+        user['last_online_relative'] = format_relative_time(user.get('last_online'))
+        
+        expire_days = user.get('expire')
+        if expire_days is not None and expire_days >= 0:
+            user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=expire_days))
+        else:
+            user['expire_shamsi'] = "نامحدود" if expire_days is None else "منقضی"
+    # --- END: Data Enrichment ---
+
+    if panel_filter != 'all':
+        panel_type_to_check = 'hiddify' if panel_filter == 'de' else 'marzban'
+        all_users = [u for u in all_users if u.get(f'on_{panel_type_to_check}')]
+
     now_utc = datetime.now(pytz.utc)
-    if filter_by:
-        if filter_by == 'active':
+    if main_filter != 'all':
+        if main_filter == 'active':
             all_users = [u for u in all_users if u.get('is_active')]
-        elif filter_by == 'inactive':
-            all_users = [u for u in all_users if not u.get('is_active')]
-        elif filter_by == 'online':
+        elif main_filter == 'online':
             online_deadline = now_utc - timedelta(minutes=3)
             all_users = [u for u in all_users if u.get('last_online') and u['last_online'].astimezone(pytz.utc) > online_deadline]
-        elif filter_by == 'expiring_soon':
+        elif main_filter == 'expiring_soon':
             all_users = [u for u in all_users if u.get('expire') is not None and 0 <= u.get('expire') <= 7]
 
-    reverse = sort_order == 'desc'
-    if sort_by == 'name':
-        all_users.sort(key=lambda u: u.get('name', '').lower(), reverse=reverse)
-    elif sort_by == 'current_usage_GB':
-        all_users.sort(key=lambda u: u.get('current_usage_GB', 0), reverse=reverse)
-    elif sort_by == 'expire':
-        all_users.sort(key=lambda u: u.get('expire') if u.get('expire') is not None else float('inf'), reverse=reverse)
+    all_users.sort(key=lambda u: u.get('name', '').lower())
 
     total = len(all_users)
     start = (page - 1) * per_page
     end = start + per_page
     paginated_users = all_users[start:end]
 
-    # --- START OF FIX ---
-    # کلید 'pages' را به 'total_pages' تغییر می‌دهیم تا با کد جاوااسکریپت هماهنگ شود.
     return {
         'users': paginated_users,
-        'total': total,
-        'page': page,
-        'per_page': per_page,
-        'total_pages': (total + per_page - 1) // per_page
+        'pagination': {
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page
+        }
     }
-    # --- END OF FIX ---
 # ===================================================================
 # == سرویس مدیریت کاربران (نسخه اصلاح شده نهایی) ==
 # ===================================================================

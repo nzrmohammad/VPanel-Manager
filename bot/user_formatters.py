@@ -39,11 +39,11 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
         
         return [
             f"*سرور {flag}*",
-            f"  {EMOJIS['database']} {escape_markdown('حجم کل :')} {escape_markdown(f'{limit:g} GB')}",
-            f"  {EMOJIS['fire']} {escape_markdown('حجم مصرف شده :')} {escape_markdown(f'{usage:g} GB')}",
-            f"  {EMOJIS['download']} {escape_markdown('حجم باقیمانده :')} {escape_markdown(f'{remaining:g} GB')}",
-            f"  {EMOJIS['lightning']} {escape_markdown('مصرف امروز :')} {escape_markdown(format_daily_usage(daily_usage))}",
-            f"  {EMOJIS['time']} {escape_markdown('آخرین اتصال :')} {escape_markdown(to_shamsi(panel_data.get('last_online'), include_time=True))}",
+            f"{EMOJIS['database']} {escape_markdown('حجم کل :')} {escape_markdown(f'{limit:g} GB')}",
+            f"{EMOJIS['fire']} {escape_markdown('حجم مصرف شده :')} {escape_markdown(f'{usage:g} GB')}",
+            f"{EMOJIS['download']} {escape_markdown('حجم باقیمانده :')} {escape_markdown(f'{remaining:g} GB')}",
+            f"{EMOJIS['lightning']} {escape_markdown('مصرف امروز :')} {escape_markdown(format_daily_usage(daily_usage))}",
+            f"{EMOJIS['time']} {escape_markdown('آخرین اتصال :')} {escape_markdown(to_shamsi(panel_data.get('last_online'), include_time=True))}",
             separator
         ]
 
@@ -99,8 +99,8 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
 
     for info in user_infos:
         name = escape_markdown(info.get("name", get_string("unknown_user", lang_code)))
-        header = f'*{get_string("fmt_report_account_header", lang_code).format(name=name)}*'
-        account_lines = [header]
+        header = get_string("fmt_report_account_header", lang_code).format(name=name)
+        account_lines = [f'*{header}*']
         
         if 'db_id' in info:
             daily_usage_dict = db.get_usage_since_midnight(info['db_id'])
@@ -108,11 +108,17 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         else:
             daily_usage_dict = {}
 
-        account_lines.append(f'{get_string("fmt_report_total_volume", lang_code)}: {escape_markdown(f"{info.get("usage_limit_GB", 0):.2f} GB")}')
-        account_lines.append(f'{get_string("fmt_report_used_volume", lang_code)}: {escape_markdown(f"{info.get("current_usage_GB", 0):.2f} GB")}')
-        account_lines.append(f'{get_string("fmt_report_remaining_volume", lang_code)}: {escape_markdown(f"{max(0, info.get("usage_limit_GB", 0) - info.get("current_usage_GB", 0)):.2f} GB")}')
+        # --- START: FIX for Markdown Parsing Error ---
+        volume_str = escape_markdown(f"{info.get('usage_limit_GB', 0):.2f} GB")
+        account_lines.append(escape_markdown(get_string("fmt_report_total_volume", lang_code)).format(volume=volume_str))
+
+        usage_str = escape_markdown(f"{info.get('current_usage_GB', 0):.2f} GB")
+        account_lines.append(escape_markdown(get_string("fmt_report_used_volume", lang_code)).format(usage=usage_str))
+
+        remaining_str = escape_markdown(f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB")
+        account_lines.append(escape_markdown(get_string("fmt_report_remaining_volume", lang_code)).format(remaining=remaining_str))
         
-        account_lines.append(get_string("fmt_report_daily_usage_header", lang_code))
+        account_lines.append(escape_markdown(get_string("fmt_report_daily_usage_header", lang_code)))
         
         breakdown = info.get('breakdown', {})
         for panel_name, panel_details in breakdown.items():
@@ -123,22 +129,25 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
                 account_lines.append(f" {flag} : {escape_markdown(format_daily_usage(panel_daily_usage))}")
 
         expire_days = info.get("expire")
-        expire_str = f"`{get_string('fmt_expire_unlimited', lang_code)}`"
+        expire_str = f"`{escape_markdown(get_string('fmt_expire_unlimited', lang_code))}`"
         if expire_days is not None:
-            expire_word = get_string('expire_summary', lang_code).split(' ')[-1]
-            expire_str = f"{expire_days} {expire_word}" if expire_days >= 0 else get_string("fmt_status_expired", lang_code)
+            expire_word_key = 'expire_summary_day' if abs(expire_days) == 1 else 'expire_summary_days'
+            expire_word = get_string(expire_word_key, lang_code)
+            expire_str = f"{expire_days} {escape_markdown(expire_word)}" if expire_days >= 0 else escape_markdown(get_string("fmt_status_expired", lang_code))
         
-        account_lines.append(get_string("fmt_report_expiry", lang_code).format(expiry=escape_markdown(expire_str)))
+        account_lines.append(escape_markdown(get_string("fmt_report_expiry", lang_code)).format(expiry=expire_str))
+        # --- END: FIX for Markdown Parsing Error ---
         accounts_reports.append("\n".join(account_lines))
     
     final_report = "\n\n".join(accounts_reports)
 
+    usage_footer_str = escape_markdown(format_daily_usage(total_daily_usage_all_accounts))
     footer_key = "fmt_report_footer_total_multi" if len(user_infos) > 1 else "fmt_report_footer_total_single"
-    usage_str = escape_markdown(format_daily_usage(total_daily_usage_all_accounts))
-    footer_text = f'*{get_string(footer_key, lang_code).format(usage=usage_str)}*'
+    footer_text = f'*{escape_markdown(get_string(footer_key, lang_code)).format(usage=usage_footer_str)}*'
     
     final_report += f"\n\n {footer_text}"
     return final_report
+
 
 def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> str:
     if not plans_to_show:
