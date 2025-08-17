@@ -505,7 +505,7 @@ class DatabaseManager:
     def get_all_payments_with_user_info(self) -> List[Dict[str, Any]]:
         """
         لیست تمام رکوردهای پرداخت را به همراه اطلاعات کاربر مربوطه
-        (نام کانفیگ، شناسه تلگرام، نام تلگرامی و دسترسی پنل) برمی‌گرداند.
+        (شامل دسترسی به پنل‌ها برای تشخیص صحیح) برمی‌گرداند.
         """
         query = """
             SELECT
@@ -643,7 +643,6 @@ class DatabaseManager:
         today_midnight_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
         today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
-        # Query to get MIN and MAX usage for today for every user
         query = """
             SELECT
                 uu.uuid,
@@ -661,12 +660,12 @@ class DatabaseManager:
         with self._conn() as c:
             rows = c.execute(query, (today_midnight_utc,)).fetchall()
             for row in rows:
-                h_min = row['h_min'] or 0.0
-                h_max = row['h_max'] or 0.0
-                m_min = row['m_min'] or 0.0
-                m_max = row['m_max'] or 0.0
+                h_min = row['h_min'] if row['h_min'] is not None else 0.0
+                h_max = row['h_max'] if row['h_max'] is not None else 0.0
+                m_min = row['m_min'] if row['m_min'] is not None else 0.0
+                m_max = row['m_max'] if row['m_max'] is not None else 0.0
 
-                # If max < min, it means usage was reset. Today's usage is simply the max value.
+                # اگر ماکسیمم کمتر از مینیمم باشد یعنی حجم ریست شده است
                 h_diff = h_max if h_max < h_min else h_max - h_min
                 m_diff = m_max if m_max < m_min else m_max - m_min
 
@@ -676,63 +675,67 @@ class DatabaseManager:
                 }
         return usage_map
 
+
     def get_daily_usage_summary(self, days: int = 7) -> List[Dict[str, Any]]:
-                    """
-                    Calculates the total daily usage (sum of Hiddify and Marzban) for a specified number of days, handling usage resets.
-                    This function is designed for use in the admin dashboard usage chart.
-                    Output: A list of dictionaries, each containing 'date' and 'total_gb'.
-                    """
-                    logger.info(f"Calculating daily usage summary for the last {days} days.")
-                    tehran_tz = pytz.timezone("Asia/Tehran")
-                    summary = []
+        """
+        Calculates the total daily usage (sum of Hiddify and Marzban) for a specified number of days, handling usage resets.
+        This function is designed for use in the admin dashboard usage chart.
+        Output: A list of dictionaries, each containing 'date' and 'total_gb'.
+        """
+        logger.info(f"Calculating daily usage summary for the last {days} days.")
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        summary = []
 
-                    # This query calculates daily usage for each user and handles resets.
-                    # If max < min (reset), it takes max. Otherwise, it takes the difference.
-                    query = """
-                        SELECT
-                            SUM(CASE
-                                WHEN h_max < h_min THEN h_max
-                                ELSE h_max - h_min
-                            END) as total_h,
-                            SUM(CASE
-                                WHEN m_max < m_min THEN m_max
-                                ELSE m_max - m_min
-                            END) as total_m
-                        FROM (
-                            SELECT
-                                uuid_id,
-                                MAX(hiddify_usage_gb) as h_max,
-                                MIN(hiddify_usage_gb) as h_min,
-                                MAX(marzban_usage_gb) as m_max,
-                                MIN(marzban_usage_gb) as m_min
-                            FROM usage_snapshots
-                            WHERE taken_at >= ? AND taken_at < ?
-                            GROUP BY uuid_id
-                        )
-                    """
+        query = """
+            SELECT
+                SUM(CASE
+                    WHEN h_max < h_min THEN h_max
+                    ELSE h_max - h_min
+                END) as total_h,
+                SUM(CASE
+                    WHEN m_max < m_min THEN m_max
+                    ELSE m_max - m_min
+                END) as total_m
+            FROM (
+                SELECT
+                    uuid_id,
+                    MAX(hiddify_usage_gb) as h_max,
+                    MIN(hiddify_usage_gb) as h_min,
+                    MAX(marzban_usage_gb) as m_max,
+                    MIN(marzban_usage_gb) as m_min
+                FROM usage_snapshots
+                WHERE taken_at >= ? AND taken_at < ?
+                GROUP BY uuid_id
+            )
+        """
 
-                    with self._conn() as c:
-                        # Loop from `days-1` down to 0 to get dates in ascending order for the chart
-                        for i in range(days - 1, -1, -1):
-                            target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
-                            day_start_tehran = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                            day_end_tehran = day_start_tehran + timedelta(days=1)
-                            
-                            day_start_utc = day_start_tehran.astimezone(pytz.utc)
-                            day_end_utc = day_end_tehran.astimezone(pytz.utc)
+        with self._conn() as c:
+            # --- START OF FIX ---
+            # ابتدا نیمه‌شب امروز را به عنوان مبنا در نظر می‌گیریم
+            today_start_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
 
-                            row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
-                            
-                            total_gb = 0
-                            if row and (row['total_h'] is not None or row['total_m'] is not None):
-                                total_gb = (row['total_h'] or 0) + (row['total_m'] or 0)
+            # حلقه را برعکس اجرا می‌کنیم تا تاریخ‌ها برای نمودار به ترتیب صعودی باشند
+            for i in range(days - 1, -1, -1):
+                # شروع و پایان روز مورد نظر را با کم کردن روز از مبنا محاسبه می‌کنیم
+                day_start_tehran = today_start_tehran - timedelta(days=i)
+                day_end_tehran = day_start_tehran + timedelta(days=1)
+            # --- END OF FIX ---
+                
+                day_start_utc = day_start_tehran.astimezone(pytz.utc)
+                day_end_utc = day_end_tehran.astimezone(pytz.utc)
 
-                            summary.append({
-                                'date': day_start_tehran.strftime('%Y-%m-%d'),
-                                'total_gb': round(total_gb, 2)
-                            })
+                row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
+                
+                total_gb = 0
+                if row and (row['total_h'] is not None or row['total_m'] is not None):
+                    total_gb = (row['total_h'] or 0) + (row['total_m'] or 0)
 
-                    return summary
+                summary.append({
+                    'date': day_start_tehran.strftime('%Y-%m-%d'),
+                    'total_gb': round(total_gb, 2)
+                })
+
+        return summary
 
     def update_config_name(self, uuid_id: int, new_name: str) -> bool:
         """نام نمایشی یک کانفیگ (UUID) را در دیتابیس تغییر می‌دهد."""

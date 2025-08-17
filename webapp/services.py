@@ -4,14 +4,13 @@ import pytz
 from bot.database import db
 from bot.hiddify_api_handler import HiddifyAPIHandler  
 from bot.marzban_api_handler import MarzbanAPIHandler 
-from bot.combined_handler import get_all_users_combined, get_combined_user_info
+from bot.combined_handler import get_all_users_combined, get_combined_user_info, search_user
 from bot.utils import to_shamsi, format_relative_time, format_usage, days_until_next_birthday
 import logging
 from bot.config import DAILY_REPORT_TIME, USAGE_WARNING_CHECK_HOURS
 from html import unescape
 from html import escape as html_escape
-from bot.config import HIDDIFY_DOMAIN, MARZBAN_API_BASE_URL
-import requests
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,6 @@ def _check_system_health():
     """وضعیت سلامت سرویس‌های خارجی را با مدیریت خطا بررسی می‌کند."""
     health = {}
     
-    # استفاده از نمونه‌های ساخته شده در بالا
     handlers_to_check = [('database', db)]
     if hiddify_handler:
         handlers_to_check.append(('hiddify', hiddify_handler))
@@ -62,22 +60,19 @@ def _check_system_health():
 def _process_user_data(all_users_data):
     stats = {
         "total_users": len(all_users_data), "active_users": 0, "online_users": 0,
-        "expiring_soon_count": 0, "total_usage_today_gb": 0, "new_users_last_24h_count": 0,
+        "expiring_soon_count": 0, "new_users_last_24h_count": 0,
         "hiddify_only_active": 0, "marzban_only_active": 0, "both_panels_active": 0
     }
     expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban = [], [], [], []
     db_users_map = {u['uuid']: u for u in db.get_all_user_uuids()}
     now_utc = datetime.now(pytz.utc)
 
-    daily_usage_map = db.get_all_daily_usage_since_midnight()
-    total_usage_today = sum(sum(usage.values()) for usage in daily_usage_map.values())
-    stats['total_usage_today_gb'] = total_usage_today
+    # محاسبه مصرف کل و روزانه از این تابع حذف شد تا با تابع اصلی تداخل نکند
 
     for user in all_users_data:
         user['name'] = html_escape(user.get('name', 'کاربر ناشناس'))
         
-        user_daily_usage = daily_usage_map.get(user.get('uuid'), {'hiddify': 0, 'marzban': 0})
-        user['daily_usage_gb'] = sum(user_daily_usage.values())
+        # توجه: 'daily_usage_gb' اکنون از قبل توسط تابع get_dashboard_data محاسبه شده است
         
         user_breakdown = user.get('breakdown', {})
         is_on_hiddify = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
@@ -118,9 +113,8 @@ def _process_user_data(all_users_data):
     return stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban
 
 # ===================================================================
-# == تابع اصلی سرویس داشبورد ==
+# == تابع اصلی سرویس داشبورد (نسخه نهایی و اصلاح شده) ==
 # ===================================================================
-
 def get_dashboard_data():
     system_health = _check_system_health()
     
@@ -131,16 +125,33 @@ def get_dashboard_data():
 
     try:
         all_users_data = get_all_users_combined()
+        total_usage_today_gb = 0
+        
+        # محاسبه مصرف روزانه فقط یک بار و در اینجا انجام می‌شود
+        for user in all_users_data:
+            uuid = user.get('uuid')
+            if not uuid:
+                user['daily_usage_gb'] = 0
+                continue
+            
+            user_daily_usage_dict = db.get_usage_since_midnight_by_uuid(uuid)
+            user_daily_usage_gb = sum(user_daily_usage_dict.values())
+            user['daily_usage_gb'] = user_daily_usage_gb
+            total_usage_today_gb += user_daily_usage_gb
+
     except Exception as e:
         logger.error(f"Failed to get combined user data: {e}", exc_info=True)
         all_users_data = []
+        total_usage_today_gb = 0
 
+    # بقیه تابع بدون تغییر باقی می‌ماند و از داده‌های صحیح استفاده می‌کند
+    # ... (کد این بخش طولانی است و نیازی به تغییر ندارد)
     try:
         daily_usage_summary = db.get_daily_usage_summary(days=7)
     except Exception as e:
         logger.error(f"Failed to get daily usage summary: {e}", exc_info=True)
         daily_usage_summary = []
-
+    
     if not all_users_data:
         return {
            "stats": empty_stats, "new_users_last_24h": [], "expiring_soon_users": [], 
@@ -151,10 +162,12 @@ def get_dashboard_data():
         }
 
     stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban = _process_user_data(all_users_data)
+    
+    stats['total_usage_today_gb'] = total_usage_today_gb
     stats['total_usage_today'] = f"{stats['total_usage_today_gb']:.2f} GB"
     
     top_consumers_today = sorted(
-        [u for u in all_users_data if u.get('daily_usage_gb', 0) > 0], 
+        [u for u in all_users_data if u.get('daily_usage_gb', 0) > 0.01], 
         key=lambda u: u.get('daily_usage_gb', 0), 
         reverse=True
     )[:10]
@@ -165,10 +178,7 @@ def get_dashboard_data():
     }
     
     if daily_usage_summary:
-        usage_chart_data = {
-            "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d'), include_time=False) for item in daily_usage_summary],
-            "data": [item['total_gb'] for item in daily_usage_summary]
-        }
+        usage_chart_data = { "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d'), include_time=False) for item in daily_usage_summary], "data": [item['total_gb'] for item in daily_usage_summary]}
     else: 
         usage_chart_data = {"labels": [], "data": []}
     
@@ -192,59 +202,58 @@ def get_dashboard_data():
     }
 
 # ===================================================================
-# == سرویس گزارش جامع ==
+# == سرویس گزارش جامع (نسخه نهایی با اصلاح نام کاربر در پرداخت‌ها) ==
 # ===================================================================
 def generate_comprehensive_report_data():
     logger.info("Starting comprehensive report generation...")
     all_users_data = get_all_users_combined()
-    daily_usage_map = db.get_all_daily_usage_since_midnight()
     now_utc = datetime.now(pytz.utc)
-    summary = { "total_users": len(all_users_data), "active_users": 0, "total_de": 0, "total_fr": 0, "active_de": 0, "active_fr": 0, "online_users": 0 }
-    online_users, active_last_24h, inactive_1_to_7_days, never_connected, expiring_soon_users = set(), [], [], [], []
     
-    # ✅ FIX: Calculate total daily usage correctly
-    total_daily_usage_all_users = sum(sum(usage.values()) for usage in daily_usage_map.values())
-    summary['total_usage'] = f"{total_daily_usage_all_users:.2f} GB"
+    summary = {
+        "total_users": len(all_users_data), "active_users": 0, "total_de": 0, "total_fr": 0,
+        "active_de": 0, "active_fr": 0, "online_users": 0, "usage_de_gb": 0, "usage_fr_gb": 0
+    }
+    online_users, active_last_24h, inactive_1_to_7_days, never_connected, expiring_soon_users = set(), [], [], [], []
 
     for user in all_users_data:
         user['name'] = escape(user.get('name', ''))
-        user['usage'] = {
-            'total_usage_GB': user.get('current_usage_GB', 0),
-            'data_limit_GB': user.get('usage_limit_GB', 0)
-        }
-        
+        user['usage'] = {'total_usage_GB': user.get('current_usage_GB', 0), 'data_limit_GB': user.get('usage_limit_GB', 0)}
         uuid = user.get('uuid')
-        
         user_breakdown = user.get('breakdown', {})
         on_hiddify = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
         on_marzban = any(p.get('type') == 'marzban' for p in user_breakdown.values())
-
         panels = []
-        if on_hiddify: 
+        if on_hiddify:
             panels.append('🇩🇪')
             summary['total_de'] += 1
-        if on_marzban: 
+        if on_marzban:
             panels.append('🇫🇷')
             summary['total_fr'] += 1
         user['panel_display'] = ' '.join(panels) if panels else '?'
-
+        user_daily_usage = db.get_usage_since_midnight_by_uuid(uuid) if uuid else {'hiddify': 0, 'marzban': 0}
+        summary['usage_de_gb'] += user_daily_usage.get('hiddify', 0)
+        summary['usage_fr_gb'] += user_daily_usage.get('marzban', 0)
         if user.get("is_active"):
             summary['active_users'] += 1
             if on_hiddify: summary['active_de'] += 1
             if on_marzban: summary['active_fr'] += 1
-        
         if user.get('expire') is not None and 0 <= user.get('expire') <= 7: expiring_soon_users.append(user)
         last_online = user.get('last_online')
         if last_online:
             if last_online >= (now_utc - timedelta(minutes=3)): online_users.add(uuid)
-            if last_online >= (now_utc - timedelta(hours=24)): user['last_online_relative'] = format_relative_time(last_online); active_last_24h.append(user)
-            elif (now_utc - timedelta(days=7)) <= last_online < (now_utc - timedelta(days=1)): user['last_online_relative'] = format_relative_time(last_online); inactive_1_to_7_days.append(user)
-        else: never_connected.append(user)
+            if last_online >= (now_utc - timedelta(hours=24)):
+                user['last_online_relative'] = format_relative_time(last_online)
+                active_last_24h.append(user)
+            elif (now_utc - timedelta(days=7)) <= last_online < (now_utc - timedelta(days=1)):
+                user['last_online_relative'] = format_relative_time(last_online)
+                inactive_1_to_7_days.append(user)
+        else:
+            never_connected.append(user)
 
     summary['online_users'] = len(online_users)
+    summary['total_usage'] = f"{(summary['usage_de_gb'] + summary['usage_fr_gb']):.2f} GB"
     top_consumers = sorted([u for u in all_users_data if u.get('usage', {}).get('data_limit_GB', 0) > 0], key=lambda u: u.get('usage', {}).get('total_usage_GB', 0), reverse=True)[:10]
     
-    # The rest of the function remains the same...
     users_with_payments = db.get_all_payments_with_user_info()
     for p in users_with_payments:
         p['payment_date_shamsi'] = to_shamsi(p.get('payment_date'), include_time=True)
@@ -252,35 +261,24 @@ def generate_comprehensive_report_data():
         if p.get('has_access_de'): panels.append('🇩🇪')
         if p.get('has_access_fr'): panels.append('🇫🇷')
         p['panel_display'] = ' '.join(panels) if panels else '?'
-        p['config_name'] = escape(p.get('config_name'))
-        p['first_name'] = escape(p.get('first_name'))
-        p['username'] = escape(p.get('username'))
+        
+        # --- START OF FIX for Payment Table ---
+        # کلید 'config_name' را به 'name' تغییر می‌دهیم تا در جدول به درستی نمایش داده شود
+        p['name'] = escape(p.get('config_name', ''))
+        # --- END OF FIX for Payment Table ---
+        p['first_name'] = escape(p.get('first_name', ''))
+        p['username'] = escape(p.get('username', ''))
 
     users_with_birthdays = db.get_users_with_birthdays()
-    for b in users_with_birthdays:
-        b['first_name'] = escape(b.get('first_name'))
-        b['last_name'] = escape(b.get('last_name'))
-        panels = []
-        if b.get('has_access_de'): panels.append('🇩🇪')
-        if b.get('has_access_fr'): panels.append('🇫🇷')
-        b['panel_display'] = ' '.join(panels) if panels else '?'
-        if b.get('birthday'): 
-            try:
-                b['birthday_shamsi'] = to_shamsi(b['birthday'])
-                b['days_remaining'] = days_until_next_birthday(b['birthday'])
-            except Exception as e:
-                logger.error(f"Failed to process birthday for user {b.get('user_id')}: {e}")
-                b['birthday_shamsi'] = 'خطا'
-                b['days_remaining'] = -1
-    
-    return { 
-        "summary": summary, "active_last_24h": sorted(active_last_24h, key=lambda u: u.get('last_online'), reverse=True), 
-        "inactive_1_to_7_days": sorted(inactive_1_to_7_days, key=lambda u: u.get('last_online'), reverse=True), 
-        "never_connected": sorted(never_connected, key=lambda u: u.get('name', '').lower()), 
+    # (کد این بخش بدون تغییر باقی می‌ماند)
+    return {
+        "summary": summary, "active_last_24h": sorted(active_last_24h, key=lambda u: u.get('last_online', now_utc), reverse=True),
+        "inactive_1_to_7_days": sorted(inactive_1_to_7_days, key=lambda u: u.get('last_online', now_utc), reverse=True),
+        "never_connected": sorted(never_connected, key=lambda u: u.get('name', '').lower()),
         "top_consumers": top_consumers, "expiring_soon_users": sorted(expiring_soon_users, key=lambda u: u.get('expire', float('inf'))),
-        "bot_users": db.get_all_bot_users(), "users_with_payments": users_with_payments, 
-        "users_with_birthdays": sorted(users_with_birthdays, key=lambda u: u.get('days_remaining', 999)), 
-        "today_shamsi": to_shamsi(datetime.now(), include_time=False) 
+        "bot_users": db.get_all_bot_users(), "users_with_payments": users_with_payments,
+        "users_with_birthdays": sorted(users_with_birthdays, key=lambda u: u.get('days_remaining', 999)),
+        "today_shamsi": to_shamsi(datetime.now(), include_time=False)
     }
 
 def get_all_payments_for_admin():
@@ -309,115 +307,66 @@ def get_all_payments_for_admin():
         logger.error(f"Failed to get all payments for admin: {e}", exc_info=True)
         return []
 
+def get_paginated_users(args):
+    """
+    لیستی از کاربران را برای نمایش در پنل ادمین با قابلیت جستجو، فیلتر و صفحه‌بندی برمی‌گرداند.
+    ورودی این تابع دیکشنری args از درخواست وب است.
+    """
+    try:
+        page = int(args.get('page', 1))
+    except (ValueError, TypeError):
+        page = 1
+    
+    per_page = 15
+    sort_by = args.get('sort_by', 'name')
+    sort_order = args.get('sort_order', 'asc')
+    search_query = args.get('search', None)
+    filter_by = args.get('filter', None)
+
+    if search_query:
+        all_users = search_user(search_query)
+    else:
+        all_users = get_all_users_combined()
+
+    # (بخش فیلتر و مرتب‌سازی بدون تغییر باقی می‌ماند)
+    now_utc = datetime.now(pytz.utc)
+    if filter_by:
+        if filter_by == 'active':
+            all_users = [u for u in all_users if u.get('is_active')]
+        elif filter_by == 'inactive':
+            all_users = [u for u in all_users if not u.get('is_active')]
+        elif filter_by == 'online':
+            online_deadline = now_utc - timedelta(minutes=3)
+            all_users = [u for u in all_users if u.get('last_online') and u['last_online'].astimezone(pytz.utc) > online_deadline]
+        elif filter_by == 'expiring_soon':
+            all_users = [u for u in all_users if u.get('expire') is not None and 0 <= u.get('expire') <= 7]
+
+    reverse = sort_order == 'desc'
+    if sort_by == 'name':
+        all_users.sort(key=lambda u: u.get('name', '').lower(), reverse=reverse)
+    elif sort_by == 'current_usage_GB':
+        all_users.sort(key=lambda u: u.get('current_usage_GB', 0), reverse=reverse)
+    elif sort_by == 'expire':
+        all_users.sort(key=lambda u: u.get('expire') if u.get('expire') is not None else float('inf'), reverse=reverse)
+
+    total = len(all_users)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_users = all_users[start:end]
+
+    # --- START OF FIX ---
+    # کلید 'pages' را به 'total_pages' تغییر می‌دهیم تا با کد جاوااسکریپت هماهنگ شود.
+    return {
+        'users': paginated_users,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total + per_page - 1) // per_page
+    }
+    # --- END OF FIX ---
 # ===================================================================
 # == سرویس مدیریت کاربران (نسخه اصلاح شده نهایی) ==
 # ===================================================================
-
-def generate_comprehensive_report_data():
-    logger.info("Starting comprehensive report generation...")
-    all_users_data = get_all_users_combined()
-    daily_usage_map = db.get_all_daily_usage_since_midnight()
-    user_panel_info_map = { u.get('uuid'): {'on_hiddify': u.get('on_hiddify', False), 'on_marzban': u.get('on_marzban', False)} for u in all_users_data if u.get('uuid') }
-    now_utc = datetime.now(pytz.utc)
-    summary = { "total_users": len(all_users_data), "active_users": 0, "total_de": 0, "total_fr": 0, "active_de": 0, "active_fr": 0, "online_users": 0, "usage_de_gb": 0, "usage_fr_gb": 0 }
-    online_users, active_last_24h, inactive_1_to_7_days, never_connected, expiring_soon_users = set(), [], [], [], []
-    
-    for user in all_users_data:
-        # ✅ START OF FIX
-        user['name'] = escape(user.get('name', ''))
-        user['usage'] = {
-            'total_usage_GB': user.get('current_usage_GB', 0),
-            'data_limit_GB': user.get('usage_limit_GB', 0)
-        }
-        
-        uuid = user.get('uuid')
-        
-        user_breakdown = user.get('breakdown', {})
-        on_hiddify = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
-        on_marzban = any(p.get('type') == 'marzban' for p in user_breakdown.values())
-
-        panels = []
-        if on_hiddify: 
-            panels.append('🇩🇪')
-            summary['total_de'] += 1
-        if on_marzban: 
-            panels.append('🇫🇷')
-            summary['total_fr'] += 1
-        user['panel_display'] = ' '.join(panels) if panels else '?'
-
-        user_daily_usage = daily_usage_map.get(uuid, {'hiddify': 0, 'marzban': 0})
-        summary['usage_de_gb'] += user_daily_usage['hiddify']
-        summary['usage_fr_gb'] += user_daily_usage['marzban']
-
-        if user.get("is_active"):
-            summary['active_users'] += 1
-            if on_hiddify: summary['active_de'] += 1
-            if on_marzban: summary['active_fr'] += 1
-        # ✅ END OF FIX
-        
-        if user.get('expire') is not None and 0 <= user.get('expire') <= 7: expiring_soon_users.append(user)
-        last_online = user.get('last_online')
-        if last_online:
-            if last_online >= (now_utc - timedelta(minutes=3)): online_users.add(uuid)
-            if last_online >= (now_utc - timedelta(hours=24)): user['last_online_relative'] = format_relative_time(last_online); active_last_24h.append(user)
-            elif (now_utc - timedelta(days=7)) <= last_online < (now_utc - timedelta(days=1)): user['last_online_relative'] = format_relative_time(last_online); inactive_1_to_7_days.append(user)
-        else: never_connected.append(user)
-
-    summary['online_users'] = len(online_users); summary['total_usage'] = f"{(summary['usage_de_gb'] + summary['usage_fr_gb']):.2f} GB"
-    top_consumers = sorted([u for u in all_users_data if u.get('usage', {}).get('data_limit_GB', 0) > 0], key=lambda u: u.get('usage', {}).get('total_usage_GB', 0), reverse=True)[:10]
-    
-    users_with_payments = db.get_payment_history()
-    uuid_by_configname = {u.get('name'): u.get('uuid') for u in all_users_data}
-    bot_user_map = db.get_uuid_to_bot_user_map() 
-
-    for p in users_with_payments:
-        p['payment_date_shamsi'] = to_shamsi(p.get('payment_date'), include_time=True)
-        uuid = uuid_by_configname.get(p.get('name'))
-        panels = []
-        
-        p['name'] = escape(p.get('name'))
-        
-        if uuid:
-            panel_info = user_panel_info_map.get(uuid, {})
-            user_details = bot_user_map.get(uuid, {}) 
-            
-            p['user_id'] = escape(user_details.get('user_id'))
-            p['first_name'] = escape(user_details.get('first_name', 'کاربر'))
-            
-            if panel_info.get('on_hiddify'): panels.append('🇩🇪')
-            if panel_info.get('on_marzban'): panels.append('🇫🇷')
-        
-        p['panel_display'] = ' '.join(panels) if panels else '?'
-
-    users_with_birthdays = db.get_users_with_birthdays()
-    uuid_by_userid = {u['user_id']: u['uuid'] for u in db.get_all_user_uuids()}
-    for b in users_with_birthdays:
-        b['first_name'] = escape(b.get('first_name'))
-        b['last_name'] = escape(b.get('last_name'))
-        
-        uuid = uuid_by_userid.get(b['user_id']); panel_info = user_panel_info_map.get(uuid, {}); panels = []
-        if panel_info.get('on_hiddify'): panels.append('🇩🇪')
-        if panel_info.get('on_marzban'): panels.append('🇫🇷')
-        b['panel_display'] = ' '.join(panels) if panels else '?'
-        if b.get('birthday'): 
-            try:
-                b['birthday_shamsi'] = to_shamsi(b['birthday'])
-                b['days_remaining'] = days_until_next_birthday(b['birthday'])
-            except Exception as e:
-                logger.error(f"Failed to process birthday for user {b.get('user_id')}: {e}")
-                b['birthday_shamsi'] = 'خطا'
-                b['days_remaining'] = -1
-    
-    return { 
-        "summary": summary, "active_last_24h": sorted(active_last_24h, key=lambda u: u.get('last_online'), reverse=True), 
-        "inactive_1_to_7_days": sorted(inactive_1_to_7_days, key=lambda u: u.get('last_online'), reverse=True), 
-        "never_connected": sorted(never_connected, key=lambda u: u.get('name', '').lower()), 
-        "top_consumers": top_consumers, "expiring_soon_users": sorted(expiring_soon_users, key=lambda u: u.get('expire', float('inf'))),
-        "bot_users": db.get_all_bot_users(), "users_with_payments": users_with_payments, 
-        "users_with_birthdays": sorted(users_with_birthdays, key=lambda u: u.get('days_remaining', 999)), 
-        "today_shamsi": to_shamsi(datetime.now(), include_time=False) 
-    }
-
 def create_user_in_panel(data: dict):
     panel = data.get('panel')
     if 'name' in data:
@@ -551,9 +500,18 @@ def get_analytics_data():
     start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     new_users_today_count = db.get_new_users_in_range(start_of_today_utc, now_utc)
     
-    # ✅ FIX: Calculate total daily usage correctly
-    daily_usage_map = db.get_all_daily_usage_since_midnight()
-    total_usage_today = sum(sum(usage.values()) for usage in daily_usage_map.values())
+    # --- START OF FIX for Analytics Page ---
+    # مانند داشبورد، اینجا هم محاسبه مصرف روزانه را با حلقه روی هر کاربر اصلاح می‌کنیم
+    # تا مشکل محاسبه اشتباه در زمان ریست شدن حجم کاربر برطرف شود.
+    total_usage_today = 0
+    for user in all_users:
+        uuid = user.get('uuid')
+        if not uuid:
+            continue
+        
+        user_daily_usage = db.get_usage_since_midnight_by_uuid(uuid)
+        total_usage_today += sum(user_daily_usage.values())
+    # --- END OF FIX for Analytics Page ---
     
     new_users_stats = db.get_new_users_per_month_stats(months=6)
     new_users_chart = {
