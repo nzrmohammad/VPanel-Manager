@@ -11,9 +11,18 @@ from .utils import safe_float
 logger = logging.getLogger(__name__)
 
 class HiddifyAPIHandler:
-    def __init__(self):
-        self.base_url = f"{HIDDIFY_DOMAIN.rstrip('/')}/{ADMIN_PROXY_PATH.strip('/')}/api/v2/admin"
-        self.api_key = ADMIN_UUID
+    # def __init__(self):
+    #     self.base_url = f"{HIDDIFY_DOMAIN.rstrip('/')}/{ADMIN_PROXY_PATH.strip('/')}/api/v2/admin"
+    #     self.api_key = ADMIN_UUID
+    #     self.tehran_tz = pytz.timezone("Asia/Tehran")
+    #     self.session = self._create_session()
+
+    def __init__(self, panel_config: Dict[str, Any]):
+        hiddify_domain = panel_config.get("api_url", "").rstrip("/")
+        admin_proxy_path = panel_config.get("api_token2", "").strip("/")
+        self.api_key = panel_config.get("api_token1")
+
+        self.base_url = f"{hiddify_domain}/{admin_proxy_path}/api/v2/admin" if admin_proxy_path else f"{hiddify_domain}/api/v2/admin"
         self.tehran_tz = pytz.timezone("Asia/Tehran")
         self.session = self._create_session()
 
@@ -147,4 +156,4 @@ class HiddifyAPIHandler:
             logger.error(f"Hiddify connection check FAILED: {e}")
             return False
 
-hiddify_handler = HiddifyAPIHandler()
+# hiddify_handler = HiddifyAPIHandler()

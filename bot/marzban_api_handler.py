@@ -7,18 +7,27 @@ import os
 from .config import MARZBAN_API_BASE_URL, MARZBAN_API_USERNAME, MARZBAN_API_PASSWORD, API_TIMEOUT, api_cache
 from .database import db
 from cachetools import cached
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 class MarzbanAPIHandler:
-    def __init__(self):
-        self.base_url = MARZBAN_API_BASE_URL.rstrip('/')
+    # def __init__(self):
+    #     self.base_url = MARZBAN_API_BASE_URL.rstrip('/')
+    #     self.api_base_url = f"{self.base_url}/api"
+    #     self.username = MARZBAN_API_USERNAME
+    #     self.password = MARZBAN_API_PASSWORD
+    #     self.access_token = None
+    #     self.utc_tz = pytz.utc
+    #     self.session = self._create_session()
+    def __init__(self, panel_config: Dict[str, Any]):
+        self.base_url = panel_config.get("api_url", "").rstrip('/')
         self.api_base_url = f"{self.base_url}/api"
-        self.username = MARZBAN_API_USERNAME
-        self.password = MARZBAN_API_PASSWORD
+        self.username = panel_config.get("api_token1")
+        self.password = panel_config.get("api_token2")
         self.access_token = None
         self.utc_tz = pytz.utc
-        self.session = self._create_session() 
+        self.session = self._create_session()
 
     def _create_session(self) -> requests.Session:
         session = requests.Session()
@@ -256,4 +265,4 @@ class MarzbanAPIHandler:
         # تابع _get_access_token خودش اتصال را تست می‌کند
         return self._get_access_token()
 
-marzban_handler = MarzbanAPIHandler()
+# marzban_handler = MarzbanAPIHandler()

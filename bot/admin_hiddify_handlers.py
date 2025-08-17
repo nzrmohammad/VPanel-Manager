@@ -1,11 +1,17 @@
+# bot/admin_hiddify_handlers.py
+
+import logging
 from telebot import types
 from datetime import datetime
 import pytz
+
+# --- START: MODIFIED IMPORTS ---
 from .menu import menu
-from .hiddify_api_handler import hiddify_handler
+from .hiddify_api_handler import HiddifyAPIHandler # Import the Class, not the instance
+from .database import db # Import db to get panel configs
 from .utils import _safe_edit, escape_markdown
 from .admin_formatters import fmt_admin_user_summary
-import logging
+# --- END: MODIFIED IMPORTS ---
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -23,34 +29,14 @@ def _delete_user_message(msg: types.Message):
 def _update_conversation(uid, data):
     admin_conversations.setdefault(uid, {}).update(data)
 
+# --- The conversation flow (_ask_for_username, etc.) remains the same ---
+
 def _ask_for_username(uid, msg_id, is_retry=False):
-    prompt = "افزودن کاربر به پنل آلمان (هیدیفای) 🇩🇪\n\n"
+    prompt = "افزودن کاربر به پنل Hiddify 🇩🇪\n\n"
     if is_retry: prompt += "⚠️ نام کاربری باید حداقل ۳ کاراکتر باشد. لطفاً دوباره وارد کنید.\n\n"
     prompt += "1. لطفاً یک **نام کاربری** وارد کنید:"
-    _safe_edit(uid, msg_id, prompt, reply_markup=menu.cancel_action("admin:manage_panel:hiddify"), parse_mode="Markdown")
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:management_menu"), parse_mode="Markdown")
     bot.register_next_step_handler_by_chat_id(uid, _get_username_for_add_user)
-
-def _ask_for_days(uid, msg_id, username, is_retry=False):
-    prompt = f"نام کاربر: `{escape_markdown(username)}`\n\n"
-    if is_retry: prompt += "⚠️ ورودی قبلی نامعتبر بود. لطفاً یک عدد صحیح وارد کنید.\n\n"
-    prompt += "2. حالا **مدت زمان** پلن (به روز) را وارد کنید (عدد `0` برای نامحدود):"
-    kb = menu.back_or_cancel("admin:add_user_back:hiddify:username", "admin:manage_panel:hiddify")
-    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="Markdown")
-    bot.register_next_step_handler_by_chat_id(uid, _get_days_for_add_user)
-
-def _ask_for_limit(uid, msg_id, username, days, is_retry=False):
-    days_str = f"{days}" if days is not None else "0"
-    prompt = f"نام: `{escape_markdown(username)}`, مدت: `{days_str} روز`\n\n"
-    if is_retry: prompt += "⚠️ ورودی قبلی نامعتبر بود. لطفاً یک عدد وارد کنید.\n\n"
-    prompt += "3. در نهایت، **حجم کل مصرف** (به گیگابایت) را وارد کنید (عدد `0` برای نامحدود):"
-    kb = menu.back_or_cancel("admin:add_user_back:hiddify:days", "admin:manage_panel:hiddify")
-    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="Markdown")
-    bot.register_next_step_handler_by_chat_id(uid, _get_limit_for_add_user)
-
-# FIX: Renamed function to match its usage in the router.
-def _start_add_hiddify_user_convo(uid, msg_id):
-    _update_conversation(uid, {'step': 'username', 'msg_id': msg_id, 'panel': 'hiddify'})
-    _ask_for_username(uid, msg_id)
 
 def _get_username_for_add_user(msg: types.Message):
     uid, name = msg.from_user.id, msg.text.strip()
@@ -63,6 +49,14 @@ def _get_username_for_add_user(msg: types.Message):
     _update_conversation(uid, {'name': name, 'step': 'days'})
     _ask_for_days(uid, convo['msg_id'], name)
 
+def _ask_for_days(uid, msg_id, username, is_retry=False):
+    prompt = f"نام کاربر: `{escape_markdown(username)}`\n\n"
+    if is_retry: prompt += "⚠️ ورودی قبلی نامعتبر بود. لطفاً یک عدد صحیح وارد کنید.\n\n"
+    prompt += "2. حالا **مدت زمان** پلن (به روز) را وارد کنید (عدد `0` برای نامحدود):"
+    kb = menu.back_or_cancel("admin:add_user_back:hiddify:username", "admin:management_menu")
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="Markdown")
+    bot.register_next_step_handler_by_chat_id(uid, _get_days_for_add_user)
+    
 def _get_days_for_add_user(msg: types.Message):
     uid, days_text = msg.from_user.id, msg.text.strip()
     _delete_user_message(msg)
@@ -74,6 +68,15 @@ def _get_days_for_add_user(msg: types.Message):
         _ask_for_limit(uid, convo['msg_id'], convo['name'], days)
     except (ValueError, TypeError):
         _ask_for_days(uid, convo['msg_id'], convo['name'], is_retry=True)
+
+def _ask_for_limit(uid, msg_id, username, days, is_retry=False):
+    days_str = f"{days}" if days is not None else "0"
+    prompt = f"نام: `{escape_markdown(username)}`, مدت: `{days_str} روز`\n\n"
+    if is_retry: prompt += "⚠️ ورودی قبلی نامعتبر بود. لطفاً یک عدد وارد کنید.\n\n"
+    prompt += "3. در نهایت، **حجم کل مصرف** (به گیگابایت) را وارد کنید (عدد `0` برای نامحدود):"
+    kb = menu.back_or_cancel("admin:add_user_back:hiddify:days", "admin:management_menu")
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="Markdown")
+    bot.register_next_step_handler_by_chat_id(uid, _get_limit_for_add_user)
 
 def _get_limit_for_add_user(msg: types.Message):
     uid, limit_text = msg.from_user.id, msg.text.strip()
@@ -87,64 +90,64 @@ def _get_limit_for_add_user(msg: types.Message):
     except (ValueError, TypeError):
         _ask_for_limit(uid, convo['msg_id'], convo['name'], convo['package_days'], is_retry=True)
 
+
 def _finish_user_creation(uid, user_data):
+    """تابع نهایی برای ساخت کاربر که با سیستم داینامیک هماهنگ شده است."""
     msg_id = user_data.get('msg_id')
-    _safe_edit(uid, msg_id, "⏳ در حال ساخت کاربر در پنل هیدیفای...")
     
-    new_user_info = hiddify_handler.add_user(user_data)
+    # --- START: NEW DYNAMIC LOGIC ---
+    # ۱. پیدا کردن اولین پنل هیدیفای فعال از دیتابیس
+    active_hiddify_panels = [p for p in db.get_active_panels() if p['panel_type'] == 'hiddify']
+    if not active_hiddify_panels:
+        err_msg = "❌ خطا: هیچ پنل فعال Hiddify در سیستم ثبت نشده است."
+        _safe_edit(uid, msg_id, err_msg, reply_markup=menu.admin_panel_management_menu('hiddify'))
+        return
+        
+    # در این نسخه، ما کاربر را به اولین پنل یافت شده اضافه می‌کنیم.
+    # در آینده می‌توان منویی برای انتخاب پنل به کاربر نمایش داد.
+    target_panel_config = active_hiddify_panels[0]
+    
+    _safe_edit(uid, msg_id, f"⏳ در حال ساخت کاربر در پنل: {escape_markdown(target_panel_config['name'])}...")
+
+    # ۲. ساخت یک handler مخصوص برای این پنل
+    handler = HiddifyAPIHandler(target_panel_config)
+    
+    # ۳. استفاده از handler جدید برای افزودن کاربر
+    new_user_info = handler.add_user(user_data)
+    # --- END: NEW DYNAMIC LOGIC ---
+    
     admin_conversations.pop(uid, None)
     
     if new_user_info and new_user_info.get('uuid'):
-        
-        # --- شروع اصلاح باگ ---
-        expire_days = None
-        # بررسی می‌کنیم که آیا پنل تاریخ انقضا را برگردانده است یا خیر
-        if new_user_info.get('expire'):
-            try:
-                # اگر تاریخ انقضا به صورت عدد روز بود، مستقیماً از آن استفاده می‌کنیم
-                expire_days = int(new_user_info['expire'])
-            except (ValueError, TypeError):
-                # اگر به فرمت تاریخ کامل بود، آن را محاسبه می‌کنیم
-                try:
-                    expire_date = datetime.fromisoformat(str(new_user_info['expire']).replace('Z', '+00:00'))
-                    if expire_date.tzinfo is None:
-                        expire_date = pytz.utc.localize(expire_date)
-                    
-                    delta = expire_date - datetime.now(pytz.utc)
-                    expire_days = delta.days
-                except Exception:
-                    expire_days = None # در صورت بروز خطا، نامحدود در نظر گرفته می‌شود
-
-        # اطلاعات کامل را برای نمایش آماده می‌کنیم
+        # بخش فرمت کردن پیام موفقیت بدون تغییر باقی می‌ماند
         final_info = {
             'name': new_user_info.get('name'),
             'uuid': new_user_info.get('uuid'),
             'is_active': True,
-            'on_hiddify': True,
-            'breakdown': {'hiddify': new_user_info},
-            'expire': expire_days  # <-- کلید اصلی که فراموش شده بود
+            'breakdown': {target_panel_config['name']: new_user_info},
+            'expire': new_user_info.get('expire')
         }
-        # --- پایان اصلاح باگ ---
-
+        
         text = fmt_admin_user_summary(final_info)
-        success_text = f"✅ کاربر با موفقیت در پنل آلمان ساخته شد.\n\n{text}"
-        _safe_edit(uid, msg_id, success_text, reply_markup=menu.admin_panel_management_menu('hiddify'), parse_mode="Markdown")
+        success_text = f"✅ کاربر با موفقیت در پنل {escape_markdown(target_panel_config['name'])} ساخته شد.\n\n{text}"
+        _safe_edit(uid, msg_id, success_text, reply_markup=menu.admin_management_menu(), parse_mode="Markdown")
     else:
-        err_msg = "❌ خطا در ساخت کاربر. ممکن است پنل در دسترس نباشد یا خطایی رخ داده باشد."
-        _safe_edit(uid, msg_id, err_msg, reply_markup=menu.admin_panel_management_menu('hiddify'), parse_mode="Markdown")
+        err_msg = f"❌ خطا در ساخت کاربر در پنل {escape_markdown(target_panel_config['name'])}. ممکن است پنل در دسترس نباشد."
+        _safe_edit(uid, msg_id, err_msg, reply_markup=menu.admin_management_menu())
 
-# FIX: Added the missing back button handler function.
+
+def _start_add_hiddify_user_convo(uid, msg_id):
+    """Starts the conversation for adding a user to a Hiddify panel."""
+    _update_conversation(uid, {'step': 'username', 'msg_id': msg_id, 'panel_type': 'hiddify'})
+    _ask_for_username(uid, msg_id)
+
 def handle_add_user_back_step(call: types.CallbackQuery, params: list):
     """Handles the 'back' button during the multi-step user creation process."""
     uid = call.from_user.id
-    if uid not in admin_conversations:
-        return
+    if uid not in admin_conversations: return
     
     convo = admin_conversations[uid]
     msg_id = convo.get('msg_id')
-    
-    # Determines which step to go back to based on the callback data
-    # e.g., from 'days' step back to 'username'
     back_to_step = params[1] if len(params) > 1 else 'username'
 
     if back_to_step == 'username':
@@ -153,11 +156,6 @@ def handle_add_user_back_step(call: types.CallbackQuery, params: list):
     elif back_to_step == 'days':
         _update_conversation(uid, {'step': 'days'})
         _ask_for_days(uid, msg_id, convo.get('name'))
-    # Marzban back steps (can be co-located or moved to marzban_handlers if preferred)
-    elif back_to_step == 'limit':
-        from .admin_marzban_handlers import _ask_for_limit as marzban_ask_limit
-        _update_conversation(uid, {'step': 'limit'})
-        marzban_ask_limit(uid, msg_id, convo.get('username'))
 
 
 # --- The commented-out code for creating users from a plan remains here ---

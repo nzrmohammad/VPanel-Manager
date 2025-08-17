@@ -1,17 +1,32 @@
+# bot/admin_router.py
 import logging
-from telebot import types, telebot
+from telebot import types
 from .bot_instance import bot, admin_conversations
-from .admin_handlers import user_management, reporting, broadcast, backup, group_actions, plan_management
-from .admin_hiddify_handlers import _start_add_hiddify_user_convo, initialize_hiddify_handlers, handle_add_user_back_step
-from .admin_marzban_handlers import _start_add_marzban_user_convo, initialize_marzban_handlers
-from .marzban_api_handler import marzban_handler
+
+# --- START: CORRECTED IMPORTS ---
+# این بخش حالا به درستی کار خواهد کرد چون __init__.py کامل است
+from .admin_handlers import (
+    user_management, 
+    reporting, 
+    broadcast, 
+    backup, 
+    group_actions, 
+    plan_management, 
+    panel_management
+)
+# --- END: CORRECTED IMPORTS ---
+
+from .admin_hiddify_handlers import (_start_add_hiddify_user_convo, 
+                                      initialize_hiddify_handlers, handle_add_user_back_step)
+from .admin_marzban_handlers import (_start_add_marzban_user_convo, 
+                                     initialize_marzban_handlers)
 from .menu import menu
 from .utils import _safe_edit
 
 logger = logging.getLogger(__name__)
 
 def register_admin_handlers(bot):
-    
+    # این بخش بدون تغییر باقی می‌ماند
     initialize_hiddify_handlers(bot, admin_conversations)
     initialize_marzban_handlers(bot, admin_conversations)
     group_actions.initialize_group_actions_handlers(bot, admin_conversations)
@@ -20,67 +35,42 @@ def register_admin_handlers(bot):
     broadcast.initialize_broadcast_handlers(bot, admin_conversations)
     backup.initialize_backup_handlers(bot)
     plan_management.initialize_plan_management_handlers(bot, admin_conversations)
+    panel_management.initialize_panel_management_handlers(bot, admin_conversations)
 
+# ... (بقیه محتوای فایل admin_router.py بدون هیچ تغییری باقی می‌ماند) ...
 # ===================================================================
 # Simple Menu Functions
 # ===================================================================
 
 def _handle_show_panel(call, params):
-    """Shows the main admin panel menu."""
     _safe_edit(call.from_user.id, call.message.message_id, "👑 پنل مدیریت", reply_markup=menu.admin_panel())
 
 def _handle_management_menu(call, params):
-    """Shows the user management menu."""
     _safe_edit(call.from_user.id, call.message.message_id, "👥 مدیریت کاربران", reply_markup=menu.admin_management_menu())
 
 def _handle_search_menu(call, params):
-    """Shows the search sub-menu."""
     _safe_edit(call.from_user.id, call.message.message_id, "🔎 لطفاً نوع جستجو را انتخاب کنید:", reply_markup=menu.admin_search_menu())
 
 def _handle_group_actions_menu(call, params):
-    """Shows the group actions sub-menu."""
     _safe_edit(call.from_user.id, call.message.message_id, "⚙️ لطفاً نوع دستور گروهی را انتخاب کنید:", reply_markup=menu.admin_group_actions_menu())
 
 def _handle_user_analysis_menu(call, params):
-    """
-    کاربر را به منوی انتخاب پلن برای گزارش‌گیری هدایت می‌کند.
-    این تابع مانند یک پل عمل کرده و خطای قبلی را برطرف می‌کند.
-    """
-    # این تابع، شما را مستقیماً به همان منویی می‌برد که لیست پلن‌ها را برای
-    # گزارش‌گیری نمایش می‌دهد و دقیقاً همان عملکردی را دارد که می‌خواهید.
     reporting.handle_report_by_plan_selection(call, params)
 
-# تابع جدید: برای نمایش منوی وضعیت سیستم
 def _handle_system_status_menu(call, params):
     _safe_edit(call.from_user.id, call.message.message_id, "📊 لطفاً پنل مورد نظر برای مشاهده وضعیت را انتخاب کنید:", reply_markup=menu.admin_system_status_menu())
 
 def _handle_panel_management_menu(call, params):
-    """Shows the management menu for a specific panel (Hiddify/Marzban)."""
     bot.clear_step_handler_by_chat_id(call.from_user.id)
-    panel = params[0]
-    panel_name = "آلمان 🇩🇪" if panel == "hiddify" else "فرانسه 🇫🇷"
-    _safe_edit(call.from_user.id, call.message.message_id, f"مدیریت کاربران پنل *{panel_name}*", reply_markup=menu.admin_panel_management_menu(panel))
+    panel_type = params[0]
+    panel_name = "Hiddify" if panel_type == "hiddify" else "Marzban"
+    _safe_edit(call.from_user.id, call.message.message_id, f"مدیریت کاربران پنل‌های نوع *{panel_name}*", reply_markup=menu.admin_panel_management_menu(panel_type))
 
 def _handle_server_selection(call, params):
-    """Shows the server selection menu for reports or analytics."""
     base_callback = params[0]
-    text_map = {"reports_menu": "لطفاً پنل را برای گزارش‌گیری انتخاب کنید:", "analytics_menu": "لطفاً پنل را برای تحلیل و آمار انتخاب کنید:"}
+    text_map = {"reports_menu": "لطفاً نوع پنل را برای گزارش‌گیری انتخاب کنید:", "analytics_menu": "لطفاً نوع پنل را برای تحلیل و آمار انتخاب کنید:"}
     _safe_edit(call.from_user.id, call.message.message_id, text_map.get(base_callback, "لطفا انتخاب کنید:"),
                reply_markup=menu.admin_server_selection_menu(f"admin:{base_callback}"))
-    
-def _handle_reload_maps(call, params):
-    bot.answer_callback_query(call.id, "⏳ در حال رفرش کردن...")
-    success = marzban_handler.reload_uuid_maps() #
-    
-    if success:
-        response_text = "✅ *مپینگ با موفقیت به‌روز شد\\.*\n\nاطلاعات کاربران پنل مرزبان از فایل `uuid_to_marzban_user\\.json` مجدداً بارگذاری شد\\."
-    else:
-        response_text = "❌ *خطا در به‌روزرسانی مپینگ\\.*\n\nلطفاً از صحت فایل `uuid_to_marzban_user\\.json` مطمئن شوید و لاگ‌های ربات را بررسی کنید\\."
-        
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به وضعیت سیستم", callback_data="admin:system_status_menu"))
-    _safe_edit(call.from_user.id, call.message.message_id, response_text, reply_markup=kb)
-
 
 # ===================================================================
 # Final Dispatcher Dictionary
@@ -104,11 +94,17 @@ ADMIN_CALLBACK_HANDLERS = {
     "plan_delete_confirm": plan_management.handle_delete_plan_confirm,
     "plan_delete_execute": plan_management.handle_delete_plan_execute,
 
+    # Panel Management
+    "panel_manage": panel_management.handle_panel_management_menu,
+    "panel_details": panel_management.handle_panel_details,
+    "panel_add_start": panel_management.handle_start_add_panel,
+    "panel_set_type": panel_management.handle_set_panel_type,
+    "panel_toggle": panel_management.handle_panel_toggle_status,
+    "panel_delete_confirm": panel_management.handle_panel_delete_confirm,
+    "panel_delete_execute": panel_management.handle_panel_delete_execute,
     
     # User Actions
     "add_user": lambda c, p: (_start_add_hiddify_user_convo if p[0] == 'hiddify' else _start_add_marzban_user_convo)(c.from_user.id, c.message.message_id),
-    # "add_user_plan": lambda c, p: _start_add_user_from_plan_convo(c, p),
-    # "plan_select": lambda c, p: _handle_plan_selection(c, p),
     "sg": user_management.handle_global_search_convo,
     "us": user_management.handle_show_user_summary,
     "edt": user_management.handle_edit_user_menu,
@@ -116,7 +112,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "phist": user_management.handle_payment_history,
     "ae": user_management.handle_ask_edit_value,
     "tgl": user_management.handle_toggle_status,
-    "tglA": user_management.handle_toggle_status_action, # این تابع جدید، عمل را انجام می‌دهد
+    "tglA": user_management.handle_toggle_status_action,
     "rb": user_management.handle_reset_birthday,
     "rusg_m": user_management.handle_reset_usage_menu,
     "rsa": user_management.handle_reset_usage_action,
@@ -146,13 +142,10 @@ ADMIN_CALLBACK_HANDLERS = {
     "broadcast_target": broadcast.ask_for_broadcast_message,
     "backup_menu": backup.handle_backup_menu,
     "backup": backup.handle_backup_action,
-    "reload_maps": _handle_reload_maps,
     "add_user_back": handle_add_user_back_step,
 }
 
-
 def handle_admin_callbacks(call: types.CallbackQuery):
-    """The main callback router for all admin actions."""
     if not call.data.startswith("admin:"):
         return
 

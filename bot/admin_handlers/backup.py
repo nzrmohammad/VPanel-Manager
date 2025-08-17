@@ -6,9 +6,12 @@ import json
 from datetime import datetime
 from telebot import types
 
-# هندلرهای هر دو پنل را برای دسترسی به لیست کاربران وارد می‌کنیم
-from ..hiddify_api_handler import hiddify_handler
-from ..marzban_api_handler import marzban_handler
+# --- START: MODIFIED IMPORTS ---
+# هندلرهای API را به صورت کلاس وارد می‌کنیم، نه نمونه‌های آماده
+from ..hiddify_api_handler import HiddifyAPIHandler
+from ..marzban_api_handler import MarzbanAPIHandler
+from ..database import db # دیتابیس برای خواندن پنل‌ها
+# --- END: MODIFIED IMPORTS ---
 
 from ..menu import menu
 from ..utils import _safe_edit, escape_markdown
@@ -27,22 +30,21 @@ def handle_backup_menu(call, params):
 
 def handle_backup_action(call, params):
     """
-    این تابع اصلی است که بر اساس پارامتر دریافتی، نوع پشتیبان‌گیری را تشخیص می‌دهد.
+    این تابع اصلی است که بر اساس پارامטר دریافتی، نوع پشتیبان‌گیری را تشخیص می‌دهد.
     """
     backup_type = params[0]
     if backup_type == "bot_db":
         _handle_bot_db_backup_request(call)
     elif backup_type == "marzban":
-        _handle_marzban_backup_request(call)
+        _handle_panel_backup_request(call, 'marzban') # نوع پنل پاس داده می‌شود
     elif backup_type == "hiddify":
-        _handle_hiddify_backup_request(call)
+        _handle_panel_backup_request(call, 'hiddify') # نوع پنل پاس داده می‌شود
 
 def _handle_bot_db_backup_request(call):
     """منطق پشتیبان‌گیری از دیتابیس ربات."""
     chat_id, msg_id = call.from_user.id, call.message.message_id
     bot.answer_callback_query(call.id, "در حال پردازش...")
     
-    # FIX: یک پیام "در حال پردازش" نمایش داده می‌شود تا کاربر منتظر بماند
     _safe_edit(chat_id, msg_id, "⏳ در حال ساخت پشتیبان از دیتابیس ربات...")
 
     if not os.path.exists(DATABASE_PATH):
@@ -66,67 +68,61 @@ def _handle_bot_db_backup_request(call):
                 visible_file_name=backup_filename
             )
         
-        # FIX: پس از اتمام عملیات، کاربر به منوی پشتیبان‌گیری بازگردانده می‌شود
         _safe_edit(chat_id, msg_id, "🗄️ لطفاً نوع پشتیبان‌گیری را انتخاب کنید:", reply_markup=menu.admin_backup_selection_menu())
             
     except Exception as e:
         logger.error(f"Bot DB Backup failed: {e}")
         _safe_edit(chat_id, msg_id, f"❌ خطای ناشناخته: {escape_markdown(str(e))}", reply_markup=menu.admin_backup_selection_menu())
 
-def _handle_hiddify_backup_request(call):
-    """منطق پشتیبان‌گیری از کاربران پنل آلمان (Hiddify)."""
+def _handle_panel_backup_request(call, panel_type_to_backup: str):
+    """منطق پشتیبان‌گیری داینامیک برای کاربران یک نوع پنل خاص (Hiddify یا Marzban)."""
     chat_id, msg_id = call.from_user.id, call.message.message_id
     bot.answer_callback_query(call.id, "در حال دریافت اطلاعات...")
-    _safe_edit(chat_id, msg_id, "⏳ در حال دریافت لیست کاربران از پنل آلمان (Hiddify)...")
+    
+    panel_name_fa = "Hiddify" if panel_type_to_backup == 'hiddify' else "Marzban"
+    _safe_edit(chat_id, msg_id, f"⏳ در حال دریافت لیست کاربران از تمام پنل‌های نوع {panel_name_fa}...")
     
     try:
-        hiddify_users = hiddify_handler.get_all_users()
-        if not hiddify_users:
-            _safe_edit(chat_id, msg_id, "❌ هیچ کاربری در پنل آلمان یافت نشد.", reply_markup=menu.admin_backup_selection_menu())
+        all_users_for_type = []
+        # ۱. تمام پنل‌های فعال را از دیتابیس بخوان
+        active_panels = db.get_active_panels()
+        
+        # ۲. فقط پنل‌هایی که از نوع درخواستی هستند را فیلتر کن
+        target_panels = [p for p in active_panels if p['panel_type'] == panel_type_to_backup]
+
+        if not target_panels:
+            _safe_edit(chat_id, msg_id, f"❌ هیچ پنل فعالی از نوع {panel_name_fa} یافت نشد.", reply_markup=menu.admin_backup_selection_menu())
+            return
+
+        # ۳. برای هر پنل، یک handler بساز و کاربرانش را بگیر
+        for panel_config in target_panels:
+            handler = None
+            if panel_type_to_backup == 'hiddify':
+                handler = HiddifyAPIHandler(panel_config)
+            elif panel_type_to_backup == 'marzban':
+                handler = MarzbanAPIHandler(panel_config)
+
+            if handler:
+                users = handler.get_all_users()
+                if users:
+                    all_users_for_type.extend(users)
+        
+        if not all_users_for_type:
+            _safe_edit(chat_id, msg_id, f"❌ هیچ کاربری در پنل‌های {panel_name_fa} یافت نشد.", reply_markup=menu.admin_backup_selection_menu())
             return
             
-        backup_filename = f"hiddify_backup_{datetime.now().strftime('%Y-%m-%d')}.json"
+        backup_filename = f"{panel_type_to_backup}_backup_{datetime.now().strftime('%Y-%m-%d')}.json"
         
         with open(backup_filename, 'w', encoding='utf-8') as f:
-            json.dump(hiddify_users, f, ensure_ascii=False, indent=4, default=str)
+            json.dump(all_users_for_type, f, ensure_ascii=False, indent=4, default=str)
             
         with open(backup_filename, "rb") as backup_file:
-            bot.send_document(chat_id, backup_file, caption=f"✅ فایل پشتیبان کاربران پنل آلمان ({len(hiddify_users)} کاربر).")
+            bot.send_document(chat_id, backup_file, caption=f"✅ فایل پشتیبان کاربران پنل‌های {panel_name_fa} ({len(all_users_for_type)} کاربر).")
             
         os.remove(backup_filename)
 
-        # FIX: پس از اتمام عملیات، کاربر به منوی پشتیبان‌گیری بازگردانده می‌شود
         _safe_edit(chat_id, msg_id, "🗄️ لطفاً نوع پشتیبان‌گیری را انتخاب کنید:", reply_markup=menu.admin_backup_selection_menu())
         
     except Exception as e:
-        logger.error(f"Hiddify backup failed: {e}")
-        _safe_edit(chat_id, msg_id, f"❌ خطای ناشناخته: {escape_markdown(str(e))}", reply_markup=menu.admin_backup_selection_menu())
-
-def _handle_marzban_backup_request(call):
-    """منطق پشتیبان‌گیری از کاربران پنل فرانسه (Marzban)."""
-    chat_id, msg_id = call.from_user.id, call.message.message_id
-    bot.answer_callback_query(call.id, "در حال دریافت اطلاعات...")
-    _safe_edit(chat_id, msg_id, "⏳ در حال دریافت لیست کاربران از پنل فرانسه (Marzban)...")
-    
-    try:
-        marzban_users = marzban_handler.get_all_users()
-        if not marzban_users:
-            _safe_edit(chat_id, msg_id, "❌ هیچ کاربری در پنل فرانسه یافت نشد.", reply_markup=menu.admin_backup_selection_menu())
-            return
-            
-        backup_filename = f"marzban_backup_{datetime.now().strftime('%Y-%m-%d')}.json"
-        
-        with open(backup_filename, 'w', encoding='utf-8') as f:
-            json.dump(marzban_users, f, ensure_ascii=False, indent=4, default=str)
-            
-        with open(backup_filename, "rb") as backup_file:
-            bot.send_document(chat_id, backup_file, caption=f"✅ فایل پشتیبان کاربران پنل فرانسه ({len(marzban_users)} کاربر).")
-            
-        os.remove(backup_filename)
-
-        # FIX: پس از اتمام عملیات، کاربر به منوی پشتیبان‌گیری بازگردانده می‌شود
-        _safe_edit(chat_id, msg_id, "🗄️ لطفاً نوع پشتیبان‌گیری را انتخاب کنید:", reply_markup=menu.admin_backup_selection_menu())
-        
-    except Exception as e:
-        logger.error(f"Marzban backup failed: {e}")
+        logger.error(f"{panel_name_fa} backup failed: {e}", exc_info=True)
         _safe_edit(chat_id, msg_id, f"❌ خطای ناشناخته: {escape_markdown(str(e))}", reply_markup=menu.admin_backup_selection_menu())

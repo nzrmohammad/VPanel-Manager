@@ -1,16 +1,15 @@
+# bot/admin_handlers/reporting.py
 import logging
 from datetime import datetime, timedelta
 import pytz
 from telebot import types
 from .. import combined_handler
-from ..hiddify_api_handler import hiddify_handler
-from ..marzban_api_handler import marzban_handler
 from ..database import db
 from ..menu import menu
 from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
-    fmt_hiddify_panel_info, fmt_marzban_system_stats, fmt_users_by_plan_list,
+    fmt_marzban_system_stats, fmt_users_by_plan_list,
     fmt_payments_report_list, fmt_admin_quick_dashboard
 )
 from ..utils import _safe_edit, load_service_plans, parse_volume_string, escape_markdown
@@ -23,60 +22,59 @@ def initialize_reporting_handlers(b):
     bot = b
 
 def handle_reports_menu(call, params):
-    """Displays the main reporting menu."""
     _safe_edit(call.from_user.id, call.message.message_id, "📜 *گزارش گیری*", reply_markup=menu.admin_reports_menu())
 
 def handle_panel_specific_reports_menu(call, params):
-    """Displays the reports menu for a specific panel."""
-    panel = params[0]
-    panel_name = "آلمان 🇩🇪" if panel == "hiddify" else "فرانسه 🇫🇷"
-    _safe_edit(call.from_user.id, call.message.message_id, f"📜 *گزارش‌های پنل {panel_name}*", reply_markup=menu.admin_panel_specific_reports_menu(panel))
+    panel_type = params[0]
+    panel_name = "Hiddify" if panel_type == "hiddify" else "Marzban"
+    _safe_edit(call.from_user.id, call.message.message_id, f"📜 *گزارش‌های پنل‌های نوع {panel_name}*", reply_markup=menu.admin_panel_specific_reports_menu(panel_type))
 
 def handle_health_check(call, params):
-    bot.answer_callback_query(call.id, "در حال دریافت اطلاعات پنل...")
-    info = hiddify_handler.get_panel_info()
-    text = fmt_hiddify_panel_info(info) if info else escape_markdown("❌ اطلاعاتی دریافت نشد.")
-    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:system_status_menu"))
-    _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
+    bot.answer_callback_query(call.id, "این قابلیت پس از داینامیک شدن نیاز به بازبینی دارد.")
 
 def handle_marzban_system_stats(call, params):
-    bot.answer_callback_query(call.id, "در حال دریافت آمار سیستم مرزبان...")
-    stats = marzban_handler.get_system_stats()
-    text = fmt_marzban_system_stats(stats) if stats else escape_markdown("❌ اطلاعاتی دریافت نشد.")
-    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:system_status_menu"))
-    _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
+    bot.answer_callback_query(call.id, "این قابلیت پس از داینامیک شدن نیاز به بازبینی دارد.")
 
 def handle_paginated_list(call, params):
-    list_type, panel, page = params[0], params[1] if len(params) > 2 else None, int(params[-1])
+    list_type, page = params[0], int(params[-1])
+    panel_type = params[1] if len(params) > 2 else None
     
-    if panel:
-        _safe_edit(call.from_user.id, call.message.message_id, "⏳ در حال دریافت اطلاعات از پنل، لطفاً صبر کنید...", reply_markup=None, parse_mode=None)
+    _safe_edit(call.from_user.id, call.message.message_id, "⏳ در حال دریافت و پردازش اطلاعات...", reply_markup=None)
 
-    users, all_panel_users = [], []
-    if panel == 'hiddify': all_panel_users = hiddify_handler.get_all_users()
-    elif panel == 'marzban': all_panel_users = marzban_handler.get_all_users()
+    all_users_combined = combined_handler.get_all_users_combined()
     
+    users_to_process = []
+    if panel_type:
+        all_panels_map = {p['name']: p['panel_type'] for p in db.get_all_panels()}
+        for user in all_users_combined:
+            for panel_name in user.get('breakdown', {}).keys():
+                if all_panels_map.get(panel_name) == panel_type:
+                    users_to_process.append(user)
+                    break 
+    else:
+        users_to_process = all_users_combined
+
+    users = []
+    now_utc = datetime.now(pytz.utc)
+
     if list_type == "panel_users": 
-        users = all_panel_users
+        users = users_to_process
     elif list_type == "online_users":
-        deadline = datetime.now(pytz.utc) - timedelta(minutes=3)
-        online_users = [u for u in all_panel_users if u.get('is_active') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
+        deadline = now_utc - timedelta(minutes=3)
+        online_users = [u for u in users_to_process if u.get('is_active') and u.get('last_online') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
         for user in online_users:
             if user.get('uuid'):
                 user['daily_usage_GB'] = sum(db.get_usage_since_midnight_by_uuid(user['uuid']).values())
-            else:
-                user['daily_usage_GB'] = 0
         users = online_users
     elif list_type == "active_users":
-        deadline = datetime.now(pytz.utc) - timedelta(days=1)
-        users = [u for u in all_panel_users if u.get('last_online') and u['last_online'].astimezone(pytz.utc) >= deadline]
+        deadline = now_utc - timedelta(days=1)
+        users = [u for u in users_to_process if u.get('last_online') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
     elif list_type == "inactive_users":
-        now_utc = datetime.now(pytz.utc)
-        users = [u for u in all_panel_users if u.get('last_online') and 1 <= (now_utc - u['last_online'].astimezone(pytz.utc)).days < 7]
+        users = [u for u in users_to_process if u.get('last_online') and isinstance(u.get('last_online'), datetime) and 1 <= (now_utc - u['last_online'].astimezone(pytz.utc)).days < 7]
     elif list_type == "never_connected": 
-        users = [u for u in all_panel_users if not u.get('last_online')]
+        users = [u for u in users_to_process if not u.get('last_online')]
     elif list_type == "top_consumers":
-        sorted_users = sorted(all_panel_users, key=lambda u: u.get('current_usage_GB', 0), reverse=True)
+        sorted_users = sorted(users_to_process, key=lambda u: u.get('current_usage_GB', 0), reverse=True)
         users = sorted_users[:100]
     elif list_type == "bot_users": 
         users = db.get_all_bot_users()
@@ -86,12 +84,12 @@ def handle_paginated_list(call, params):
         users = db.get_payment_history()
 
     list_configs = {
-        "panel_users": {"format": lambda u, pg, p: fmt_panel_users_list(u, "آلمان 🇩🇪" if p == "hiddify" else "فرانسه 🇫🇷", pg), "back": "manage_panel"},
+        "panel_users": {"format": lambda u, pg, p_type: fmt_panel_users_list(u, "Hiddify" if p_type == "hiddify" else "Marzban", pg), "back": "panel_reports"},
         "online_users": {"format": fmt_online_users_list, "back": "panel_reports"},
-        "active_users": {"format": lambda u, pg, p: fmt_users_list(u, 'active', pg), "back": "panel_reports"},
-        "inactive_users": {"format": lambda u, pg, p: fmt_users_list(u, 'inactive', pg), "back": "panel_reports"},
-        "never_connected": {"format": lambda u, pg, p: fmt_users_list(u, 'never_connected', pg), "back": "panel_reports"},
-        "top_consumers": {"format": fmt_top_consumers, "back": "analytics_menu"},
+        "active_users": {"format": lambda u, pg, p_type: fmt_users_list(u, 'active', pg), "back": "panel_reports"},
+        "inactive_users": {"format": lambda u, pg, p_type: fmt_users_list(u, 'inactive', pg), "back": "panel_reports"},
+        "never_connected": {"format": lambda u, pg, p_type: fmt_users_list(u, 'never_connected', pg), "back": "panel_reports"},
+        "top_consumers": {"format": fmt_top_consumers, "back": "reports_menu"},
         "bot_users": {"format": fmt_bot_users_list, "back": "reports_menu"},
         "birthdays": {"format": fmt_birthdays_list, "back": "reports_menu"},
         "payments": {"format": fmt_payments_report_list, "back": "reports_menu"},
@@ -99,17 +97,16 @@ def handle_paginated_list(call, params):
     
     config = list_configs.get(list_type)
     if not config: return
-    try: text = config["format"](users, page, panel)
+    
+    try: text = config["format"](users, page, panel_type)
     except TypeError: text = config["format"](users, page)
     
-    base_cb = f"admin:list:{list_type}" + (f":{panel}" if panel else "")
-    
+    base_cb = f"admin:list:{list_type}" + (f":{panel_type}" if panel_type else "")
     back_cb = f"admin:{config['back']}"
-    if config['back'] in ['panel_reports', 'analytics_menu', 'manage_panel']:
-         back_cb += f":{panel}"
+    if config['back'] in ['panel_reports', 'manage_panel']:
+         back_cb += f":{panel_type}"
 
-    lang_code = call.from_user.language_code
-    kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb, lang_code)
+    kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb, call.from_user.language_code)
     _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
 
 def handle_report_by_plan_selection(call, params):
@@ -120,87 +117,36 @@ def handle_report_by_plan_selection(call, params):
 def _find_users_matching_plan_specs(all_users, plan_specs_set, invert_match=False):
     filtered_users = []
     for user in all_users:
-        h_info = user.get('breakdown', {}).get('hiddify', {})
-        m_info = user.get('breakdown', {}).get('marzban', {})
+        # This logic needs to be adapted for dynamic panels if plans are panel-specific
+        # For now, it assumes combined volume logic
+        user_vol_de = 0
+        user_vol_fr = 0
+        for panel_name, panel_data in user.get('breakdown', {}).items():
+            # A simple assumption, this might need refinement based on your plan structure
+            if 'germany' in panel_name.lower():
+                user_vol_de += panel_data.get('usage_limit_GB', 0)
+            elif 'france' in panel_name.lower():
+                user_vol_fr += panel_data.get('usage_limit_GB', 0)
         
-        user_vol_de = h_info.get('usage_limit_GB', -1.0)
-        user_vol_fr = m_info.get('usage_limit_GB', -1.0)
         user_spec = (user_vol_de, user_vol_fr)
-
         is_match = user_spec in plan_specs_set
         
         if (invert_match and not is_match) or (not invert_match and is_match):
             filtered_users.append(user)
-            
     return filtered_users
 
 def handle_list_users_by_plan(call, params):
-    plan_index, page = int(params[0]), int(params[1])
-    uid, msg_id = call.from_user.id, call.message.message_id
-
-    _safe_edit(uid, msg_id, "⏳ در حال دریافت اطلاعات و مقایسه با پلن، لطفاً صبر کنید...")
-
-    all_plans = load_service_plans()
-    if plan_index >= len(all_plans):
-        _safe_edit(uid, msg_id, escape_markdown("❌ پلن انتخاب شده نامعتبر است."), reply_markup=menu.admin_panel())
-        return
-        
-    selected_plan = all_plans[plan_index]
-    plan_type = selected_plan.get('type', 'combined')
-
-    # <<<<<<<<<<<<<<<< منطق جدید برای تشخیص پلن >>>>
-    plan_vol_de = float(parse_volume_string(selected_plan.get('volume_de', '0'))) if plan_type in ['germany', 'combined'] else -1.0
-    plan_vol_fr = float(parse_volume_string(selected_plan.get('volume_fr', '0'))) if plan_type in ['france', 'combined'] else -1.0
-    
-    plan_spec_to_match = {(plan_vol_de, plan_vol_fr)}
-    all_users = combined_handler.get_all_users_combined()
-    
-    # تابع _find_users_matching_plan_specs بدون تغییر باقی می‌ماند
-    filtered_users = _find_users_matching_plan_specs(all_users, plan_spec_to_match, invert_match=False)
-
-    plan_name_raw = selected_plan.get('name', '')
-    text = fmt_users_by_plan_list(filtered_users, plan_name_raw, page)
-
-    base_cb = f"admin:list_by_plan:{plan_index}"
-    back_cb = "admin:report_by_plan_select"
-    lang_code = call.from_user.language_code
-    kb = menu.create_pagination_menu(base_cb, page, len(filtered_users), back_cb, lang_code)
-    _safe_edit(uid, msg_id, text, reply_markup=kb)
-
+    # This function may need more significant changes depending on how plans
+    # are defined across multiple dynamic panels.
+    # The current logic might not be perfectly accurate anymore.
+    bot.answer_callback_query(call.id, "گزارش بر اساس پلن در حال بازبینی برای سیستم جدید است.")
 
 def handle_list_users_no_plan(call, params):
-    page = int(params[0])
-    uid, msg_id = call.from_user.id, call.message.message_id
-
-    _safe_edit(uid, msg_id, "⏳ در حال دریافت اطلاعات و مقایسه با پلن‌ها، لطفاً صبر کنید...")
-
-    all_plans = load_service_plans()
-    all_users = combined_handler.get_all_users_combined()
-    
-    plan_specs = set()
-    for plan in all_plans:
-        plan_type = plan.get('type', 'combined')
-        # <<<<<<<<<<<<<<<< منطق جدید برای تشخیص پلن >>>>
-        vol_de = float(parse_volume_string(plan.get('volume_de', '0'))) if plan_type in ['germany', 'combined'] else -1.0
-        vol_fr = float(parse_volume_string(plan.get('volume_fr', '0'))) if plan_type in ['france', 'combined'] else -1.0
-        plan_specs.add((vol_de, vol_fr))
-
-    # تابع _find_users_matching_plan_specs بدون تغییر باقی می‌ماند
-    users_without_plan = _find_users_matching_plan_specs(all_users, plan_specs, invert_match=True)
-
-    text = fmt_users_by_plan_list(users_without_plan, "بدون پلن مشخص", page)
-
-    base_cb = "admin:list_no_plan"
-    back_cb = "admin:report_by_plan_select"
-    lang_code = call.from_user.language_code
-    kb = menu.create_pagination_menu(base_cb, page, len(users_without_plan), back_cb, lang_code)
-    _safe_edit(uid, msg_id, text, reply_markup=kb)
-
+    bot.answer_callback_query(call.id, "گزارش بر اساس پلن در حال بازبینی برای سیستم جدید است.")
 
 def handle_quick_dashboard(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id
-    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال محاسبه آمار داشبورد، لطفاً صبر کنید..."))
-
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال محاسبه آمار داشبورد..."))
 
     try:
         all_users_data = combined_handler.get_all_users_combined()
@@ -210,27 +156,28 @@ def handle_quick_dashboard(call, params):
             "expiring_soon_count": 0, "total_usage_today_gb": 0, "new_users_last_24h_count": 0
         }
         now_utc = datetime.now(pytz.utc)
-        db_users_map = {u['uuid']: u for u in db.get_all_user_uuids()}
-
+        
         for user in all_users_data:
-            daily_usage = db.get_usage_since_midnight_by_uuid(user.get('uuid', ''))
-            stats['total_usage_today_gb'] += sum(daily_usage.values())
+            if user.get('uuid'): # Only process users with UUIDs for DB-related stats
+                daily_usage = db.get_usage_since_midnight_by_uuid(user['uuid'])
+                stats['total_usage_today_gb'] += sum(daily_usage.values())
+                
+                db_user = db.get_user_uuid_record(user['uuid'])
+                if db_user and db_user.get('created_at'):
+                    created_at_dt = db_user['created_at']
+                    if (now_utc - created_at_dt.astimezone(pytz.utc)).days < 1:
+                        stats['new_users_last_24h_count'] += 1
+
             if user.get('is_active'):
                 stats['active_users'] += 1
             
             last_online = user.get('last_online')
-            if last_online and (now_utc - last_online.astimezone(pytz.utc)).total_seconds() < 180:
+            if last_online and isinstance(last_online, datetime) and (now_utc - last_online.astimezone(pytz.utc)).total_seconds() < 180:
                 stats['online_users'] += 1
 
             expire_days = user.get('expire')
             if expire_days is not None and 0 <= expire_days <= 7:
                 stats['expiring_soon_count'] += 1
-
-            db_user = db_users_map.get(user.get('uuid'))
-            if db_user and db_user.get('created_at'):
-                created_at_dt = db_user['created_at']
-                if (now_utc - created_at_dt.astimezone(pytz.utc)).days < 1:
-                    stats['new_users_last_24h_count'] += 1
         
         stats['total_usage_today'] = f"{stats['total_usage_today_gb']:.2f} GB"
         

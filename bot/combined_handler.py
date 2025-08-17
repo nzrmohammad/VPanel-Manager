@@ -1,282 +1,211 @@
+# bot/combined_handler.py
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
-from .hiddify_api_handler import hiddify_handler
-from .marzban_api_handler import marzban_handler
+from .hiddify_api_handler import HiddifyAPIHandler
+from .marzban_api_handler import MarzbanAPIHandler
 from .database import db
 from .utils import validate_uuid
 import logging
-import pytz
 
 logger = logging.getLogger(__name__)
 
-def _process_single_user_data(h_info: Optional[Dict], m_info: Optional[Dict]) -> Optional[Dict[str, Any]]:
-    """
-    یک تابع داخلی برای پردازش و ترکیب اطلاعات یک کاربر از هر دو پنل.
-    این تابع قلب منطق ترکیب داده است.
-    """
-    if not h_info and not m_info:
-        return None
-
-    base_info = (h_info or m_info).copy()
-    h_info = h_info or {}
-    m_info = m_info or {}
-
-    base_info['breakdown'] = {'hiddify': h_info, 'marzban': m_info}
-    
-    # اصلاح 1: اضافه کردن فیلد panels برای نمایش در جدول
-    panels = []
-    if h_info:
-        panels.append("آلمان (Hiddify)")
-    if m_info:
-        panels.append("فرانسه (Marzban)")
-    base_info['panels'] = " + ".join(panels) if panels else "نامشخص"
-    
-    h_limit = h_info.get('usage_limit_GB', 0)
-    m_limit = m_info.get('usage_limit_GB', 0)
-    total_limit = h_limit + m_limit
-    
-    h_usage = h_info.get('current_usage_GB', 0)
-    m_usage = m_info.get('current_usage_GB', 0)
-    total_usage = h_usage + m_usage
-    
-    base_info['usage'] = {
-        'total_usage_GB': total_usage,
-        'data_limit_GB': total_limit,
-        'remaining_GB': max(0, total_limit - total_usage),
-        'percentage': (total_usage / total_limit * 100) if total_limit > 0 else 0
-    }
-
-    base_info['is_active'] = h_info.get('is_active', False) or m_info.get('is_active', False)
-    if base_info['is_active']:
-        base_info['status'] = 'active'
-    elif (h_info.get('expire', -1) < 0) or (m_info.get('expire', -1) < 0):
-        base_info['status'] = 'expired'
-    else:
-        base_info['status'] = 'disabled'
-
-    # اصلاح 2: بهبود منطق last_online و is_online
-    latest_online = None
-    h_online = h_info.get('last_online')
-    m_online = m_info.get('last_online')
-
-    # مدیریت string datetime ها
-    if h_online:
-        if isinstance(h_online, str):
-            try:
-                h_online = datetime.fromisoformat(h_online.replace('Z', '+00:00'))
-            except:
-                h_online = None
-        if h_online and h_online.tzinfo is None:
-            h_online = pytz.utc.localize(h_online)
-
-    if m_online:
-        if isinstance(m_online, str):
-            try:
-                m_online = datetime.fromisoformat(m_online.replace('Z', '+00:00'))
-            except:
-                m_online = None
-        if m_online and m_online.tzinfo is None:
-            m_online = pytz.utc.localize(m_online)
-
-    # انتخاب آخرین زمان اتصال
-    if h_online and m_online:
-        latest_online = max(h_online, m_online)
-    elif h_online:
-        latest_online = h_online
-    elif m_online:
-        latest_online = m_online
-
-    base_info['last_online'] = latest_online
-    
-    # محاسبه وضعیت آنلاین
-    base_info['is_online'] = False
-    if latest_online:
-        try:
-            time_diff_seconds = (datetime.now(pytz.utc) - latest_online).total_seconds()
-            if 0 <= time_diff_seconds < 180:
-                base_info['is_online'] = True
-        except:
-            base_info['is_online'] = False
-
-    base_info['name'] = h_info.get('name') or m_info.get('name', 'ناشناس')
-    base_info['username'] = base_info['name']
-    base_info['uuid'] = h_info.get('uuid') or m_info.get('uuid')
-    
-    # اصلاح 3: بهبود منطق expire
-    h_expire = h_info.get('expire', -1)
-    m_expire = m_info.get('expire', -1)
-
-    if h_expire == -1 and m_expire == -1:
-        base_info['expire'] = -1  # نامحدود
-    elif h_expire == -1:
-        base_info['expire'] = m_expire
-    elif m_expire == -1:
-        base_info['expire'] = h_expire
-    else:
-        base_info['expire'] = max(h_expire, m_expire)
-    
-    # اصلاح 4: درست کردن indentation
-    base_info['on_hiddify'] = bool(h_info)
-    base_info['on_marzban'] = bool(m_info)
-
-    return base_info
-
-
-def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
-    """
-    دریافت اطلاعات ترکیبی یک کاربر از هر دو پنل بر اساس UUID یا نام کاربری
-    """
+def _get_handler_for_panel(panel_config: Dict[str, Any]):
+    """یک نمونه API handler بر اساس نوع پنل می‌سازد."""
     try:
-        is_uuid = validate_uuid(identifier)
-        h_info, m_info = None, None
-        
-        if is_uuid:
-            # جستجو بر اساس UUID
-            try:
-                h_info = hiddify_handler.user_info(identifier)
-            except Exception as e:
-                logger.warning(f"Error fetching Hiddify user {identifier}: {e}")
-                
-            try:
-                m_info = marzban_handler.get_user_info(identifier)
-            except Exception as e:
-                logger.warning(f"Error fetching Marzban user by UUID {identifier}: {e}")
-        else:
-            # جستجو بر اساس نام کاربری
-            try:
-                m_info = marzban_handler.get_user_by_username(identifier)
-                if m_info and m_info.get('uuid'):
-                    try:
-                        h_info = hiddify_handler.user_info(m_info['uuid'])
-                    except Exception as e:
-                        logger.warning(f"Error fetching Hiddify user by UUID {m_info['uuid']}: {e}")
-            except Exception as e:
-                logger.warning(f"Error fetching Marzban user by username {identifier}: {e}")
-        
-        # پردازش و ترکیب داده‌ها
-        return _process_single_user_data(h_info, m_info)
-        
+        if panel_config['panel_type'] == 'hiddify':
+            return HiddifyAPIHandler(panel_config)
+        elif panel_config['panel_type'] == 'marzban':
+            return MarzbanAPIHandler(panel_config)
     except Exception as e:
-        logger.error(f"Critical error in get_combined_user_info for {identifier}: {e}")
-        return None
+        logger.error(f"Failed to create handler for panel {panel_config.get('name')}: {e}")
+    return None
 
-def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int = 0, target_panel: str = 'both') -> bool:
-    """
-    Modifies a user on Hiddify, Marzban, or both, handling relative additions.
-    This is a new, crucial function to fix editing bugs.
-    """
-    info = get_combined_user_info(identifier)
-    if not info:
-        logger.error(f"Cannot modify non-existent user: {identifier}")
-        return False
-
-    h_success, m_success = True, True  # Assume success if not targeted
-
-    # --- Hiddify Modification ---
-    if target_panel in ['hiddify', 'both'] and 'hiddify' in info.get('breakdown', {}):
-        h_info = info['breakdown']['hiddify']
-        h_payload = {}
+def _process_and_merge_user_data(all_users_map: dict) -> List[Dict[str, Any]]:
+    """اطلاعات خام جمع‌آوری شده از پنل‌ها را پردازش نهایی می‌کند."""
+    processed_list = []
+    for identifier, data in all_users_map.items():
+        limit = data.get('usage_limit_GB', 0)
+        usage = data.get('current_usage_GB', 0)
+        data['remaining_GB'] = max(0, limit - usage)
+        data['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
         
-        if add_gb != 0:
-            current_limit = h_info.get('usage_limit_GB', 0)
-            h_payload['usage_limit_GB'] = current_limit + add_gb
-        
-        if add_days != 0:
-            # Hiddify needs an absolute number of days, so we calculate it.
-            current_expire = h_info.get('expire', 0)
-            # If expired, start from today. Otherwise, add to remaining days.
-            base_days = current_expire if current_expire is not None and current_expire > 0 else 0
-            h_payload['package_days'] = base_days + add_days
+        final_name = "کاربر ناشناس"
+        if data.get('breakdown'):
+            for panel_name, panel_data in data['breakdown'].items():
+                if panel_data.get('name'):
+                    final_name = panel_data['name']
+                    break
+        data['name'] = final_name
 
-        if h_payload:
-            h_success = hiddify_handler.modify_user(h_info['uuid'], h_payload)
-        else:
-            h_success = True # Nothing to do
-
-    # --- Marzban Modification ---
-    if target_panel in ['marzban', 'both'] and 'marzban' in info.get('breakdown', {}):
-        m_info = info['breakdown']['marzban']
-        # Marzban handler already supports relative additions directly
-        m_success = marzban_handler.modify_user(
-            username=m_info['name'],
-            add_usage_gb=add_gb,
-            add_days=add_days
-        )
-
-    return h_success and m_success
-
-def delete_user_from_all_panels(identifier: str) -> bool:
-    info = get_combined_user_info(identifier)
-    if not info: return False
-    h_success, m_success = True, True
-    h_uuid = info.get('uuid')
-    m_username = info.get('name') if 'marzban' in info.get('breakdown', {}) else None
-    if h_uuid and 'hiddify' in info.get('breakdown', {}):
-        h_success = hiddify_handler.delete_user(h_uuid)
-    if m_username and 'marzban' in info.get('breakdown', {}):
-        m_success = marzban_handler.delete_user(m_username)
-    if h_success and m_success and h_uuid:
-        db_id = db.get_uuid_id_by_uuid(h_uuid)
-        if db_id:
-            db.deactivate_uuid(db_id)
-            db.delete_user_snapshots(db_id)
-    return h_success and m_success
+        processed_list.append(data)
+    return processed_list
 
 def get_all_users_combined() -> List[Dict[str, Any]]:
-    logger.info("COMBINED_HANDLER: Starting to fetch users from all panels.")
+    """اطلاعات کاربران را از تمام پنل‌های فعال دریافت و ترکیب می‌کند."""
+    logger.info("COMBINED_HANDLER: Fetching users from all active panels.")
     all_users_map = {}
-    
-    # دریافت کاربران از هیدیفای
-    logger.info("COMBINED_HANDLER: Fetching from Hiddify...")
-    h_users = hiddify_handler.get_all_users() or []
-    logger.info(f"COMBINED_HANDLER: Fetched {len(h_users)} users from Hiddify.")
-    
-    for user in h_users:
-        uuid = user.get('uuid')
-        if uuid:
-            all_users_map[uuid] = _process_single_user_data(user, None)
+    active_panels = db.get_active_panels()
 
-    # دریافت کاربران از مرزبان
-    logger.info("COMBINED_HANDLER: Fetching from Marzban...")
-    m_users = marzban_handler.get_all_users() or []
-    logger.info(f"COMBINED_HANDLER: Fetched {len(m_users)} users from Marzban.")
+    for panel_config in active_panels:
+        panel_name = panel_config['name']
+        handler = _get_handler_for_panel(panel_config)
+        if not handler:
+            logger.warning(f"Could not create handler for panel: {panel_name}")
+            continue
+
+        try:
+            panel_users = handler.get_all_users() or []
+            logger.info(f"Fetched {len(panel_users)} users from '{panel_name}'.")
+        except Exception as e:
+            logger.error(f"Could not fetch users from panel '{panel_name}': {e}")
+            continue
+
+        for user in panel_users:
+            uuid = user.get('uuid')
+            identifier = uuid or f"marzban_{user.get('name')}"
+            
+            if identifier not in all_users_map:
+                all_users_map[identifier] = {
+                    'uuid': uuid,
+                    'is_active': False, 'expire': None,
+                    'current_usage_GB': 0, 'usage_limit_GB': 0,
+                    'breakdown': {},
+                    'panels': set()
+                }
+
+            all_users_map[identifier]['breakdown'][panel_name] = user
+            all_users_map[identifier]['panels'].add(panel_name)
+            all_users_map[identifier]['is_active'] |= user.get('is_active', False)
+            all_users_map[identifier]['current_usage_GB'] += user.get('current_usage_GB', 0)
+            all_users_map[identifier]['usage_limit_GB'] += user.get('usage_limit_GB', 0)
+
+            new_expire = user.get('expire')
+            if new_expire is not None:
+                current_expire = all_users_map[identifier]['expire']
+                if current_expire is None or new_expire > current_expire:
+                    all_users_map[identifier]['expire'] = new_expire
     
-    for user in m_users:
-        uuid = user.get('uuid')
-        if uuid:
-            if uuid in all_users_map:
-                # کاربر در هر دو پنل وجود دارد
-                h_data = all_users_map[uuid]['breakdown']['hiddify']
-                all_users_map[uuid] = _process_single_user_data(h_data, user)
+    return _process_and_merge_user_data(all_users_map)
+
+def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
+    """اطلاعات یک کاربر خاص را از تمام پنل‌های فعال دریافت می‌کند."""
+    is_uuid = validate_uuid(identifier)
+    all_panels = db.get_active_panels()
+    
+    user_data_map = {}
+
+    for panel_config in all_panels:
+        handler = _get_handler_for_panel(panel_config)
+        if not handler: continue
+
+        user_info = None
+        if panel_config['panel_type'] == 'hiddify' and is_uuid:
+            user_info = handler.user_info(identifier)
+        elif panel_config['panel_type'] == 'marzban':
+            if is_uuid:
+                 # get_user_info از مپینگ دیتابیس برای پیدا کردن یوزرنیم استفاده می‌کند
+                 user_info = handler.get_user_info(identifier)
             else:
-                # کاربر فقط در مرزبان وجود دارد
-                all_users_map[uuid] = _process_single_user_data(None, user)
-        else:
-            # کاربر UUID ندارد - استفاده از نام کاربری
-            username = user.get('name')
-            if username:
-                all_users_map[f"marzban_{username}"] = _process_single_user_data(None, user)
-    
-    # فیلتر کردن None values
-    result = [user for user in all_users_map.values() if user is not None]
-    logger.info(f"COMBINED_HANDLER: Total processed users: {len(result)}")
-    return result
+                 # اگر ورودی UUID نبود، خود شناسه را نام کاربری در نظر می‌گیریم
+                 user_info = handler.get_user_by_username(identifier)
 
+        if user_info:
+            user_data_map[panel_config['name']] = user_info
+
+    if not user_data_map:
+        return None
+
+    # ترکیب اطلاعات پیدا شده
+    final_info = {
+        'breakdown': user_data_map,
+        'is_active': any(p.get('is_active') for p in user_data_map.values()),
+        'current_usage_GB': sum(p.get('current_usage_GB', 0) for p in user_data_map.values()),
+        'usage_limit_GB': sum(p.get('usage_limit_GB', 0) for p in user_data_map.values()),
+        'expire': max([p.get('expire') for p in user_data_map.values() if p.get('expire') is not None] or [None]),
+        'uuid': identifier if is_uuid else next((p.get('uuid') for p in user_data_map.values() if p.get('uuid')), None),
+        'name': identifier if not is_uuid else next((p.get('name') for p in user_data_map.values() if p.get('name')), "کاربر ناشناس")
+    }
+    
+    limit = final_info['usage_limit_GB']
+    usage = final_info['current_usage_GB']
+    final_info['remaining_GB'] = max(0, limit - usage)
+    final_info['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
+    
+    return final_info
 
 def search_user(query: str) -> List[Dict[str, Any]]:
+    """یک کاربر را در تمام پنل‌های فعال جستجو می‌کند."""
     query_lower = query.lower()
-    results, found_identifiers = [], set()
-
+    results = []
+    
     all_users = get_all_users_combined()
+    
     for user in all_users:
-        identifier = user.get('uuid') or user.get('name')
-        if identifier in found_identifiers: continue
+        # جستجو در نام کاربر و UUID
+        match_name = query_lower in user.get('name', '').lower()
+        match_uuid = user.get('uuid') and query_lower in user.get('uuid')
         
-        match = query_lower in user.get('name', '').lower() or \
-                (user.get('uuid') and query_lower in user.get('uuid'))
-        
-        if match:
-            panel = 'hiddify' if 'hiddify' in user.get('breakdown', {}) else 'marzban'
-            results.append({**user, 'panel': panel})
-            found_identifiers.add(identifier)
+        if match_name or match_uuid:
+            results.append(user)
+            
     return results
+
+def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int = 0, target_panel_name: Optional[str] = None) -> bool:
+    """یک کاربر را در پنل(های) مشخص شده یا در همه‌ی پنل‌ها ویرایش می‌کند."""
+    user_info = get_combined_user_info(identifier)
+    if not user_info: return False
+
+    all_panels_map = {p['name']: p for p in db.get_all_panels()}
+    any_success = False
+
+    panels_to_modify = [target_panel_name] if target_panel_name else user_info['breakdown'].keys()
+
+    for panel_name in panels_to_modify:
+        if panel_name not in user_info['breakdown']: continue
+        
+        panel_config = all_panels_map.get(panel_name)
+        if not panel_config: continue
+        
+        handler = _get_handler_for_panel(panel_config)
+        if not handler: continue
+
+        user_panel_data = user_info['breakdown'][panel_name]
+        
+        if panel_config['panel_type'] == 'hiddify':
+            payload = {}
+            if add_gb: payload['usage_limit_GB'] = user_panel_data.get('usage_limit_GB', 0) + add_gb
+            if add_days: payload['package_days'] = max(0, user_panel_data.get('expire') or 0) + add_days
+            if handler.modify_user(user_panel_data['uuid'], payload):
+                any_success = True
+        
+        elif panel_config['panel_type'] == 'marzban':
+            if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
+                any_success = True
+                
+    return any_success
+
+def delete_user_from_all_panels(identifier: str) -> bool:
+    """کاربر را از تمام پنل‌هایی که در آن وجود دارد حذف می‌کند."""
+    user_info = get_combined_user_info(identifier)
+    if not user_info: return False
+
+    all_panels_map = {p['name']: p for p in db.get_all_panels()}
+    all_success = True
+
+    for panel_name, user_panel_data in user_info.get('breakdown', {}).items():
+        panel_config = all_panels_map.get(panel_name)
+        if not panel_config: continue
+        
+        handler = _get_handler_for_panel(panel_config)
+        if not handler: continue
+
+        if panel_config['panel_type'] == 'hiddify':
+            if not handler.delete_user(user_panel_data['uuid']):
+                all_success = False
+        elif panel_config['panel_type'] == 'marzban':
+            if not handler.delete_user(user_panel_data['username']):
+                all_success = False
+    
+    if all_success and user_info.get('uuid'):
+        db.delete_user_by_uuid(user_info['uuid'])
+        
+    return all_success

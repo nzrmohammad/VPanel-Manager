@@ -117,7 +117,6 @@ class DatabaseManager:
                     FOREIGN KEY(template_id) REFERENCES config_templates(id) ON DELETE CASCADE,
                     UNIQUE(user_uuid_id, template_id)
                 );
-                -- جدول جدید برای مدیریت ارتباط کاربران مرزبان --
                 CREATE TABLE IF NOT EXISTS marzban_mapping (
                     hiddify_uuid TEXT PRIMARY KEY,
                     marzban_username TEXT NOT NULL UNIQUE
@@ -125,6 +124,16 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS login_tokens (
                     token TEXT PRIMARY KEY,
                     uuid TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS panels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    panel_type TEXT NOT NULL, -- 'hiddify' or 'marzban'
+                    api_url TEXT NOT NULL,
+                    api_token1 TEXT, -- Hiddify UUID or Marzban Username
+                    api_token2 TEXT, -- Marzban Password (NULL for Hiddify)
+                    is_active INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
@@ -1052,5 +1061,42 @@ class DatabaseManager:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at < ?", (time_limit,))
             logger.info(f"Cleaned up {cursor.rowcount} old usage snapshots (older than {days_to_keep} days).")
             return cursor.rowcount
+
+    def add_panel(self, name: str, panel_type: str, api_url: str, token1: str, token2: Optional[str] = None) -> bool:
+        """Adds a new panel to the database."""
+        with self._conn() as c:
+            try:
+                c.execute(
+                    "INSERT INTO panels (name, panel_type, api_url, api_token1, api_token2) VALUES (?, ?, ?, ?, ?)",
+                    (name, panel_type, api_url, token1, token2)
+                )
+                return True
+            except sqlite3.IntegrityError:
+                logger.warning(f"Attempted to add a panel with a duplicate name: {name}")
+                return False
+
+    def get_all_panels(self) -> List[Dict[str, Any]]:
+        """Retrieves all configured panels from the database."""
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM panels ORDER BY name ASC").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_active_panels(self) -> List[Dict[str, Any]]:
+        """Retrieves only the active panels from the database."""
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM panels WHERE is_active = 1 ORDER BY name ASC").fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_panel(self, panel_id: int) -> bool:
+        """Deletes a panel by its ID."""
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM panels WHERE id = ?", (panel_id,))
+            return cursor.rowcount > 0
+
+    def toggle_panel_status(self, panel_id: int) -> bool:
+        """Toggles the active status of a panel."""
+        with self._conn() as c:
+            cursor = c.execute("UPDATE panels SET is_active = 1 - is_active WHERE id = ?", (panel_id,))
+            return cursor.rowcount > 0
 
 db = DatabaseManager()
