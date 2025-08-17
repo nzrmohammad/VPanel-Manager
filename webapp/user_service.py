@@ -121,20 +121,33 @@ class UserService:
     @staticmethod
     def get_user_breakdown_data(combined_info, usage_today):
         breakdown = combined_info.get('breakdown', {}).copy()
-        if 'hiddify' in breakdown: breakdown['hiddify']['today_usage_GB'] = usage_today.get('hiddify', 0)
-        if 'marzban' in breakdown: breakdown['marzban']['today_usage_GB'] = usage_today.get('marzban', 0)
+        
+        # --- START: FIX ---
+        # حلقه را برای دسترسی صحیح به داده‌های تو در تو اصلاح می‌کنیم
+        for panel_name, panel_details in breakdown.items():
+            panel_data = panel_details.get('data', {}) # دیتا اصلی اینجا قرار دارد
+            panel_type = panel_details.get('type')
 
-        for panel_data in breakdown.values():
+            # افزودن مصرف روزانه به دیتا
+            panel_data['today_usage_GB'] = usage_today.get(panel_type, 0)
+
+            # محاسبه درصد مصرف
             usage = panel_data.get('current_usage_GB', 0)
             limit = panel_data.get('usage_limit_GB', 0)
             panel_data['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
             
+            # محاسبه تاریخ انقضای شمسی
             expire_val = panel_data.get('expire')
             panel_data['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=expire_val)) if expire_val is not None else "نامشخص"
 
+            # محاسبه وضعیت آنلاین و آخرین اتصال شمسی
             last_online_dt = panel_data.get('last_online')
             panel_data['online_status'], _ = UserService.get_online_status(last_online_dt)
             panel_data['last_online_shamsi'] = to_shamsi(last_online_dt, include_time=True) if last_online_dt else "هرگز"
+            
+            # جایگزین کردن دیتای پردازش شده
+            breakdown[panel_name]['data'] = panel_data
+        # --- END: FIX ---
             
         return breakdown
 

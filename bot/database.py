@@ -158,7 +158,6 @@ class DatabaseManager:
         result = {'hiddify': 0.0, 'marzban': 0.0}
 
         with self._conn() as c:
-            # *** FINAL FIX: Simplified and more robust query ***
             query = """
                 SELECT
                     (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_diff,
@@ -170,7 +169,6 @@ class DatabaseManager:
             row = c.execute(query, params).fetchone()
 
             if row:
-                # Use max(0, ...) to prevent negative results if usage resets during the day
                 result['hiddify'] = max(0, row['h_diff'] or 0.0)
                 result['marzban'] = max(0, row['m_diff'] or 0.0)
 

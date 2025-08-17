@@ -142,26 +142,38 @@ def subscription_links_page(uuid):
     user_data = {"username": "کاربر"}
     return render_template('subscription_links_page.html', user=user_data, subscription_links=subscription_links, individual_configs=individual_configs)
 
+
 @user_bp.route('/<string:uuid>/usage')
 def usage_chart_page(uuid):
     user_data = user_service.get_processed_user_data(uuid)
     if not user_data:
         abort(404, "کاربر یافت نشد")
     
-    chart_data = {"series": [], "categories": []}
+    chart_data = {
+        "series": [],
+        "categories": ["در ۲۴ ساعت گذشته", "در ۱۲ ساعت گذشته", "در ۶ ساعت گذشته", "در ۳ ساعت گذشته"],
+        "pie_series": [],
+        "pie_labels": []
+    }
     try:
         uuid_id = db.get_uuid_id_by_uuid(uuid)
-        if uuid_id:
-            h_usage = db.get_panel_usage_in_intervals(uuid_id, 'hiddify_usage_gb')
-            m_usage = db.get_panel_usage_in_intervals(uuid_id, 'marzban_usage_gb')
-            h_data = [float(h_usage.get(h, 0)) for h in [24, 12, 6, 3]]
-            m_data = [float(m_usage.get(h, 0)) for h in [24, 12, 6, 3]]
-            chart_data = {
-                "series": [{"name": "Hiddify (GB)", "data": h_data}, {"name": "Marzban (GB)", "data": m_data}],
-                "categories": ["در ۲۴ ساعت گذشته", "در ۱۲ ساعت گذشته", "در ۶ ساعت گذشته", "در ۳ ساعت گذشته"]
-            }
+        if uuid_id and user_data.get('breakdown'):
+            for panel_name, panel_details in user_data['breakdown'].items():
+                panel_type = panel_details.get('type')
+                usage_column = f"{panel_type}_usage_gb"
+                
+                # داده‌های نمودار میله‌ای مصرف روزانه
+                usage_intervals = db.get_panel_usage_in_intervals(uuid_id, usage_column)
+                panel_data = [float(usage_intervals.get(h, 0)) for h in [24, 12, 6, 3]]
+                chart_data["series"].append({"name": panel_name, "data": panel_data})
+
+                # داده‌های نمودارهای دایره‌ای
+                panel_usage = panel_details.get('data', {}).get('current_usage_GB', 0)
+                chart_data["pie_series"].append(panel_usage)
+                chart_data["pie_labels"].append(panel_name)
+
     except Exception as e:
-        logger.error(f"خطا در دریافت داده‌های نمودار: {e}")
+        logger.error(f"خطا در دریافت داده‌های نمودار برای {uuid}: {e}", exc_info=True)
     
     return render_template('usage_chart_page.html', user=user_data, usage_data=chart_data)
 

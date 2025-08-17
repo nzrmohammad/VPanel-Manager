@@ -248,7 +248,7 @@ def get_processed_user_data(uuid: str) -> Optional[dict]:
     return processed_info
 
 def create_info_config(user_uuid: str) -> Optional[str]:
-    from bot import combined_handler
+    from . import combined_handler
     import urllib.parse
 
     info = combined_handler.get_combined_user_info(user_uuid)
@@ -256,26 +256,29 @@ def create_info_config(user_uuid: str) -> Optional[str]:
         return None
 
     parts = []
-
-    hiddify_info = info.get('breakdown', {}).get('hiddify')
-    if hiddify_info:
-        usage = hiddify_info.get('current_usage_GB', 0)
-        limit = hiddify_info.get('usage_limit_GB', 0)
-        limit_str = f"{limit:.1f}" if limit > 0 else '∞'
-        parts.append(f"🇩🇪 {usage:.2f} / {limit_str} GB")
-
-    marzban_info = info.get('breakdown', {}).get('marzban')
-    if marzban_info:
-        usage = marzban_info.get('current_usage_GB', 0)
-        limit = marzban_info.get('usage_limit_GB', 0)
-        
-        limit_str = f"{limit:.1f}" if limit > 0 else '∞'
-        parts.append(f" 🇫🇷 {usage:.2f} / {limit_str} GB")
     
+    # --- START: FIX ---
+    # حلقه برای جستجو در تمام پنل‌های کاربر بر اساس نوع
+    for panel_details in info.get('breakdown', {}).values():
+        panel_data = panel_details.get('data', {})
+        panel_type = panel_details.get('type')
+        
+        # فقط در صورتی اطلاعات را اضافه کن که پنل فعال باشد
+        if panel_data.get('is_active', False):
+            usage = panel_data.get('current_usage_GB', 0)
+            limit = panel_data.get('usage_limit_GB', 0)
+            limit_str = f"{limit:.1f}" if limit > 0 else '∞'
+
+            if panel_type == 'hiddify':
+                parts.append(f"🇩🇪 {usage:.2f} / {limit_str} GB")
+            elif panel_type == 'marzban':
+                parts.append(f"🇫🇷 {usage:.2f} / {limit_str} GB")
+    # --- END: FIX ---
+
     days_left = info.get('expire')
     if parts and days_left is not None:
         days_left_str = str(days_left) if days_left >= 0 else 'پایان'
-        parts.append(f" 📅 {days_left_str} ")
+        parts.append(f"📅 {days_left_str} ")
 
     if not parts:
         return None 

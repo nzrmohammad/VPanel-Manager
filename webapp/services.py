@@ -309,7 +309,7 @@ def get_paginated_users(args: dict):
     main_filter = args.get('filter', 'all', type=str)
 
     logger.info(f"Fetching users. Page: {page}, Query: '{search_query}', Panel: '{panel_filter}', Filter: '{main_filter}'")
-    
+
     # ۲. دریافت داده‌های اولیه (بدون تغییر)
     all_users_data = get_all_users_combined()
     payment_counts = db.get_payment_counts()
@@ -325,7 +325,6 @@ def get_paginated_users(args: dict):
 
     for user in all_users_data:
         user['name'] = escape(user.get('name', ''))
-
         user['payment_count'] = payment_counts.get(user.get('name'), 0)
         
         user_uuid = user.get('uuid')
@@ -333,20 +332,19 @@ def get_paginated_users(args: dict):
             details = db_user_details_map.get(user_uuid, {'is_vip': False, 'has_access_de': True, 'has_access_fr': True})
             user.update(details)
 
-            daily_usage = db.get_usage_since_midnight_by_uuid(user_uuid)
-            if user.get('on_hiddify'):
-                h_info = user.setdefault('breakdown', {}).setdefault('hiddify', {})
-                h_daily_raw = daily_usage.get('hiddify', 0)
-                h_info['daily_usage'] = h_daily_raw
-                h_info['daily_usage_formatted'] = format_usage(h_daily_raw)
-                h_info['last_online_shamsi'] = to_shamsi(h_info.get('last_online'), include_time=True)
+            # تغییر نام تابع برای محاسبه هفتگی
+            weekly_usage = db.get_weekly_usage_by_uuid(user_uuid) 
+            
+            # حلقه داینامیک برای پردازش هر پنل
+            for panel_name, panel_details in user.get('breakdown', {}).items():
+                panel_data = panel_details.get('data', {})
+                panel_type = panel_details.get('type')
 
-            if user.get('on_marzban'):
-                m_info = user.setdefault('breakdown', {}).setdefault('marzban', {})
-                m_daily_raw = daily_usage.get('marzban', 0)
-                m_info['daily_usage'] = m_daily_raw
-                m_info['daily_usage_formatted'] = format_usage(m_daily_raw)
-                m_info['last_online_shamsi'] = to_shamsi(m_info.get('last_online'), include_time=True)
+                # افزودن اطلاعات پردازش‌شده به دیتای هر پنل
+                weekly_usage_raw = weekly_usage.get(panel_type, 0)
+                panel_data['weekly_usage'] = weekly_usage_raw
+                panel_data['weekly_usage_formatted'] = format_usage(weekly_usage_raw)
+                panel_data['last_online_shamsi'] = to_shamsi(panel_data.get('last_online'), include_time=True)
         else:
             user.update({'is_vip': False, 'has_access_de': False, 'has_access_fr': False})
 
@@ -357,14 +355,15 @@ def get_paginated_users(args: dict):
             user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=user.get('expire')))
         
         user['last_online_relative'] = format_relative_time(user.get('last_online'))
+    # --- END: CRITICAL FIX ---
 
     # ۴. اعمال فیلترها (بدون تغییر)
     filtered_users = all_users_data
 
     if panel_filter == 'de':
-        filtered_users = [u for u in filtered_users if u.get('on_hiddify')]
+        filtered_users = [u for u in filtered_users if any(p['type'] == 'hiddify' for p in u.get('breakdown', {}).values())]
     elif panel_filter == 'fr':
-        filtered_users = [u for u in filtered_users if u.get('on_marzban')]
+        filtered_users = [u for u in filtered_users if any(p['type'] == 'marzban' for p in u.get('breakdown', {}).values())]
     
     if main_filter == 'active':
         filtered_users = [u for u in filtered_users if u.get('is_active')]
@@ -376,7 +375,6 @@ def get_paginated_users(args: dict):
         filtered_users = [u for u in filtered_users if u.get('expire') is not None and 0 <= u['expire'] <= 7]
     
     if search_query:
-        # ✅ اینجا هم نام کاربر قبلاً escape شده و جستجو روی آن انجام می‌شود که مشکلی ندارد
         filtered_users = [u for u in filtered_users if search_query in (u.get('name') or '').lower() or search_query in (u.get('uuid') or '').lower()]
 
     # ۵. مرتب‌سازی و صفحه‌بندی (بدون تغییر)

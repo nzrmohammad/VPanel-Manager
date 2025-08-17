@@ -68,6 +68,7 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
                 all_users_map[identifier] = {
                     'uuid': uuid,
                     'is_active': False, 'expire': None,
+                    'last_online': None,
                     'current_usage_GB': 0, 'usage_limit_GB': 0,
                     'breakdown': {},
                     'panels': set()
@@ -78,6 +79,11 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
                 "type": panel_config['panel_type']
             }
             all_users_map[identifier]['panels'].add(panel_name)
+            current_last_online = all_users_map[identifier].get('last_online')
+            new_last_online = user.get('last_online')
+            if new_last_online:
+                if not current_last_online or new_last_online > current_last_online:
+                    all_users_map[identifier]['last_online'] = new_last_online
             all_users_map[identifier]['is_active'] |= user.get('is_active', False)
             all_users_map[identifier]['current_usage_GB'] += user.get('current_usage_GB', 0)
             all_users_map[identifier]['usage_limit_GB'] += user.get('usage_limit_GB', 0)
@@ -118,12 +124,21 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
 
     if not user_data_map:
         return None
+    
+    all_online_times = [
+        p['data'].get('last_online')
+        for p in user_data_map.values()
+        if p['data'].get('last_online')
+    ]
+    most_recent_online = max(all_online_times) if all_online_times else None
+    # --- END: FIX ---
 
     # --- START OF FIX ---
     # ترکیب اطلاعات پیدا شده با منطق اصلاح شده
     final_info = {
         'breakdown': user_data_map,
         'is_active': any(p['data'].get('is_active') for p in user_data_map.values()),
+        'last_online': most_recent_online,
         'current_usage_GB': sum(p['data'].get('current_usage_GB', 0) for p in user_data_map.values()),
         'usage_limit_GB': sum(p['data'].get('usage_limit_GB', 0) for p in user_data_map.values()),
         # انتخاب کمترین (زودترین) تاریخ انقضا به عنوان تاریخ انقضای نهایی
@@ -137,7 +152,16 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
     usage = final_info['current_usage_GB']
     final_info['remaining_GB'] = max(0, limit - usage)
     final_info['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
+    final_info['usage'] = {
+    'total_usage_GB': final_info.get('current_usage_GB', 0),
+    'data_limit_GB': final_info.get('usage_limit_GB', 0)
+}
     
+    final_info['usage'] = {
+    'total_usage_GB': final_info.get('current_usage_GB', 0),
+    'data_limit_GB': final_info.get('usage_limit_GB', 0)
+}
+
     return final_info
 
 def search_user(query: str) -> List[Dict[str, Any]]:

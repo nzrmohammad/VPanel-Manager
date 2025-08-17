@@ -112,48 +112,38 @@
         </div>
     </div>
 
-    <h3 class="section-title">جزئیات سرورها</h3>
-    <section class="details-grid">
-        {% if user.breakdown and 'hiddify' in user.breakdown %}
-        {% set hiddify_percentage = user.breakdown.hiddify.get('usage_percentage', 0) %}
-        <div class="info-card panel-card">
-            <div class="panel-header"><h4>آلمان</h4><span class="fi fi-de"></span></div>
-            <ul class="server-stats">
-                <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if user.breakdown.hiddify.online_status == 'آنلاین' else 'recent' if user.breakdown.hiddify.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ user.breakdown.hiddify.online_status }}</span></li>
-                <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ user.breakdown.hiddify.last_online_shamsi }}</span></li>
-                <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.hiddify.get('today_usage_GB', 0)) }} GB</span></li>
-                <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(user.breakdown.hiddify.expire_shamsi) }}</span></li>
-                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم پنل</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.hiddify.get('current_usage_GB', 0)) }} / {% if user.breakdown.hiddify.get('usage_limit_GB', 0) > 0 %}{{ "%.2f" | format(user.breakdown.hiddify.get('usage_limit_GB', 0)) }}{% else %}∞{% endif %} GB</span></li>
-                <li>
-                    <div class="dash-progress-wrapper">
-                        <div class="dash-progress-bar {% if hiddify_percentage >= 90 %}progress-danger{% elif hiddify_percentage >= 75 %}progress-warning{% else %}progress-success{% endif %}" style="width: {{ hiddify_percentage }}%"></div>
-                        <span class="progress-text">{{ hiddify_percentage|round(1) }}%</span>
-                    </div>
-                </li>
-            </ul>
-        </div>
-        {% endif %}
-        
-        {% if user.breakdown and 'marzban' in user.breakdown %}
-        {% set marzban_percentage = user.breakdown.marzban.get('usage_percentage', 0) %}
-        <div class="info-card panel-card">
-            <div class="panel-header"><h4>فرانسه</h4><span class="fi fi-fr"></span></div>
-            <ul class="server-stats">
-                <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if user.breakdown.marzban.online_status == 'آنلاین' else 'recent' if user.breakdown.marzban.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ user.breakdown.marzban.online_status }}</span></li>
-                <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ user.breakdown.marzban.last_online_shamsi }}</span></li>
-                <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.marzban.get('today_usage_GB', 0)) }} GB</span></li>
-                <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(user.breakdown.marzban.expire_shamsi) }}</span></li>
-                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم پنل</span></div><span class="stat-value">{{ "%.2f" | format(user.breakdown.marzban.get('current_usage_GB', 0)) }} / {% if user.breakdown.marzban.get('usage_limit_GB', 0) > 0 %}{{ "%.2f" | format(user.breakdown.marzban.get('usage_limit_GB', 0)) }}{% else %}∞{% endif %} GB</span></li>
-                <li>
-                    <div class="dash-progress-wrapper">
-                        <div class="dash-progress-bar {% if marzban_percentage >= 90 %}progress-danger{% elif marzban_percentage >= 75 %}progress-warning{% else %}progress-success{% endif %}" style="width: {{ marzban_percentage }}%"></div>
-                        <span class="progress-text">{{ marzban_percentage|round(1) }}%</span>
-                    </div>
-                </li>
-            </ul>
-        </div>
-        {% endif %}
-    </section>
+<h3 class="section-title">جزئیات سرورها</h3>
+<section class="details-grid">
+    {% if user.breakdown %}
+        {% for panel_name, panel_details in user.breakdown.items() %}
+            {% set panel_data = panel_details.data %}
+            {% set panel_type = panel_details.type %}
+            {% set percentage = panel_data.get('usage_percentage', 0) %}
+            
+            <div class="info-card panel-card">
+                <div class="panel-header">
+                    <h4>{{ panel_name }}</h4>
+                    <span class="fi fi-{{ 'de' if panel_type == 'hiddify' else 'fr' }}"></span>
+                </div>
+                <ul class="server-stats">
+                    <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if panel_data.online_status == 'آنلاین' else 'recent' if panel_data.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ panel_data.online_status }}</span></li>
+                    <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ panel_data.last_online_shamsi }}</span></li>
+                    <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(panel_data.get('today_usage_GB', 0)) }} GB</span></li>
+                    <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(panel_data.expire_shamsi) }}</span></li>
+                    <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم پنل</span></div><span class="stat-value">{{ "%.2f" | format(panel_data.get('current_usage_GB', 0)) }} / {% if panel_data.get('usage_limit_GB', 0) > 0 %}{{ "%.2f" | format(panel_data.get('usage_limit_GB', 0)) }}{% else %}∞{% endif %} GB</span></li>
+                    <li>
+                        <div class="dash-progress-wrapper">
+                            <div class="dash-progress-bar {% if percentage >= 90 %}progress-danger{% elif percentage >= 75 %}progress-warning{% else %}progress-success{% endif %}" style="width: {{ percentage }}%"></div>
+                            <span class="progress-text">{{ percentage|round(1) }}%</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>جزئیات سروری برای نمایش وجود ندارد.</p>
+    {% endif %}
+</section>
 
     <div class="info-card chart-container" style="margin-top: 20px;">
         <div class="card-header"><i class="ri-bar-chart-grouped-line icon"></i><span>نمودار مصرف هفتگی</span></div>

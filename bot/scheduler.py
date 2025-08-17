@@ -316,7 +316,7 @@ class SchedulerManager:
         logger.info("Scheduler: Running daily job to clean up old snapshots.")
         try:
             # We keep 3 days of data to be safe for calculations.
-            db.delete_old_snapshots(days_to_keep=3)
+            db.delete_old_snapshots(days_to_keep=7)
         except Exception as e:
             logger.error(f"Scheduler: Daily snapshot cleanup failed: {e}")
 
