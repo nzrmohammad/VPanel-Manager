@@ -180,7 +180,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const url = `/admin/api/users?page=${page}&per_page=15&search=${encodeURIComponent(searchQuery)}&panel=${panel}&filter=${filter}`;
 
         fetch(url)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) { // Check for 500 errors etc.
+                    return response.json().then(err => { throw new Error(err.error || 'خطای سرور'); });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.error) throw new Error(data.error);
                 renderTable(data.users);
@@ -211,10 +216,20 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         users.forEach(user => {
-            // --- بخش اصلاح شده ---
-            const dailyDE = user.breakdown?.hiddify?.data?.daily_usage_formatted || '0 MB';
-            const dailyFR = user.breakdown?.marzban?.data?.daily_usage_formatted || '0 MB';
-            // --- پایان بخش اصلاح شده ---
+            // --- ✅ بخش اصلاح شده ---
+            let dailyDE = '0 MB';
+            let dailyFR = '0 MB';
+            if (user.breakdown) {
+                for (const panelKey in user.breakdown) {
+                    const panel = user.breakdown[panelKey];
+                    if (panel.type === 'hiddify') {
+                        dailyDE = panel.data?.daily_usage_formatted || '0 MB';
+                    } else if (panel.type === 'marzban') {
+                        dailyFR = panel.data?.daily_usage_formatted || '0 MB';
+                    }
+                }
+            }
+            // --- ✅ پایان بخش اصلاح شده ---
             
             let panelIcons = (user.on_hiddify ? '🇩🇪 ' : '') + (user.on_marzban ? '🇫🇷' : '');
             const statusEmoji = user.is_active ? '🟢' : '🔴';
@@ -311,66 +326,81 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationContainer.appendChild(createBtn(current + 1, 'بعدی', current === total));
     }
     
-function populateDetailsModal(user) {
-    const modal = getModal('user-details-modal');
-    const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
-    let hiddifyHtml = '', marzbanHtml = '';
+    function populateDetailsModal(user) {
+        const modal = getModal('user-details-modal');
+        const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
+        let hiddifyHtml = '', marzbanHtml = '';
 
-    const h = user.breakdown?.hiddify || {};
-    const m = user.breakdown?.marzban || {};
+        // --- ✅ بخش اصلاح شده ---
+        let h = {};
+        let m = {};
+        let totalDailyUsageRaw = 0;
 
-    if (user.on_hiddify) {
-        hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
-            <div class="panel-details-grid">
-                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${(h.current_usage_GB || 0).toFixed(2)} / ${(h.usage_limit_GB || 0).toFixed(2)} GB</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted || 'N/A'}</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
-            </div>
-        </div>`;
-    }
-    if (user.on_marzban) {
-        marzbanHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل فرانسه 🇫🇷</h5>
-             <div class="panel-details-grid">
-                <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${(m.current_usage_GB || 0).toFixed(2)} / ${(m.usage_limit_GB || 0).toFixed(2)} GB</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted || 'N/A'}</span></div>
-                <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
-            </div>
-        </div>`;
-    }
-    
-    const totalDaily = (h.daily_usage || 0) + (m.daily_usage || 0);
-    const formattedTotalDaily = totalDaily < 1 ? `${(totalDaily * 1024).toFixed(0)} MB` : `${totalDaily.toFixed(2)} GB`;
-    
-    let finalExpiryText;
-    if (user.expire < 0) {
-        finalExpiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
-    } else if (user.expire_shamsi) {
-        finalExpiryText = `${user.expire_shamsi} (${user.expire} روز)`;
-    } else {
-        finalExpiryText = 'نامحدود';
-    }
+        if (user.breakdown) {
+            for (const panelKey in user.breakdown) {
+                const panel = user.breakdown[panelKey];
+                if (panel.type === 'hiddify') {
+                    h = panel.data || {};
+                    totalDailyUsageRaw += h.daily_usage || 0;
+                } else if (panel.type === 'marzban') {
+                    m = panel.data || {};
+                    totalDailyUsageRaw += m.daily_usage || 0;
+                }
+            }
+        }
+        // --- ✅ پایان بخش اصلاح شده ---
 
-    modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header"><h4><i class="ri-information-line"></i>${user.name} <small class='text-secondary'>(${statusText} ${statusIcon})</small></h4><button class="close-btn">&times;</button></div>
-            <div class="modal-body" style="background-color:var(--bg-color)">
-                <div class="details-card">
-                    <h5><i class="ri-dashboard-line"></i> خلاصه وضعیت</h5>
-                    <div class="panel-details-grid">
-                        <div class="detail-item"><span class="label"><i class="ri-hard-drive-2-line"></i>مجموع مصرف:</span><span class="value">${(user.current_usage_GB || 0).toFixed(2)} GB</span></div>
-                        <div class="detail-item"><span class="label"><i class="ri-bar-chart-box-line"></i>مجموع حجم:</span><span class="value">${(user.usage_limit_GB || 0).toFixed(2)} GB</span></div>
-                        <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف کل امروز:</span><span class="value">${formattedTotalDaily}</span></div>
-                        <div class="detail-item"><span class="label"><i class="ri-calendar-todo-line"></i>اعتبار باقیمانده:</span><span class="value">${finalExpiryText}</span></div>
-                    </div>
+        if (user.on_hiddify) {
+            hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
+                <div class="panel-details-grid">
+                    <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${(h.current_usage_GB || 0).toFixed(2)} / ${(h.usage_limit_GB || 0).toFixed(2)} GB</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${h.daily_usage_formatted || 'N/A'}</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${h.last_online_shamsi || 'هرگز'}</span></div>
                 </div>
-                ${hiddifyHtml}
-                ${marzbanHtml}
-                <div class="uuid-text-details">${user.uuid || 'N/A'}</div>
-            </div>
-        </div>`;
-    modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
-    showModal(modal);
-}
+            </div>`;
+        }
+        if (user.on_marzban) {
+            marzbanHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل فرانسه 🇫🇷</h5>
+                 <div class="panel-details-grid">
+                    <div class="detail-item"><span class="label"><i class="ri-database-2-line"></i>مصرف / کل:</span><span class="value">${(m.current_usage_GB || 0).toFixed(2)} / ${(m.usage_limit_GB || 0).toFixed(2)} GB</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف امروز:</span><span class="value">${m.daily_usage_formatted || 'N/A'}</span></div>
+                    <div class="detail-item"><span class="label"><i class="ri-time-line"></i>آخرین اتصال:</span><span class="value">${m.last_online_shamsi || 'هرگز'}</span></div>
+                </div>
+            </div>`;
+        }
+        
+        const formattedTotalDaily = totalDailyUsageRaw < 1 ? `${(totalDailyUsageRaw * 1024).toFixed(0)} MB` : `${totalDailyUsageRaw.toFixed(2)} GB`;
+        
+        let finalExpiryText;
+        if (user.expire < 0) {
+            finalExpiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
+        } else if (user.expire_shamsi) {
+            finalExpiryText = `${user.expire_shamsi} (${user.expire} روز)`;
+        } else {
+            finalExpiryText = 'نامحدود';
+        }
+
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header"><h4><i class="ri-information-line"></i>${user.name} <small class='text-secondary'>(${statusText} ${statusIcon})</small></h4><button class="close-btn">&times;</button></div>
+                <div class="modal-body" style="background-color:var(--bg-color)">
+                    <div class="details-card">
+                        <h5><i class="ri-dashboard-line"></i> خلاصه وضعیت</h5>
+                        <div class="panel-details-grid">
+                            <div class="detail-item"><span class="label"><i class="ri-hard-drive-2-line"></i>مجموع مصرف:</span><span class="value">${(user.current_usage_GB || 0).toFixed(2)} GB</span></div>
+                            <div class="detail-item"><span class="label"><i class="ri-bar-chart-box-line"></i>مجموع حجم:</span><span class="value">${(user.usage_limit_GB || 0).toFixed(2)} GB</span></div>
+                            <div class="detail-item"><span class="label"><i class="ri-line-chart-line"></i>مصرف کل امروز:</span><span class="value">${formattedTotalDaily}</span></div>
+                            <div class="detail-item"><span class="label"><i class="ri-calendar-todo-line"></i>اعتبار باقیمانده:</span><span class="value">${finalExpiryText}</span></div>
+                        </div>
+                    </div>
+                    ${hiddifyHtml}
+                    ${marzbanHtml}
+                    <div class="uuid-text-details">${user.uuid || 'N/A'}</div>
+                </div>
+            </div>`;
+        modal.querySelector('.close-btn').addEventListener('click', () => hideModal(modal));
+        showModal(modal);
+    }
 
     function openAddUserModal() {
         const modal = getModal('add-user-modal');
@@ -408,8 +438,22 @@ function populateDetailsModal(user) {
     
     function openEditModal(user) {
         const modal = getModal('edit-user-modal');
-        const h = user.breakdown.hiddify || {};
-        const m = user.breakdown.marzban || {};
+        
+        // --- ✅ بخش اصلاح شده ---
+        let h = {};
+        let m = {};
+        if (user.breakdown) {
+            for (const panelKey in user.breakdown) {
+                const panel = user.breakdown[panelKey];
+                if (panel.type === 'hiddify') {
+                    h = panel.data || {};
+                } else if (panel.type === 'marzban') {
+                    m = panel.data || {};
+                }
+            }
+        }
+        // --- ✅ پایان بخش اصلاح شده ---
+
         let hiddifyTab = user.on_hiddify ? `<button type="button" class="modal-tab-btn active" data-tab="hiddify-edit-tab">پنل آلمان 🇩🇪</button>` : '';
         let marzbanTab = user.on_marzban ? `<button type="button" class="modal-tab-btn ${!user.on_hiddify ? 'active' : ''}" data-tab="marzban-edit-tab">پنل فرانسه 🇫🇷</button>` : '';
         let hiddifyContent = user.on_hiddify ? `

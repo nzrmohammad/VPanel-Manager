@@ -86,7 +86,7 @@ def quick_stats(uuid_rows: list, page: int, lang_code: str) -> tuple[str, dict]:
         return escape_markdown(err_msg), menu_data
 
     daily_usage_dict = db.get_usage_since_midnight(target_row['id'])
-    report_text = fmt_one(info, daily_usage_dict, lang_code)
+    report_text = fmt_one(info, daily_usage_dict, lang_code=lang_code)
     
     return report_text, menu_data
 

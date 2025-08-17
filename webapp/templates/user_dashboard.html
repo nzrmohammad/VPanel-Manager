@@ -128,7 +128,10 @@
                 <ul class="server-stats">
                     <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if panel_data.online_status == 'آنلاین' else 'recent' if panel_data.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ panel_data.online_status }}</span></li>
                     <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ panel_data.last_online_shamsi }}</span></li>
+                    
+                    {# ✅ **اصلاح کلیدی:** استفاده از متغیر صحیح #}
                     <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(panel_data.get('today_usage_GB', 0)) }} GB</span></li>
+                    
                     <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(panel_data.expire_shamsi) }}</span></li>
                     <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم پنل</span></div><span class="stat-value">{{ "%.2f" | format(panel_data.get('current_usage_GB', 0)) }} / {% if panel_data.get('usage_limit_GB', 0) > 0 %}{{ "%.2f" | format(panel_data.get('usage_limit_GB', 0)) }}{% else %}∞{% endif %} GB</span></li>
                     <li>

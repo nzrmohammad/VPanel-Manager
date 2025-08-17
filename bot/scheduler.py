@@ -45,7 +45,7 @@ class SchedulerManager:
         if not all_users_info:
             return
             
-        user_info_map = {user['uuid']: user for user in all_users_info}
+        user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
 
         all_uuids_from_db = db.all_active_uuids()
         if not all_uuids_from_db:
@@ -58,11 +58,17 @@ class SchedulerManager:
                     info = user_info_map[uuid_str]
                     
                     breakdown = info.get('breakdown', {})
-                    h_info = breakdown.get('hiddify', {})
-                    m_info = breakdown.get('marzban', {})
-                    
-                    h_usage = h_info.get('current_usage_GB', 0.0) if h_info else 0.0
-                    m_usage = m_info.get('current_usage_GB', 0.0) if m_info else 0.0
+                    h_usage = 0.0
+                    m_usage = 0.0
+
+                    # ✅ **اصلاح کلیدی: پیمایش breakdown و بررسی نوع پنل**
+                    for panel_details in breakdown.values():
+                        panel_type = panel_details.get('type')
+                        panel_data = panel_details.get('data', {})
+                        if panel_type == 'hiddify':
+                            h_usage += panel_data.get('current_usage_GB', 0.0)
+                        elif panel_type == 'marzban':
+                            m_usage += panel_data.get('current_usage_GB', 0.0)
 
                     db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
 
@@ -238,12 +244,6 @@ class SchedulerManager:
                                 logger.error(f"SCHEDULER: Failed to send USER report to {user_id}: {e}", exc_info=True)
                         else:
                             logger.warning(f"SCHEDULER: No active accounts found in API for user {user_id} after matching. No user report will be sent.")
-
-                    # --- Cleanup Snapshots ---
-                    # if user_uuids_from_db:
-                    #     for info in user_uuids_from_db:
-                    #         db.delete_daily_snapshots(info['id'])
-                    #     logger.info(f"Scheduler: Cleaned up daily snapshots for user {user_id}.")
                             
                 except Exception as e:
                     logger.error(f"SCHEDULER: CRITICAL FAILURE while processing main loop for user {user_id}: {e}", exc_info=True)

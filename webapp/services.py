@@ -297,73 +297,64 @@ def get_all_payments_for_admin():
         return []
 
 # ===================================================================
-# == سرویس مدیریت کاربران ==
+# == سرویس مدیریت کاربران (نسخه اصلاح شده نهایی) ==
 # ===================================================================
 
 def get_paginated_users(args: dict):
-    # ۱. دریافت پارامترها
     page = args.get('page', 1, type=int)
     per_page = args.get('per_page', 15, type=int)
     search_query = args.get('search', '', type=str).lower()
     panel_filter = args.get('panel', 'all', type=str)
     main_filter = args.get('filter', 'all', type=str)
 
-    logger.info(f"Fetching users. Page: {page}, Query: '{search_query}', Panel: '{panel_filter}', Filter: '{main_filter}'")
-
-    # ۲. دریافت داده‌های اولیه
     all_users_data = get_all_users_combined()
     payment_counts = db.get_payment_counts()
-
     db_user_details_list = db.get_all_user_uuids()
     db_user_details_map = {
-        u['uuid']: {
-            'is_vip': bool(u.get('is_vip')),
-            'has_access_de': bool(u.get('has_access_de')),
-            'has_access_fr': bool(u.get('has_access_fr'))
-        } for u in db_user_details_list if u.get('uuid')
+        u['uuid']: {'is_vip': bool(u.get('is_vip'))}
+        for u in db_user_details_list if u.get('uuid')
     }
 
-    # ۳. پردازش و تکمیل اطلاعات کاربران
     for user in all_users_data:
         user['name'] = escape(user.get('name', ''))
         user['payment_count'] = payment_counts.get(user.get('name'), 0)
         
-        # --- بخش کلیدی اصلاح شده ---
         user_breakdown = user.get('breakdown', {})
         user['on_hiddify'] = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
         user['on_marzban'] = any(p.get('type') == 'marzban' for p in user_breakdown.values())
 
         user_uuid = user.get('uuid')
         if user_uuid:
-            details = db_user_details_map.get(user_uuid, {'is_vip': False, 'has_access_de': True, 'has_access_fr': True})
-            user.update(details)
-
-            # محاسبه مصرف روزانه برای هر کاربر
+            user.update(db_user_details_map.get(user_uuid, {'is_vip': False}))
             daily_usage = db.get_usage_since_midnight_by_uuid(user_uuid)
             
-            for panel_name, panel_details in user_breakdown.items():
+            # ✅ **اصلاح کلیدی: افزودن مصرف روزانه به breakdown**
+            for panel_details in user_breakdown.values():
                 panel_data = panel_details.get('data', {})
                 panel_type = panel_details.get('type')
-
-                # افزودن اطلاعات مصرف روزانه به دیتای هر پنل
                 daily_usage_raw = daily_usage.get(panel_type, 0.0)
                 panel_data['daily_usage'] = daily_usage_raw
                 panel_data['daily_usage_formatted'] = format_usage(daily_usage_raw)
                 panel_data['last_online_shamsi'] = to_shamsi(panel_data.get('last_online'), include_time=True)
         else:
-            user.update({'is_vip': False, 'has_access_de': False, 'has_access_fr': False})
+            user['is_vip'] = False
 
         if user.get('expire') is not None and user.get('expire') < 0:
             user['is_active'] = False
-
+        
         if user.get('expire') is not None and user.get('expire') >= 0:
-            user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=user.get('expire')))
+            user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=user['expire']))
         
         user['last_online_relative'] = format_relative_time(user.get('last_online'))
 
-    # ۴. اعمال فیلترها
-    filtered_users = all_users_data
+        if user.get('last_online') and isinstance(user.get('last_online'), datetime):
+            user['last_online'] = user['last_online'].isoformat()
+        for panel_details in user.get('breakdown', {}).values():
+            panel_data = panel_details.get('data', {})
+            if panel_data.get('last_online') and isinstance(panel_data.get('last_online'), datetime):
+                panel_data['last_online'] = panel_data['last_online'].isoformat()
 
+    filtered_users = all_users_data
     if panel_filter == 'de':
         filtered_users = [u for u in filtered_users if u.get('on_hiddify')]
     elif panel_filter == 'fr':
@@ -374,14 +365,13 @@ def get_paginated_users(args: dict):
     elif main_filter == 'online':
         now_utc = datetime.now(pytz.utc)
         online_deadline = now_utc - timedelta(minutes=3)
-        filtered_users = [u for u in filtered_users if u.get('last_online') and u['last_online'].astimezone(pytz.utc) > online_deadline]
+        filtered_users = [u for u in filtered_users if u.get('last_online') and datetime.fromisoformat(u['last_online']).astimezone(pytz.utc) > online_deadline]
     elif main_filter == 'expiring_soon':
         filtered_users = [u for u in filtered_users if u.get('expire') is not None and 0 <= u['expire'] <= 7]
     
     if search_query:
         filtered_users = [u for u in filtered_users if search_query in (u.get('name') or '').lower() or search_query in (u.get('uuid') or '').lower()]
 
-    # ۵. مرتب‌سازی و صفحه‌بندی
     filtered_users.sort(key=lambda u: (u.get('name') or '').lower())
     total_items = len(filtered_users)
     paginated_users = filtered_users[(page - 1) * per_page : page * per_page]
@@ -394,9 +384,9 @@ def get_paginated_users(args: dict):
         }
     }
 
+
 def create_user_in_panel(data: dict):
     panel = data.get('panel')
-    # ✅ امن‌سازی ورودی کاربر قبل از ارسال به API
     if 'name' in data:
         data['name'] = escape(data['name'])
     if 'username' in data:
@@ -404,15 +394,16 @@ def create_user_in_panel(data: dict):
         
     logger.info(f"Attempting to create a new user in panel: '{panel}' with data: {data}")
 
-    if panel == 'hiddify': result = hiddify_handler.add_user(data)
-    elif panel == 'marzban': result = marzban_handler.add_user(data)
+    if panel == 'hiddify-tab':
+        result = hiddify_handler.add_user(data)
+    elif panel == 'marzban-tab':
+        result = marzban_handler.add_user(data)
     else:
         logger.warning(f"Invalid panel specified for user creation: '{panel}'")
         raise ValueError('پنل نامعتبر است.')
         
     if not result or not (result.get('uuid') or result.get('username')):
-        # ✅ امن‌سازی پیام خطای دریافتی از API
-        error_detail = escape(result.get('detail', 'Unknown error from panel API'))
+        error_detail = escape(str(result)) if result else 'Unknown error from panel API'
         logger.error(f"Failed to create user in panel '{panel}'. API Response: {error_detail}")
         raise Exception(error_detail)
 
@@ -421,7 +412,6 @@ def create_user_in_panel(data: dict):
 
 def update_user_in_panels(data: dict):
     uuid = data.get('uuid')
-    # ✅ امن‌سازی ورودی کاربر قبل از ارسال به API
     if 'common_name' in data:
         data['common_name'] = escape(data['common_name'])
 
@@ -457,15 +447,17 @@ def delete_user_from_panels(uuid: str):
         logger.warning(f"Deletion failed. User with UUID '{uuid}' not found in any panel.")
         raise ValueError('کاربر یافت نشد.')
         
-    if user_info.get('on_hiddify'):
-        logger.info(f"Deleting user '{uuid}' from Hiddify panel.")
-        hiddify_handler.delete_user(uuid)
-        
-    if user_info.get('on_marzban'):
-        # ✅ نام کاربری که از API خوانده شده، قبل از استفاده باید امن بشه
-        # هرچند در اینجا فقط برای لاگ و ارسال به تابع دیگه استفاده میشه و خطری نداره، ولی عادت خوبیه
-        username = escape(user_info.get('breakdown', {}).get('marzban', {}).get('username'))
-        if username: marzban_handler.delete_user(username)
+    for panel_details in user_info.get('breakdown', {}).values():
+        panel_type = panel_details.get('type')
+        panel_data = panel_details.get('data', {})
+
+        if panel_type == 'hiddify' and panel_data.get('uuid'):
+            logger.info(f"Deleting user '{panel_data['uuid']}' from a Hiddify panel.")
+            hiddify_handler.delete_user(panel_data['uuid'])
+        elif panel_type == 'marzban' and panel_data.get('username'):
+            username = escape(panel_data.get('username'))
+            logger.info(f"Deleting user '{username}' from a Marzban panel.")
+            marzban_handler.delete_user(username)
 
     logger.info(f"Deleting user record for UUID '{uuid}' from the local database.")
     db.delete_user_by_uuid(uuid)
@@ -496,7 +488,6 @@ def add_templates_from_text(raw_text: str):
 
 def toggle_template(template_id: int):
     logger.info(f"Toggling status for template ID: {template_id}")
-    # فرض می‌کنیم تابع دیتابیس، وضعیت جدید را برمی‌گرداند
     new_status = db.toggle_template_status(template_id) 
     return new_status
 
@@ -504,7 +495,6 @@ def update_template(template_id: int, template_str: str):
     logger.info(f"Attempting to update template ID: {template_id}")
     VALID_PROTOCOLS = ('vless://', 'vmess://', 'trojan://', 'ss://', 'ssr://')
     
-    # ✅ امن‌سازی: رشته کانفیگ ورودی قبل از هر کاری escape می‌شود.
     safe_template_str = escape(template_str.strip())
     
     if not safe_template_str or not safe_template_str.startswith(VALID_PROTOCOLS):
@@ -535,14 +525,12 @@ def get_analytics_data():
         "series": [{"name": "کاربران جدید", "data": [item['count'] for item in new_users_stats]}]
     }
 
-    # نمودار درآمد ماهانه
     revenue_stats = db.get_revenue_by_month(months=6)
     revenue_chart = {
         "labels": [item['month'] for item in revenue_stats],
         "series": [{"name": "تعداد پرداخت", "data": [item['revenue_unit'] for item in revenue_stats]}]
     }
     
-    # نمودار کاربران فعال روزانه
     daily_active_users_stats = db.get_daily_active_users_count(days=30)
     daily_active_users_chart = {
         "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d')) for item in daily_active_users_stats],
@@ -576,7 +564,6 @@ def get_analytics_data():
     plan_series = list(plan_buckets.values())
     top_consumers_data = db.get_top_consumers_by_usage(days=30, limit=10)
     
-    # ✅ امن‌سازی نام کاربران برای لیبل نمودار
     top_consumers_labels = [escape(d.get('name', '')) for d in top_consumers_data]
     top_consumers_series_data = [round((d.get('h_usage', 0) or 0) + (d.get('m_usage', 0) or 0), 2) for d in top_consumers_data]
     
@@ -608,16 +595,13 @@ def toggle_user_vip_status(uuid: str):
 
 def toggle_template_special_status(template_id: int):
     logger.info(f"Toggling Special status for template ID: {template_id}")
-    # فرض می‌کنیم این تابع وضعیت جدید (true/false) را برمی‌گرداند
     new_status = db.toggle_template_special(template_id) 
     return new_status
 
 def get_marzban_mappings_service():
-    """سرویس برای دریافت تمام مپ‌های مرزبان."""
     return db.get_all_marzban_mappings()
 
 def add_marzban_mapping_service(hiddify_uuid, marzban_username):
-    """سرویس برای افزودن یک مپ جدید مرزبان."""
     if not hiddify_uuid or not marzban_username:
         return False, "UUID و یوزرنیم نمی‌توانند خالی باشند."
     
@@ -628,7 +612,6 @@ def add_marzban_mapping_service(hiddify_uuid, marzban_username):
         return False, "خطا در افزودن مپ به دیتابیس."
 
 def delete_marzban_mapping_service(hiddify_uuid):
-    """سرویس برای حذف یک مپ مرزبان."""
     success = db.delete_marzban_mapping(hiddify_uuid)
     if success:
         return True, "مپ با موفقیت حذف شد."
@@ -676,22 +659,14 @@ def get_schedule_info_service():
     return schedule_list
 
 def get_logs_service(lines_count=500):
-    """
-    محتوای فایل‌های لاگ ربات را می‌خواند و برای نمایش در وب آماده می‌کند.
-    """
-    log_files = {
-        'bot_log': 'bot.log',
-        'error_log': 'error.log'
-    }
+    log_files = { 'bot_log': 'bot.log', 'error_log': 'error.log' }
     logs_content = {}
 
     for key, filename in log_files.items():
         try:
             with open(filename, 'r', encoding='utf-8') as f:
-                # خواندن تمام خطوط و گرفتن تعداد مشخصی از انتهای لیست
                 lines = f.readlines()
                 last_lines = lines[-lines_count:]
-                # هر خط را برای نمایش امن در HTML، escape می‌کنیم
                 logs_content[key] = ''.join(html_escape(line) for line in last_lines)
         except FileNotFoundError:
             logs_content[key] = f"فایل '{filename}' یافت نشد."
@@ -702,22 +677,16 @@ def get_logs_service(lines_count=500):
     return logs_content
 
 def clear_logs_service():
-    """محتوای فایل‌های لاگ ربات را پاک می‌کند."""
     log_files = ['bot.log', 'error.log']
-    cleared_files = []
-    errors = []
+    cleared_files, errors = [], []
 
     for filename in log_files:
         try:
-            # باز کردن فایل در حالت 'w' محتوای آن را خالی می‌کند
-            with open(filename, 'w') as f:
-                pass  # نیازی به نوشتن چیزی نیست
+            with open(filename, 'w') as f: pass
             cleared_files.append(filename)
             logger.info(f"Log file '{filename}' has been cleared by admin.")
         except FileNotFoundError:
-            # اگر فایل وجود نداشت، مشکلی نیست
             cleared_files.append(filename)
-            pass
         except Exception as e:
             logger.error(f"Error clearing log file {filename}: {e}")
             errors.append(filename)
@@ -727,17 +696,9 @@ def clear_logs_service():
     return True, "تمام فایل‌های لاگ با موفقیت پاک شدند."
 
 def get_server_status():
-    """
-    وضعیت سلامت سرویس‌های Hiddify و Marzban را با استفاده از API handler های خودشان
-    به صورت دقیق و قابل اعتماد بررسی می‌کند.
-    """
     statuses = []
-
-    # ۱. بررسی دقیق پنل Hiddify
     try:
-        # تابع check_connection مستقیماً به API پنل متصل می‌شود
-        is_hiddify_ok = hiddify_handler.check_connection()
-        if is_hiddify_ok:
+        if hiddify_handler.check_connection():
             statuses.append({'name': 'سرور آلمان 🇩🇪', 'status': 'آنلاین', 'class': 'online'})
         else:
             statuses.append({'name': 'سرور آلمان 🇩🇪', 'status': 'آفلاین', 'class': 'offline'})
@@ -745,11 +706,8 @@ def get_server_status():
         logger.error(f"Error checking Hiddify connection for status page: {e}")
         statuses.append({'name': 'سرور آلمان 🇩🇪', 'status': 'آفلاین', 'class': 'offline'})
 
-    # ۲. بررسی دقیق پنل Marzban
     try:
-        # این تابع نیز تلاش می‌کند یک توکن از API دریافت کند
-        is_marzban_ok = marzban_handler.check_connection()
-        if is_marzban_ok:
+        if marzban_handler.check_connection():
             statuses.append({'name': 'سرور فرانسه 🇫🇷', 'status': 'آنلاین', 'class': 'online'})
         else:
             statuses.append({'name': 'سرور فرانسه 🇫🇷', 'status': 'آفلاین', 'class': 'offline'})
