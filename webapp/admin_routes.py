@@ -236,7 +236,7 @@ def toggle_template_special_api(template_id):
 @admin_bp.route('/api/templates/set_server_type/<int:template_id>', methods=['POST'])
 @admin_required
 def set_template_server_type_api(template_id):
-    from .services import set_template_server_type_service
+    from bot.utils import set_template_server_type_service
     server_type = request.json.get('server_type')
     try:
         set_template_server_type_service(template_id, server_type)
@@ -247,7 +247,7 @@ def set_template_server_type_api(template_id):
 @admin_bp.route('/api/templates/reset', methods=['POST'])
 @admin_required
 def reset_templates_api():
-    from .services import reset_all_templates
+    from bot.utils import reset_all_templates
     try:
         reset_all_templates()
         return jsonify({'success': True, 'message': 'تمام کانفیگ‌ها با موفقیت حذف و شمارنده ریست شد.'})
@@ -316,3 +316,28 @@ def clear_logs_api():
     except Exception as e:
         logger.error(f"Error clearing logs via API: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'یک خطای ناشناخته در سرور رخ داد.'}), 500
+    
+@admin_bp.route('/user-access')
+@admin_required
+def user_access_page():
+    # یک تابع جدید در database.py برای گرفتن همه کاربران با اطلاعات تلگرامشان بساز
+    bot_users_with_uuids = db.get_all_bot_users_with_uuids()
+    return render_template('admin_user_access.html', bot_users=bot_users_with_uuids, is_admin=True)
+
+@admin_bp.route('/api/users/toggle_access', methods=['POST'])
+@admin_required
+def toggle_user_access_api():
+    data = request.json
+    uuid_id = data.get('uuid_id')
+    server = data.get('server')
+    status = data.get('status')
+
+    if not all([uuid_id, server, isinstance(status, bool)]):
+        return jsonify({'success': False, 'message': 'درخواست نامعتبر است.'}), 400
+
+    # یک تابع جدید در database.py برای این کار بساز
+    success = db.update_user_server_access(uuid_id, server, status)
+    if success:
+        return jsonify({'success': True, 'message': 'وضعیت دسترسی تغییر کرد.'})
+    else:
+        return jsonify({'success': False, 'message': 'خطا در به‌روزرسانی دیتابیس.'}), 500

@@ -7,6 +7,7 @@
         <ul>
             <li><a href="{{ url_for('admin.admin_dashboard') }}" class="{% if request.endpoint == 'admin.admin_dashboard' %}active{% endif %}"><i class="ri-dashboard-3-line nav-icon"></i><span class="nav-text">داشبورد</span></a></li>
             <li><a href="{{ url_for('admin.user_management_page') }}" class="{% if request.endpoint == 'admin.user_management_page' %}active{% endif %}"><i class="ri-group-line nav-icon"></i><span class="nav-text">مدیریت کاربران</span></a></li>
+            <li><a href="{{ url_for('admin.user_access_page') }}" class="{% if request.endpoint == 'admin.user_access_page' %}active{% endif %}"><i class="ri-shield-user-line nav-icon"></i><span class="nav-text">دسترسی کاربران</span></a></li>
             <li><a href="{{ url_for('admin.payment_list_page') }}" class="{% if request.endpoint == 'admin.payment_list_page' %}active{% endif %}"><i class="ri-money-dollar-circle-line nav-icon"></i><span class="nav-text">لیست پرداخت‌ها</span></a></li>
             <li><a href="{{ url_for('admin.comprehensive_report_page') }}" class="{% if request.endpoint == 'admin.comprehensive_report_page' %}active{% endif %}"><i class="ri-file-chart-line nav-icon"></i><span class="nav-text">گزارش گیری</span></a></li>
             <li><a href="{{ url_for('admin.analytics_page') }}" class="{% if request.endpoint == 'admin.analytics_page' %}active{% endif %}"><i class="ri-line-chart-line nav-icon"></i><span class="nav-text">تحلیل و گزارش</span></a></li>

@@ -331,7 +331,7 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
             continue
         if server_type == 'de' and not has_access_de:
             continue
-        if server_type == 'tr' and not has_access_tr: # شرط دسترسی به ترکیه
+        if server_type == 'tr' and not has_access_tr:
             continue
         
         # بررسی دسترسی کاربر به کانفیگ‌های ویژه (VIP)

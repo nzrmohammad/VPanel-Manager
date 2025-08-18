@@ -22,19 +22,38 @@ class DatabaseManager:
 
     def _init_db(self) -> None:
         with self._conn() as c:
-
             try:
-                with self._conn() as c:
-                    # Get the list of columns in the 'users' table
-                    cursor = c.execute("PRAGMA table_info(users);")
-                    columns = [row['name'] for row in cursor.fetchall()]
+                cursor = c.execute("PRAGMA table_info(user_uuids);")
+                columns = [row['name'] for row in cursor.fetchall()]
 
-                    # Check if our new column exists
-                    if 'show_info_config' not in columns:
-                        logger.info("Database Update: 'show_info_config' column not found, adding it to 'users' table...")
-                        # If it doesn't exist, add it with a default value of 1 (True)
-                        c.execute("ALTER TABLE users ADD COLUMN show_info_config INTEGER DEFAULT 1;")
-                        logger.info("Database Update: Column 'show_info_config' added successfully.")
+                # یک تابع داخلی برای اضافه کردن ستون با مدیریت خطا
+                def add_column_if_not_exists(column_name, column_definition):
+                    if column_name not in columns:
+                        try:
+                            logger.info(f"Database Update: Adding '{column_name}' column...")
+                            c.execute(f"ALTER TABLE user_uuids ADD COLUMN {column_name} {column_definition};")
+                        except sqlite3.OperationalError as e:
+                            # اگر ستون از قبل وجود داشت (توسط یک worker دیگر اضافه شده)، خطا را نادیده بگیر
+                            if "duplicate column name" in str(e):
+                                logger.warning(f"Column '{column_name}' already exists, likely added by another worker. Ignoring.")
+                            else:
+                                raise e # اگر خطا چیز دیگری بود، آن را نمایش بده
+
+                # اضافه کردن ستون‌ها با استفاده از تابع جدید
+                add_column_if_not_exists("has_access_de", "INTEGER DEFAULT 1")
+                add_column_if_not_exists("has_access_fr", "INTEGER DEFAULT 0")
+                add_column_if_not_exists("has_access_tr", "INTEGER DEFAULT 0")
+                
+                logger.info("Database schema migration check complete.")
+
+            except sqlite3.OperationalError as e:
+                if "no such table" not in str(e):
+                    logger.error(f"Failed to update database schema: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"An unexpected error occurred during schema migration: {e}")
+                raise
+            # --- END: Robust Database Migration Logic ---
 
             except Exception as e:
                 logger.error(f"Failed to update database schema: {e}")
@@ -68,8 +87,8 @@ class DatabaseManager:
                     welcome_message_sent INTEGER DEFAULT 0,
                     is_vip INTEGER DEFAULT 0,
                     has_access_de INTEGER DEFAULT 1,
-                    has_access_fr INTEGER DEFAULT 1,
-                    has_access_tr INTEGER DEFAULT 1,        
+                    has_access_fr INTEGER DEFAULT 0,
+                    has_access_tr INTEGER DEFAULT 0,        
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS usage_snapshots (
@@ -934,7 +953,7 @@ class DatabaseManager:
 
     def set_template_server_type(self, template_id: int, server_type: str) -> None:
         """نوع سرور یک قالب کانفیگ را تنظیم می‌کند."""
-        if server_type not in ['de', 'fr', 'none']:
+        if server_type not in ['de', 'fr', 'tr', 'none']:
             return
         with self._conn() as c:
             c.execute("UPDATE config_templates SET server_type = ? WHERE id = ?", (server_type, template_id))
@@ -1158,5 +1177,46 @@ class DatabaseManager:
             except sqlite3.IntegrityError: # In case new name is a duplicate
                 logger.warning(f"Attempted to rename panel {panel_id} to an existing name: {new_name}")
                 return False
+
+    def get_all_bot_users_with_uuids(self) -> List[Dict[str, Any]]:
+        query = """
+            SELECT
+                u.user_id,
+                u.first_name,
+                u.username,
+                uu.id as uuid_id,
+                uu.name as config_name,
+                uu.uuid,
+                uu.is_vip,
+                uu.has_access_de,
+                uu.has_access_fr,
+                uu.has_access_tr,
+                -- Check if a mapping exists for the user's UUID
+                CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
+            FROM users u
+            JOIN user_uuids uu ON u.user_id = uu.user_id
+            -- Use LEFT JOIN to include all users from user_uuids, even if they don't have a mapping
+            LEFT JOIN marzban_mapping mm ON uu.uuid = mm.hiddify_uuid
+            WHERE uu.is_active = 1
+            ORDER BY u.user_id, uu.created_at;
+        """
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in rows]
+
+    # تابع دوم برای آپدیت دسترسی
+    def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
+        """Updates a user's access status for a specific server."""
+        if server not in ['de', 'fr', 'tr']:
+            return False
+        
+        column_name = f"has_access_{server}"
+        
+        with self._conn() as c:
+            cursor = c.execute(
+                f"UPDATE user_uuids SET {column_name} = ? WHERE id = ?",
+                (int(status), uuid_id)
+            )
+            return cursor.rowcount > 0
 
 db = DatabaseManager()
