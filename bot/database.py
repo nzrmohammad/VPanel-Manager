@@ -69,6 +69,7 @@ class DatabaseManager:
                     is_vip INTEGER DEFAULT 0,
                     has_access_de INTEGER DEFAULT 1,
                     has_access_fr INTEGER DEFAULT 1,
+                    has_access_tr INTEGER DEFAULT 1,        
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS usage_snapshots (

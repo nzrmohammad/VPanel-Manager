@@ -314,6 +314,7 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
     # خواندن صحیح دسترسی‌های کاربر از دیتابیس
     has_access_de = user_record.get('has_access_de', False)
     has_access_fr = user_record.get('has_access_fr', False)
+    has_access_tr = user_record.get('has_access_tr', False)
     is_user_vip = user_record.get('is_vip', False)
     user_name = user_record.get('name', 'کاربر')
     # --- END OF FIX ---
@@ -329,6 +330,8 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
         if server_type == 'fr' and not has_access_fr:
             continue
         if server_type == 'de' and not has_access_de:
+            continue
+        if server_type == 'tr' and not has_access_tr: # شرط دسترسی به ترکیه
             continue
         
         # بررسی دسترسی کاربر به کانفیگ‌های ویژه (VIP)
