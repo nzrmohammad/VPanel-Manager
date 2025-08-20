@@ -9,58 +9,76 @@ from .utils import (
 )
 
 def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
+    """
+    اصلاح نهایی: پرانتزهای موجود در متن escape شده‌اند تا خطای parse entities تلگرام برطرف شود.
+    """
     if not info:
         return escape_markdown("❌ خطا در دریافت اطلاعات کاربر.")
 
     def esc(text):
         return escape_markdown(str(text))
 
-    report = []
-    
+    # --- بخش هدر ---
     name = esc(info.get("name", "کاربر ناشناس"))
     is_active_overall = info.get('is_active', False)
-    status_text_overall = "فعال 🟢" if is_active_overall else "غیرفعال 🔴"
-    report.append(f"👤 *نام:* {name}  \\(وضعیت کلی: {status_text_overall}\\)")
-
-    if db_user and db_user.get('admin_note'):
-        report.append(f"🗒️ *یادداشت:* {esc(db_user['admin_note'])}")
+    status_text_overall = "✅ فعال" if is_active_overall else "❌ غیرفعال"
     
-    report.append("")
-
+    # خط ۱ (اصلاح شده): کاراکترهای ( و ) با \\ escape شده‌اند
+    header = f"👤 نام : {name} \\({status_text_overall}\\)"
+    
+    report_lines = [header]
+    separator = "`──────────────────`"
+    
+    # --- بخش تفکیک پنل‌ها ---
     breakdown = info.get('breakdown', {})
-
-    # <<<<<<< START OF FIX: Show individual panel status >>>>>>>>>
-    def panel_block(panel_data, panel_name_str):
-        # Use the specific status of the panel from its own data
+    
+    def create_panel_block(panel_display_name: str, panel_data: dict, panel_type: str):
         is_panel_active = panel_data.get('is_active', False)
-        status_text_panel = "فعال 🟢" if is_panel_active else "غیرفعال 🔴"
+        status_text_panel = "✅" if is_panel_active else "❌"
         
-        limit = panel_data.get('usage_limit_GB', 0)
-        usage = panel_data.get('current_usage_GB', 0)
+        limit_gb = panel_data.get('usage_limit_GB', 0)
+        usage_gb = panel_data.get('current_usage_GB', 0)
+        remaining_gb = max(0, limit_gb - usage_gb)
         
-        title = esc(panel_name_str)
-        
+        daily_usage_gb = 0
+        if info.get('uuid'):
+            daily_usage_dict = db.get_usage_since_midnight_by_uuid(info['uuid'])
+            daily_usage_gb = daily_usage_dict.get(panel_type, 0.0)
+
         return [
-            f"*{title}* \\(وضعیت: {status_text_panel}\\)",
-            f"▫️ {esc('حجم:')} `{esc(f'{usage:g}')}` / `{esc(f'{limit:g} GB')}`",
-            f"▫️ {esc('آخرین اتصال:')} `{esc(to_shamsi(panel_data.get('last_online'), include_time=True))}`",
-            ""
+            separator,
+            # خط ۲ (اصلاح شده): کاراکترهای ( و ) با \\ escape شده‌اند
+            f"سرور {panel_display_name} \\({status_text_panel}\\)",
+            f"🗂 حجم کل : `{limit_gb:.0f} GB`",
+            f"🔥 حجم مصرف شده : `{usage_gb:.2f} GB`",
+            f"📥 حجم باقیمانده : `{remaining_gb:.2f} GB`",
+            f"⚡️ مصرف امروز : `{format_daily_usage(daily_usage_gb)}`",
+            f"⏰ آخرین اتصال : `{esc(to_shamsi(panel_data.get('last_online'), include_time=True))}`"
         ]
-    # <<<<<<< END OF FIX >>>>>>>>>
 
-    for panel_name, panel_details in breakdown.items():
-        panel_data = panel_details.get('data', {})
-        report.extend(panel_block(panel_data, panel_name))
+    panel_order = ['marzban', 'hiddify']
+    panel_display_map = {'hiddify': '🇩🇪', 'marzban': '🇫🇷🇹🇷'}
 
+    for p_type in panel_order:
+        panel_info = next((p for p in breakdown.values() if p.get('type') == p_type), None)
+        if panel_info and panel_info.get('data'):
+            report_lines.extend(create_panel_block(
+                panel_display_name=panel_display_map[p_type],
+                panel_data=panel_info['data'],
+                panel_type=p_type
+            ))
+
+    # --- بخش فوتر ---
     expire_days = info.get("expire")
-    if expire_days is not None:
-        expire_label = esc(f"{int(expire_days)} روز") if expire_days >= 0 else "منقضی شده"
-        report.append(f"📅 *انقضا:* {expire_label}")
+    expire_label = f"{int(expire_days)} روز" if expire_days is not None and expire_days >= 0 else "منقضی شده"
+    
+    report_lines.extend([
+        separator,
+        f"📅 انقضا : {expire_label}",
+        f"🔑 شناسه یکتا : `{esc(info.get('uuid', 'N/A'))}`"
+    ])
 
-    if info.get('uuid'):
-        report.append(f"🔑 *شناسه:* `{esc(info['uuid'])}`")
-
-    return "\n".join(report).strip()
+    return "\n".join(report_lines)
 
 
 def fmt_users_list(users: list, list_type: str, page: int) -> str:

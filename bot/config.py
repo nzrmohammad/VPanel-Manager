@@ -58,7 +58,7 @@ WELCOME_MESSAGE_DELAY_HOURS = 48
 CARD_PAYMENT_INFO = {
     "bank_name": "بلوبانک",
     "card_holder": "محمد جواد نظری",
-    "card_number": "1234-5678-1234-5678"
+    "card_number": "6219-8618-1954-7695"
 }
 
 ONLINE_PAYMENT_LINK = ""
@@ -67,16 +67,18 @@ ONLINE_PAYMENT_LINK = ""
 TUTORIAL_LINKS = {
     "android": {
         "v2rayng": "https://telegra.ph/Your-V2rayNG-Tutorial-Link-Here-01-01",
-        "hiddify": "https://telegra.ph/Your-HiddifyNext-Tutorial-Link-Here-01-01"
+        "hiddify": "https://telegra.ph/Hiddify-08-19",
+        "happ": "https://telegra.ph/Happ-08-08-5"
     },
     "windows": {
-        "v2rayn": "https://telegra.ph/Your-V2rayN-Tutorial-Link-Here-01-01",
-        "hiddify": "https://telegra.ph/Your-HiddifyNext-Win-Tutorial-Link-Here-01-01"
+        "v2rayn": "https://telegra.ph/V2rayN-08-18-2",
+        "hiddify": "https://telegra.ph/Hiddify-08-19"
     },
     "ios": {
         "streisand": "https://telegra.ph/Your-Streisand-Tutorial-Link-Here-01-01",
         "shadowrocket": "https://telegra.ph/Your-Shadowrocket-Tutorial-Link-Here-01-01",
-        "hiddify": "https://telegra.ph/Your-HiddifyNext-Win-Tutorial-Link-Here-01-01"
+        "hiddify": "https://telegra.ph/Hiddify-08-19",
+        "happ": "https://telegra.ph/Happ-08-08-5"
     }
 }
 

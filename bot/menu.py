@@ -159,20 +159,28 @@ class Menu:
         return kb
 
     def tutorial_os_menu(self, os_type: str) -> types.InlineKeyboardMarkup:
+        """
+        اصلاح شده: دکمه‌های جدید برای اپلیکیشن Happ به منوی اندروید و iOS اضافه شده است.
+        """
         kb = types.InlineKeyboardMarkup(row_width=1)
+        
         if os_type == 'android':
             kb.add(types.InlineKeyboardButton("V2rayNG (پیشنهادی)", callback_data="tutorial_app:android:v2rayng"))
-            kb.add(types.InlineKeyboardButton("Hiddify Next", callback_data="tutorial_app:android:hiddify_next"))
+            kb.add(types.InlineKeyboardButton("Hiddify", callback_data="tutorial_app:android:hiddify"))
+            kb.add(types.InlineKeyboardButton("Happ", callback_data="tutorial_app:android:happ"))
+
         elif os_type == 'windows':
-            kb.add(types.InlineKeyboardButton("V2rayN (پیشنهادی)", callback_data="tutorial_app:windows:v2rayn"))
-            kb.add(types.InlineKeyboardButton("Hiddify Next", callback_data="tutorial_app:windows:hiddify_next"))
+            kb.add(types.InlineKeyboardButton("V2rayN", callback_data="tutorial_app:windows:v2rayn"))
+            kb.add(types.InlineKeyboardButton("Hiddify", callback_data="tutorial_app:windows:hiddify"))
+            
         elif os_type == 'ios':
-            kb.add(types.InlineKeyboardButton("Streisand (رایگان)", callback_data="tutorial_app:ios:streisand"))
             kb.add(types.InlineKeyboardButton("Shadowrocket (پولی)", callback_data="tutorial_app:ios:shadowrocket"))
+            kb.add(types.InlineKeyboardButton("Streisand (پیشنهادی)", callback_data="tutorial_app:ios:streisand"))
+            kb.add(types.InlineKeyboardButton("Hiddify", callback_data="tutorial_app:ios:hiddify"))
+            kb.add(types.InlineKeyboardButton("Happ", callback_data="tutorial_app:ios:happ"))
 
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به سیستم‌عامل‌ها", callback_data="tutorials"))
         return kb
-    # --- END NEW MENUS ---
 
     def settings(self, settings_dict: dict, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)

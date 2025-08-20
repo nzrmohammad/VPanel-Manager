@@ -229,44 +229,56 @@ def search_user(query: str) -> List[Dict[str, Any]]:
             
     return results
 
-def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int = 0, target_panel_name: Optional[str] = None) -> bool:
-    """یک کاربر را در پنل(های) مشخص شده یا در همه‌ی پنل‌ها ویرایش می‌کند."""
+def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int = 0, target_panel_type: Optional[str] = None) -> bool:
+    """
+    اصلاح شده: یک پارامتر جدید (target_panel_type) برای اعمال تغییرات فقط روی یک پنل خاص اضافه شده است.
+    """
     user_info = get_combined_user_info(identifier)
     if not user_info: return False
 
-    all_panels_map = {p['name']: p for p in db.get_all_panels()}
+    all_panels_map = {p['name']: p for p in db.get_active_panels()}
     any_success = False
 
-    panels_to_modify = [target_panel_name] if target_panel_name else user_info['breakdown'].keys()
+    # اگر پنل خاصی مشخص شده، فقط آن را ویرایش کن. در غیر این صورت، همه را ویرایش کن.
+    panels_to_modify = user_info.get('breakdown', {}).items()
 
-    for panel_name in panels_to_modify:
-        if panel_name not in user_info['breakdown']: continue
+    for panel_name, panel_details in panels_to_modify:
+        panel_type = panel_details.get('type')
         
+        # اگر پنل خاصی مشخص شده و این پنل آن نیست، از آن عبور کن
+        if target_panel_type and panel_type != target_panel_type:
+            continue
+
         panel_config = all_panels_map.get(panel_name)
         if not panel_config: continue
         
         handler = _get_handler_for_panel(panel_config)
         if not handler: continue
 
-        user_panel_details = user_info['breakdown'][panel_name]
-        user_panel_data = user_panel_details.get('data', {})
+        user_panel_data = panel_details.get('data', {})
         
-        if panel_config['panel_type'] == 'hiddify' and user_panel_data.get('uuid'):
+        # منطق افزودن روز و حجم برای هر پنل
+        if panel_type == 'hiddify' and user_info.get('uuid'):
+            current_limit = user_panel_data.get('usage_limit_GB', 0)
+            current_days = user_panel_data.get('expire', 0)
+            
             payload = {}
-            if add_gb: payload['usage_limit_GB'] = user_panel_data.get('usage_limit_GB', 0) + add_gb
-            if add_days: 
-                current_expire = user_panel_data.get('expire')
-                # If expire is None or negative, base the addition on today
-                base_days = max(0, current_expire) if current_expire is not None else 0
+            if add_gb > 0:
+                payload['usage_limit_GB'] = current_limit + add_gb
+            if add_days > 0:
+                # اگر کاربر منقضی شده، روزها را به تاریخ امروز اضافه کن
+                base_days = max(0, current_days)
                 payload['package_days'] = base_days + add_days
-            if handler.modify_user(user_panel_data['uuid'], payload):
+            
+            if payload and handler.modify_user(user_info['uuid'], payload):
                 any_success = True
         
-        elif panel_config['panel_type'] == 'marzban' and user_panel_data.get('username'):
+        elif panel_type == 'marzban' and user_panel_data.get('username'):
             if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
                 any_success = True
                 
     return any_success
+
 
 def delete_user_from_all_panels(identifier: str) -> bool:
     """کاربر را از تمام پنل‌هایی که در آن وجود دارد حذف می‌کند."""
