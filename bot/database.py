@@ -633,7 +633,7 @@ class DatabaseManager:
         with self._conn() as c:
             # ✅ **تغییر اصلی:** ستون‌های is_vip, has_access_de, has_access_fr به کوئری اضافه شدند
             query = """
-                SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr
+                SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr
                 FROM user_uuids
                 ORDER BY created_at DESC
             """

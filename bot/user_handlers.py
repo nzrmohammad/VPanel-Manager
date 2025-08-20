@@ -173,11 +173,20 @@ def handle_user_callbacks(call: types.CallbackQuery):
         uuid_id = int(data.split("_")[2])
         row = db.uuid_by_id(uid, uuid_id)
         if row:
-            info = combined_handler.get_combined_user_info(row['uuid'])
-            h_info = info.get('breakdown', {}).get('hiddify', {})
-            m_info = info.get('breakdown', {}).get('marzban', {})
+            has_access_de = bool(row.get('has_access_de'))
+            has_access_fr = bool(row.get('has_access_fr'))
+            has_access_tr = bool(row.get('has_access_tr'))
+            
             text = get_string("prompt_select_server_stats", lang_code)
-            _safe_edit(uid, msg_id, text, reply_markup=menu.server_selection_menu(uuid_id, bool(h_info), bool(m_info), lang_code=lang_code), parse_mode=None)
+            
+            reply_markup = menu.server_selection_menu(
+                uuid_id,
+                show_germany=has_access_de,
+                show_france=has_access_fr,
+                show_turkey=has_access_tr,
+                lang_code=lang_code
+            )
+            _safe_edit(uid, msg_id, text, reply_markup=reply_markup, parse_mode=None)
 
     elif data.startswith(("win_hiddify_", "win_marzban_")):
         parts = data.split("_")

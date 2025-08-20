@@ -222,8 +222,8 @@ def fmt_marzban_system_stats(info: dict) -> str:
     total_users = escape_markdown(str(info.get('total_user', 0)))
     online_users = escape_markdown(str(info.get('online_users', 0)))
     active_users = escape_markdown(str(info.get('users_active', 0)))
-    disabled_users = escape_markdown(str(info.get('users_disabled', 0)))
-    expired_users = escape_markdown(str(info.get('users_expired', 0)))
+    disabled_users = escape_markdown(str(info.get('disabled_users_count', 0)))
+    expired_users = escape_markdown(str(info.get('expired_users_count', 0)))
 
     total_dl_gb = f"{to_gb(info.get('incoming_bandwidth', 0)):.2f}".replace('.', ',')
     total_ul_gb = f"{to_gb(info.get('outgoing_bandwidth', 0)):.2f}".replace('.', ',')
@@ -469,12 +469,13 @@ def fmt_birthdays_list(users: list, page: int) -> str:
 def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
     title = f"کاربران پنل {panel_name}"
     if not users:
-        return f"*{escape_markdown(title)}*\n\nهیچ کاربری در این پنل یافت نشد."
+        return f"*{escape_markdown(title)}*\n\nهیچ کاربری در این پنل یافت نشد\\."
 
-    header_text = f"*{title}*"
+    header_text = f"*{escape_markdown(title)}*"
     if len(users) > PAGE_SIZE:
         total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(users)})"
+        # تمام بخش‌های این متن escape شده‌اند تا خطای parse از بین برود
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
     user_lines = []
@@ -486,9 +487,9 @@ def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
         expire_days = user.get("expire")
         expire_text = "نامحدود"
         if expire_days is not None:
-            expire_text = f"{expire_days} روز" if expire_days >= 0 else "منقضی"
+            expire_text = f"{expire_days} day" if expire_days >= 0 else "منقضی"
 
-        line = f"`•` *{name}*{separator}{EMOJIS['calendar']} اعتبار: {escape_markdown(expire_text)}"
+        line = f"`•` *{name}*{separator}{EMOJIS['calendar']} {escape_markdown(expire_text)}"
         user_lines.append(line)
 
     body_text = "\n".join(user_lines)
@@ -532,12 +533,12 @@ def fmt_admin_quick_dashboard(stats: dict) -> str:
     lines = [
         f"👑 *داشبورد سریع ربات*",
         "`──────────────────`",
-        f"👥 *کل کاربران:* {total_users}",
-        f"✅ *کاربران فعال:* {active_users}",
-        f"📡 *کاربران آنلاین \\(۳ دقیقه\\):* {online_users}",
-        f"⚠️ *در آستانه انقضا \\(۷ روز\\):* {expiring_soon}",
-        f"➕ *کاربران جدید \\(۲۴ ساعت\\):* {new_users}",
-        f"⚡️ *مجموع مصرف امروز:* {total_usage}"
+        f"👥 *کل کاربران :* {total_users}",
+        f"✅ *کاربران فعال :* {active_users}",
+        f"📡 *کاربران آنلاین  \\(۳ دقیقه\\):* {online_users}",
+        f"⚠️ *در آستانه انقضا \\(۷ روز\\) :* {expiring_soon}",
+        f"➕ *کاربران جدید \\(۲۴ ساعت\\) :* {new_users}",
+        f"⚡️ *مجموع مصرف امروز :* {total_usage}"
     ]
     
     return "\n".join(lines)

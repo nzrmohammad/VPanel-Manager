@@ -131,15 +131,17 @@ class HiddifyAPIHandler:
         return self.modify_user(uuid, data={"current_usage_GB": 0})
 
     def get_panel_info(self) -> Optional[Dict[str, Any]]:
-        """اطلاعات پنل Hiddify را برمیگرداند."""
-        panel_info_url = f"{HIDDIFY_DOMAIN.rstrip('/')}/{ADMIN_PROXY_PATH.strip('/')}/api/v2/panel/info/"
-        try:
-            response = self.session.get(panel_info_url, timeout=API_TIMEOUT)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Hiddify API request for panel info failed: {e}")
-            return None
+            """اطلاعات پنل Hiddify را با استفاده از تنظیمات دینامیک برمیگرداند."""
+            # آدرس API اطلاعات پنل را از آدرس پایه می‌سازیم
+            panel_info_url = self.base_url.replace('/api/v2/admin', '/api/v2/panel/info/')
+            try:
+                # سِشِن از قبل حاوی کلید API صحیح است
+                response = self.session.get(panel_info_url, timeout=API_TIMEOUT)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Hiddify API request for panel info failed: {e}")
+                return None
 
     def check_connection(self) -> bool:
         """برای بررسی صحت اتصال و کلید API، اطلاعات پنل را درخواست می‌کند."""

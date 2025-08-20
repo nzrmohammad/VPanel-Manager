@@ -84,13 +84,23 @@ class Menu:
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back_to_main_menu', lang_code)}", callback_data="back"))
         return kb
 
-    def server_selection_menu(self, uuid_id: int, show_hiddify: bool, show_marzban: bool, lang_code: str) -> types.InlineKeyboardMarkup:
+    def server_selection_menu(self, uuid_id: int, show_germany: bool, show_france: bool, show_turkey: bool, lang_code: str) -> types.InlineKeyboardMarkup:
+        """
+        منوی انتخاب سرور را با دکمه ترکیبی برای فرانسه و ترکیه ایجاد می‌کند.
+        """
         kb = types.InlineKeyboardMarkup(row_width=2)
         buttons = []
-        if show_hiddify:
+        
+        if show_germany:
             buttons.append(types.InlineKeyboardButton(f"{get_string('server_de', lang_code)} 🇩🇪", callback_data=f"win_hiddify_{uuid_id}"))
-        if show_marzban:
-            buttons.append(types.InlineKeyboardButton(f"{get_string('server_fr', lang_code)} 🇫🇷", callback_data=f"win_marzban_{uuid_id}"))
+        
+        # منطق دکمه ترکیبی
+        if show_france or show_turkey:
+            flags = ""
+            if show_france: flags += "🇫🇷"
+            if show_turkey: flags += "🇹🇷"
+            # چون هر دو از یک پنل (Marzban) هستند، callback یکی است
+            buttons.append(types.InlineKeyboardButton(f"فرانسه/ترکیه {flags}", callback_data=f"win_marzban_{uuid_id}"))
         
         if buttons:
             kb.add(*buttons)
@@ -104,10 +114,11 @@ class Menu:
         kb = types.InlineKeyboardMarkup(row_width=2)
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
+        btn_turkey = types.InlineKeyboardButton(f"🇹🇷 سرویس‌های ترکیه", callback_data="show_plans:turkey")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
         btn_payment_methods = types.InlineKeyboardButton(get_string('btn_payment_methods', lang_code), callback_data="show_payment_options")
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
-        kb.add(btn_france, btn_germany)
+        kb.add(btn_turkey, btn_france, btn_germany)
         kb.add(btn_combined)
         kb.add(btn_payment_methods)
         kb.add(btn_back)

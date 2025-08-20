@@ -9,7 +9,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 class UserService:
-    # ... (متدهای دیگر مانند get_user_usage_stats و ... بدون تغییر باقی می‌مانند) ...
     @staticmethod
     def get_user_usage_stats(uuid_id):
         tehran_tz = pytz.timezone("Asia/Tehran")
@@ -40,35 +39,11 @@ class UserService:
         return chart_data, avg_daily_usage
 
     @staticmethod
-    def recommend_plan(uuid_id):
-        actual_usage_last_30_days = 0
-        with db._conn() as c:
-            thirty_days_ago = datetime.now(pytz.utc) - timedelta(days=30)
-            query = """
-                WITH ranked_snapshots AS (
-                    SELECT 
-                        hiddify_usage_gb, 
-                        marzban_usage_gb,
-                        ROW_NUMBER() OVER(ORDER BY taken_at ASC) as rn_asc,
-                        ROW_NUMBER() OVER(ORDER BY taken_at DESC) as rn_desc
-                    FROM usage_snapshots
-                    WHERE uuid_id = ? AND taken_at >= ?
-                )
-                SELECT hiddify_usage_gb, marzban_usage_gb
-                FROM ranked_snapshots
-                WHERE rn_asc = 1 OR rn_desc = 1
-                ORDER BY rn_asc;
-            """
-            rows = c.execute(query, (uuid_id, thirty_days_ago)).fetchall()
-
-            if len(rows) == 2:
-                start_h, start_m = rows[0]['hiddify_usage_gb'], rows[0]['marzban_usage_gb']
-                end_h, end_m = rows[1]['hiddify_usage_gb'], rows[1]['marzban_usage_gb']
-                h_diff = (end_h - start_h) if end_h is not None and start_h is not None else 0
-                m_diff = (end_m - start_m) if end_m is not None and start_m is not None else 0
-                actual_usage_last_30_days = max(0, h_diff) + max(0, m_diff)
-
-        if actual_usage_last_30_days < 1:
+    def recommend_plan(current_usage_gb):
+        """
+        این تابع اصلاح شده است تا بر اساس مصرف فعلی کاربر، پلن پیشنهاد دهد.
+        """
+        if current_usage_gb < 1:
             return None, 0
 
         all_plans = load_service_plans()
@@ -76,20 +51,19 @@ class UserService:
         smallest_diff = float('inf')
 
         for plan in all_plans:
-            total_volume_gb = parse_volume_string(plan.get('total_volume') or plan.get('volume_de') or plan.get('volume_fr') or '0')
-            if total_volume_gb > actual_usage_last_30_days:
-                diff = total_volume_gb - actual_usage_last_30_days
+            total_volume_gb = parse_volume_string(plan.get('total_volume') or plan.get('volume_de') or plan.get('volume_fr') or plan.get('volume_tr') or '0')
+            if total_volume_gb > current_usage_gb:
+                diff = total_volume_gb - current_usage_gb
                 if diff < smallest_diff:
                     smallest_diff = diff
                     best_plan = plan
         
-        # اگر هیچ پلنی حجمش بیشتر از مصرف کاربر نبود، بزرگترین پلن موجود را پیشنهاد بده
+        # اگر هیچ پلنی حجمش بیشتر از مصرف فعلی نبود، بزرگترین پلن را پیشنهاد بده
         if not best_plan and all_plans:
-            best_plan = max(all_plans, key=lambda p: parse_volume_string(p.get('total_volume') or p.get('volume_de') or p.get('volume_fr') or '0'))
+            best_plan = max(all_plans, key=lambda p: parse_volume_string(p.get('total_volume') or p.get('volume_de') or p.get('volume_fr') or p.get('volume_tr') or '0'))
 
-        return best_plan, actual_usage_last_30_days
+        return best_plan, current_usage_gb
     
-    # ... (بقیه متدهای کلاس بدون تغییر) ...
     @staticmethod
     def get_birthday_info(user_basic):
         birthday = user_basic.get("birthday")
@@ -122,32 +96,24 @@ class UserService:
     def get_user_breakdown_data(combined_info, usage_today):
         breakdown = combined_info.get('breakdown', {}).copy()
         
-        # --- START: FIX ---
-        # حلقه را برای دسترسی صحیح به داده‌های تو در تو اصلاح می‌کنیم
         for panel_name, panel_details in breakdown.items():
-            panel_data = panel_details.get('data', {}) # دیتا اصلی اینجا قرار دارد
+            panel_data = panel_details.get('data', {})
             panel_type = panel_details.get('type')
 
-            # افزودن مصرف روزانه به دیتا
             panel_data['today_usage_GB'] = usage_today.get(panel_type, 0)
 
-            # محاسبه درصد مصرف
             usage = panel_data.get('current_usage_GB', 0)
             limit = panel_data.get('usage_limit_GB', 0)
             panel_data['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
             
-            # محاسبه تاریخ انقضای شمسی
             expire_val = panel_data.get('expire')
             panel_data['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=expire_val)) if expire_val is not None else "نامشخص"
 
-            # محاسبه وضعیت آنلاین و آخرین اتصال شمسی
             last_online_dt = panel_data.get('last_online')
             panel_data['online_status'], _ = UserService.get_online_status(last_online_dt)
             panel_data['last_online_shamsi'] = to_shamsi(last_online_dt, include_time=True) if last_online_dt else "هرگز"
             
-            # جایگزین کردن دیتای پردازش شده
             breakdown[panel_name]['data'] = panel_data
-        # --- END: FIX ---
             
         return breakdown
 
@@ -184,6 +150,9 @@ class UserService:
             online_status, online_class = UserService.get_online_status(combined_info.get('last_online'))
             created_at_shamsi = to_shamsi(uuid_record.get('created_at'))
             expire_shamsi = to_shamsi(datetime.now() + timedelta(days=expire_days)) if expire_days is not None else "نامحدود"
+            
+            # فراخوانی تابع اصلاح شده
+            recommended_plan, actual_usage = UserService.recommend_plan(current_usage)
 
             return {
                 "is_active": is_active,
@@ -204,7 +173,9 @@ class UserService:
                 "usage_chart_data": chart_data,
                 "breakdown": UserService.get_user_breakdown_data(combined_info, usage_today),
                 **UserService.get_birthday_info(user_basic),
-                "payment_history": payment_history
+                "payment_history": payment_history,
+                "recommended_plan": recommended_plan,
+                "actual_last_30_days_usage": actual_usage
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)

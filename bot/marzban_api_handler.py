@@ -221,17 +221,9 @@ class MarzbanAPIHandler:
         return normalized_data
 
     def get_system_stats(self) -> dict | None:
-            if not self.access_token:
-                return None
-            try:
-                url = f"{self.base_url}/api/system"
-                headers = {"Authorization": f"Bearer {self.access_token}"}
-                response = requests.get(url, headers=headers, timeout=API_TIMEOUT)
-                response.raise_for_status()
-                return response.json()
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Marzban: Failed to get system stats: {e}")
-                return None
+        """آمار سیستم را از پنل مرزبان دریافت می‌کند."""
+        # استفاده از تابع _request که به صورت خودکار توکن را مدیریت می‌کند
+        return self._request("GET", "/system")
 
     def delete_user(self, username: str) -> bool:
         if not self.access_token:

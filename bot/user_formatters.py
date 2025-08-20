@@ -16,6 +16,12 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     if not info:
         return escape_markdown(get_string("fmt_err_getting_info", lang_code))
 
+    # واکشی اطلاعات دسترسی کاربر از دیتابیس
+    user_record = db.get_user_uuid_record(info.get("uuid", ""))
+    has_access_de = user_record.get('has_access_de', False) if user_record else False
+    has_access_fr = user_record.get('has_access_fr', False) if user_record else False
+    has_access_tr = user_record.get('has_access_tr', False) if user_record else False
+
     # بخش ۱: اطلاعات کلی و هدر
     raw_name = info.get("name", get_string('unknown_user', lang_code))
     is_active_overall = info.get("is_active", False)
@@ -24,7 +30,6 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     header_line = f"*{escape_markdown(header_raw)}*"
 
     report = [header_line]
-
     separator = "`──────────────────`"
     report.append(separator)
     
@@ -32,16 +37,27 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     breakdown = info.get('breakdown', {})
     
     def format_panel_details(panel_data, daily_usage, panel_type):
-        flag = "🇩🇪" if panel_type == 'hiddify' else "🇫🇷"
+        flags = ""
+        # تعیین پرچم بر اساس دسترسی‌ها
+        if panel_type == 'hiddify' and has_access_de:
+            flags = "🇩🇪"
+        elif panel_type == 'marzban':
+            if has_access_fr: flags += "🇫🇷"
+            if has_access_tr: flags += "🇹🇷"
+        
+        # اگر پرچمی وجود نداشت (یعنی کاربر به این پنل دسترسی ندارد)، چیزی نمایش نده
+        if not flags:
+            return []
+
         limit = panel_data.get("usage_limit_GB", 0.0)
         usage = panel_data.get("current_usage_GB", 0.0)
         remaining = max(0, limit - usage)
         
         return [
-            f"*سرور {flag}*",
-            f"{EMOJIS['database']} {escape_markdown('حجم کل :')} {escape_markdown(f'{limit:g} GB')}",
-            f"{EMOJIS['fire']} {escape_markdown('حجم مصرف شده :')} {escape_markdown(f'{usage:g} GB')}",
-            f"{EMOJIS['download']} {escape_markdown('حجم باقیمانده :')} {escape_markdown(f'{remaining:g} GB')}",
+            f"*سرور {flags}*",
+            f"{EMOJIS['database']} {escape_markdown('حجم کل :')} {escape_markdown(f'{limit:.0f} GB')}",
+            f"{EMOJIS['fire']} {escape_markdown('حجم مصرف شده :')} {escape_markdown(f'{usage:.0f} GB')}",
+            f"{EMOJIS['download']} {escape_markdown('حجم باقیمانده :')} {escape_markdown(f'{remaining:.0f} GB')}",
             f"{EMOJIS['lightning']} {escape_markdown('مصرف امروز :')} {escape_markdown(format_daily_usage(daily_usage))}",
             f"{EMOJIS['time']} {escape_markdown('آخرین اتصال :')} {escape_markdown(to_shamsi(panel_data.get('last_online'), include_time=True))}",
             separator
@@ -60,14 +76,13 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
         expire_label = get_string("fmt_status_expired", lang_code) if expire_days < 0 else get_string("fmt_expire_days", lang_code).format(days=expire_days)
 
     report.extend([
-        f'{get_string("fmt_expiry_date_new", lang_code)} :* {escape_markdown(expire_label)}',
-        f'{get_string("fmt_uuid_new", lang_code)} :* `{escape_markdown(info.get("uuid", ""))}`',
+        f'*{get_string("fmt_expiry_date_new", lang_code)} :* {escape_markdown(expire_label)}',
+        f'*{get_string("fmt_uuid_new", lang_code)} :* `{escape_markdown(info.get("uuid", ""))}`',
         "",
         f'*{get_string("fmt_status_bar_new", lang_code)} :* {create_progress_bar(info.get("usage_percentage", 0))}'
     ])
     
     return "\n".join(report)
-
 
 def quick_stats(uuid_rows: list, page: int, lang_code: str) -> tuple[str, dict]:
     num_uuids = len(uuid_rows)
@@ -98,9 +113,9 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
     total_daily_usage_all_accounts = 0.0
 
     for info in user_infos:
-        name = escape_markdown(info.get("name", get_string("unknown_user", lang_code)))
+        name = info.get("name", get_string('unknown_user', lang_code))
         header = get_string("fmt_report_account_header", lang_code).format(name=name)
-        account_lines = [f'*{header}*']
+        account_lines = [f'*{escape_markdown(header)}*']
         
         if 'db_id' in info:
             daily_usage_dict = db.get_usage_since_midnight(info['db_id'])
@@ -108,16 +123,15 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         else:
             daily_usage_dict = {}
 
-        # --- START: FIX for Markdown Parsing Error ---
-        volume_str = escape_markdown(f"{info.get('usage_limit_GB', 0):.2f} GB")
-        account_lines.append(escape_markdown(get_string("fmt_report_total_volume", lang_code)).format(volume=volume_str))
-
-        usage_str = escape_markdown(f"{info.get('current_usage_GB', 0):.2f} GB")
-        account_lines.append(escape_markdown(get_string("fmt_report_used_volume", lang_code)).format(usage=usage_str))
-
-        remaining_str = escape_markdown(f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB")
-        account_lines.append(escape_markdown(get_string("fmt_report_remaining_volume", lang_code)).format(remaining=remaining_str))
-        
+        volume_str = f"{info.get('usage_limit_GB', 0):.2f} GB"
+        volume_line = get_string("fmt_report_total_volume", lang_code).format(volume=volume_str)
+        account_lines.append(escape_markdown(volume_line))
+        usage_str = f"{info.get('current_usage_GB', 0):.2f} GB"
+        usage_line = get_string("fmt_report_used_volume", lang_code).format(usage=usage_str)
+        account_lines.append(escape_markdown(usage_line))
+        remaining_str = f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB"
+        remaining_line = get_string("fmt_report_remaining_volume", lang_code).format(remaining=remaining_str)
+        account_lines.append(escape_markdown(remaining_line))
         account_lines.append(escape_markdown(get_string("fmt_report_daily_usage_header", lang_code)))
         
         breakdown = info.get('breakdown', {})
@@ -131,12 +145,10 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         expire_days = info.get("expire")
         expire_str = f"`{escape_markdown(get_string('fmt_expire_unlimited', lang_code))}`"
         if expire_days is not None:
-            expire_word_key = 'expire_summary_day' if abs(expire_days) == 1 else 'expire_summary_days'
-            expire_word = get_string(expire_word_key, lang_code)
+            expire_word = "روز"
             expire_str = f"{expire_days} {escape_markdown(expire_word)}" if expire_days >= 0 else escape_markdown(get_string("fmt_status_expired", lang_code))
         
         account_lines.append(escape_markdown(get_string("fmt_report_expiry", lang_code)).format(expiry=expire_str))
-        # --- END: FIX for Markdown Parsing Error ---
         accounts_reports.append("\n".join(account_lines))
     
     final_report = "\n\n".join(accounts_reports)
@@ -153,7 +165,12 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
     if not plans_to_show:
         return escape_markdown(get_string("fmt_plans_none_in_category", lang_code))
     
-    type_map = { "combined": "fmt_plan_type_combined", "germany": "fmt_plan_type_germany", "france": "fmt_plan_type_france" }
+    type_map = { 
+        "combined": "fmt_plan_type_combined", 
+        "germany": "fmt_plan_type_germany", 
+        "france": "fmt_plan_type_france",
+        "turkey": "fmt_plan_type_turkey"
+    }
     type_title = get_string(type_map.get(plan_type, "fmt_plan_type_general"), lang_code)
     
     title = f'*{escape_markdown(get_string("fmt_plans_title", lang_code).format(type_title=type_title))}*'
@@ -168,10 +185,13 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
         details = []
         if plan.get('total_volume'):
             details.append(f'*{get_string("fmt_plan_label_total_volume", lang_code)}:* {escape_markdown(plan["total_volume"])}')
+        
         if plan_type == 'germany' and plan.get('volume_de'):
             details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_de"])}')
         elif plan_type == 'france' and plan.get('volume_fr'):
             details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_fr"])}')
+        elif plan_type == 'turkey' and plan.get('volume_tr'):
+            details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_tr"])}')
         elif plan_type == 'combined':
             if plan.get('volume_de'):
                 details.append(f'*{get_string("fmt_plan_label_germany", lang_code)}:* {escape_markdown(plan["volume_de"])}')

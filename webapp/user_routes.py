@@ -131,6 +131,8 @@ def subscription_links_page(uuid):
             name_lower = config_name.lower()
             if any(c in name_lower for c in ['(de)', '[de]', 'de ']): detected_code = 'de'
             elif any(c in name_lower for c in ['(fr)', '[fr]', 'fr ']): detected_code = 'fr'
+            elif any(c in name_lower for c in ['(tr)', '[tr]', 'tr ']): detected_code = 'tr'
+
             
             individual_configs.append({"name": config_name, "url": config_str, "country_code": detected_code})
 
@@ -195,15 +197,9 @@ def buy_service_page(uuid):
     if not current_user_data:
         abort(404, "کاربر یافت نشد")
 
-    recommended_plan = None
-    actual_usage = 0
-    try:
-        uuid_record = db.get_user_uuid_record(uuid)
-        if uuid_record:
-            recommended_plan, actual_usage = user_service.recommend_plan(uuid_record['id'])
-    except Exception as e:
-        logger.error(f"Error recommending plan for {uuid}: {e}")
-
+    recommended_plan = current_user_data.get('recommended_plan')
+    actual_usage = current_user_data.get('actual_last_30_days_usage')
+    
     return render_template('buy_service_page.html', 
                            user=current_user_data, # ارسال اطلاعات کامل کاربر
                            combined_plans=combined_plans, 

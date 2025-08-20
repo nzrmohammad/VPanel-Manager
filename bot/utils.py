@@ -255,38 +255,49 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     if not info:
         return None
 
-    parts = []
-    
-    # --- START: FIX ---
-    # حلقه برای جستجو در تمام پنل‌های کاربر بر اساس نوع
-    for panel_details in info.get('breakdown', {}).values():
-        panel_data = panel_details.get('data', {})
-        panel_type = panel_details.get('type')
-        
-        # فقط در صورتی اطلاعات را اضافه کن که پنل فعال باشد
-        if panel_data.get('is_active', False):
-            usage = panel_data.get('current_usage_GB', 0)
-            limit = panel_data.get('usage_limit_GB', 0)
-            limit_str = f"{limit:.1f}" if limit > 0 else '∞'
+    user_record = db.get_user_uuid_record(user_uuid)
+    if not user_record:
+        return None
 
-            if panel_type == 'hiddify':
-                parts.append(f"🇩🇪 {usage:.2f} / {limit_str} GB")
-            elif panel_type == 'marzban':
-                parts.append(f"🇫🇷 {usage:.2f} / {limit_str} GB")
-    # --- END: FIX ---
+    has_access_de = user_record.get('has_access_de', False)
+    has_access_fr = user_record.get('has_access_fr', False)
+    has_access_tr = user_record.get('has_access_tr', False)
+
+    parts = []
+    breakdown = info.get('breakdown', {})
+    
+    hiddify_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+    marzban_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'marzban'), None)
+
+    if has_access_de and hiddify_info:
+        usage = hiddify_info.get('current_usage_GB', 0)
+        limit = hiddify_info.get('usage_limit_GB', 0)
+        limit_str = f"{limit:.0f}" if limit > 0 else '∞'
+        parts.append(f"🇩🇪 {usage:.0f}/{limit_str}GB")
+
+    if (has_access_fr or has_access_tr) and marzban_info:
+        flags = []
+        if has_access_fr:
+            flags.append("🇫🇷")
+        if has_access_tr:
+            flags.append("🇹🇷")
+        
+        flag_str = "".join(flags)
+        usage = marzban_info.get('current_usage_GB', 0)
+        limit = marzban_info.get('usage_limit_GB', 0)
+        limit_str = f"{limit:.0f}" if limit > 0 else '∞'
+        parts.append(f"{flag_str} {usage:.0f}/{limit_str}GB")
 
     days_left = info.get('expire')
-    if parts and days_left is not None:
+    if days_left is not None:
         days_left_str = str(days_left) if days_left >= 0 else 'پایان'
-        parts.append(f"📅 {days_left_str} ")
+        parts.append(f"📅{days_left_str}")
 
     if not parts:
         return None 
         
     final_name_parts = " | ".join(parts)
-    config_name = f"{final_name_parts}"
-    
-    encoded_name = urllib.parse.quote(config_name)
+    encoded_name = urllib.parse.quote(final_name_parts)
     return f"vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?type=ws&path=/&security=tls#{encoded_name}"
 
 def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> list[str]:

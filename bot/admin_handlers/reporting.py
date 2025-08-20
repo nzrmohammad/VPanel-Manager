@@ -1,4 +1,3 @@
-# bot/admin_handlers/reporting.py
 import logging
 from datetime import datetime, timedelta
 import pytz
@@ -9,10 +8,13 @@ from ..menu import menu
 from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
-    fmt_marzban_system_stats, fmt_users_by_plan_list,
+    fmt_marzban_system_stats,
     fmt_payments_report_list, fmt_admin_quick_dashboard
 )
-from ..utils import _safe_edit, load_service_plans, parse_volume_string, escape_markdown
+from ..utils import _safe_edit, escape_markdown
+from ..hiddify_api_handler import HiddifyAPIHandler
+from ..marzban_api_handler import MarzbanAPIHandler
+from ..admin_formatters import fmt_hiddify_panel_info
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -30,16 +32,72 @@ def handle_panel_specific_reports_menu(call, params):
     _safe_edit(call.from_user.id, call.message.message_id, f"📜 *گزارش‌های پنل‌های نوع {panel_name}*", reply_markup=menu.admin_panel_specific_reports_menu(panel_type))
 
 def handle_health_check(call, params):
-    bot.answer_callback_query(call.id, "این قابلیت پس از داینامیک شدن نیاز به بازبینی دارد.")
+    """وضعیت اولین پنل فعال Hiddify را بررسی و نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال بررسی وضعیت پنل Hiddify..."))
+    
+    # --- START OF FIX ---
+    # منوی بازگشت به جای منوی انتخاب سرور استفاده شده است
+    back_to_status_menu = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:system_status_menu"))
+    # --- END OF FIX ---
+
+    try:
+        active_hiddify_panel = next((p for p in db.get_active_panels() if p['panel_type'] == 'hiddify'), None)
+        
+        if not active_hiddify_panel:
+            _safe_edit(uid, msg_id, escape_markdown("❌ هیچ پنل Hiddify فعالی یافت نشد."), reply_markup=back_to_status_menu)
+            return
+
+        handler = HiddifyAPIHandler(active_hiddify_panel)
+        info = handler.get_panel_info()
+        
+        if info:
+            text = fmt_hiddify_panel_info(info)
+        else:
+            text = escape_markdown(f"❌ امکان دریافت اطلاعات از پنل «{active_hiddify_panel['name']}» وجود ندارد.")
+            
+        _safe_edit(uid, msg_id, text, reply_markup=back_to_status_menu)
+
+    except Exception as e:
+        logger.error(f"Error in handle_health_check: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("خطایی در هنگام بررسی وضعیت رخ داد."), reply_markup=back_to_status_menu)
 
 def handle_marzban_system_stats(call, params):
-    bot.answer_callback_query(call.id, "این قابلیت پس از داینامیک شدن نیاز به بازبینی دارد.")
+    """آمار سیستم اولین پنل فعال Marzban را نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال دریافت آمار از پنل Marzban..."))
+
+    # --- START OF FIX ---
+    # منوی بازگشت به جای منوی انتخاب سرور استفاده شده است
+    back_to_status_menu = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:system_status_menu"))
+    # --- END OF FIX ---
+
+    try:
+        active_marzban_panel = next((p for p in db.get_active_panels() if p['panel_type'] == 'marzban'), None)
+        
+        if not active_marzban_panel:
+            _safe_edit(uid, msg_id, escape_markdown("❌ هیچ پنل Marzban فعالی یافت نشد."), reply_markup=back_to_status_menu)
+            return
+
+        handler = MarzbanAPIHandler(active_marzban_panel)
+        info = handler.get_system_stats()
+        
+        if info:
+            text = fmt_marzban_system_stats(info)
+        else:
+            text = escape_markdown(f"❌ امکان دریافت اطلاعات از پنل «{active_marzban_panel['name']}» وجود ندارد.")
+            
+        _safe_edit(uid, msg_id, text, reply_markup=back_to_status_menu)
+
+    except Exception as e:
+        logger.error(f"Error in handle_marzban_system_stats: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("خطایی در هنگام دریافت آمار رخ داد."), reply_markup=back_to_status_menu)
 
 def handle_paginated_list(call, params):
     list_type, page = params[0], int(params[-1])
     panel_type = params[1] if len(params) > 2 else None
     
-    _safe_edit(call.from_user.id, call.message.message_id, "⏳ در حال دریافت و پردازش اطلاعات...", reply_markup=None)
+    _safe_edit(call.from_user.id, call.message.message_id, escape_markdown("⏳ در حال دریافت و پردازش اطلاعات..."), reply_markup=None)
 
     all_users_combined = combined_handler.get_all_users_combined()
     
@@ -102,9 +160,13 @@ def handle_paginated_list(call, params):
     except TypeError: text = config["format"](users, page)
     
     base_cb = f"admin:list:{list_type}" + (f":{panel_type}" if panel_type else "")
-    back_cb = f"admin:{config['back']}"
-    if config['back'] in ['panel_reports', 'manage_panel']:
-         back_cb += f":{panel_type}"
+    back_cb = ""
+    if list_type == "panel_users":
+        back_cb = f"admin:manage_panel:{panel_type}"
+    elif config['back'] == "panel_reports":
+        back_cb = f"admin:panel_reports:{panel_type}"
+    else:
+        back_cb = f"admin:{config['back']}"
 
     kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb, call.from_user.language_code)
     _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)

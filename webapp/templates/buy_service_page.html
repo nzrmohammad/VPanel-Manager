@@ -138,18 +138,32 @@
                     <div class="panel-header" style="justify-content: center; padding-bottom: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
                         <h4 style="color: var(--accent-color); font-weight: bold;">پلن پیشنهادی ما</h4>
                     </div>
-                     <p style="font-size: 0.85rem; text-align: center; color: var(--text-secondary); margin-top:-0.5rem; margin-bottom: 1.5rem;">بر اساس مصرف <b>{{ "%.1f"|format(actual_last_30_days_usage) }} گیگابایتی</b> شما در ماه گذشته</p>
+                     <p style="font-size: 0.85rem; text-align: center; color: var(--text-secondary); margin-top:-0.5rem; margin-bottom: 1.5rem;">بر اساس مصرف <b>{{ "%.1f"|format(actual_last_30_days_usage) }} گیگابایتی</b> شما در این دوره</p>
+                    
                     <ul class="server-stats" style="margin-top: 0;">
-                        {% if recommended_plan.total_volume %}<li><div class="stat-label"><span>حجم کل پلن</span></div><span class="stat-value">{{ recommended_plan.total_volume }}</span></li>{% endif %}
-                        {% if recommended_plan.duration %}<li><div class="stat-label"><span>مدت زمان</span></div><span class="stat-value">{{ recommended_plan.duration }}</span></li>{% endif %}
+                        <li><div class="stat-label"><span>نام پلن</span></div><span class="stat-value">{{ recommended_plan.name }}</span></li>
+                        
+                        {% if recommended_plan.type == 'combined' %}
+                            {% if recommended_plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ recommended_plan.total_volume }}</span></li>{% endif %}
+                            {% if recommended_plan.volume_de %}<li><div class="stat-label"><span class="fi fi-de"></span><span>&nbsp; آلمان</span></div><span class="stat-value">{{ recommended_plan.volume_de.split('(')[0] | trim }}</span></li>{% endif %}
+                            {% if recommended_plan.volume_fr %}<li><div class="stat-label"><span class="fi fi-fr"></span><span class="fi fi-tr" style="margin: 0 4px;"></span><span>فرانسه یا ترکیه</span></div><span class="stat-value">{{ recommended_plan.volume_fr.split('(')[0] | trim }}</span></li>{% endif %}
+                        {% else %}
+                            {% set volume = recommended_plan.volume_de or recommended_plan.volume_fr or recommended_plan.volume_tr %}
+                            {% if volume %}
+                            <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ volume }}</span></li>
+                            {% endif %}
+                        {% endif %}
+
+                        {% if recommended_plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ recommended_plan.duration }}</span></li>{% endif %}
                     </ul>
+
                     <div class="plan-price" style="margin-top: 0.5rem;">{{ "{:,.0f}".format(recommended_plan.price) }} <small>تومان</small></div>
                     <a href="{{ support_link }}" class="btn-action full-width-btn" target="_blank">مشاوره و خرید این پلن</a>
                 </div>
             {% else %}
                 <div style="text-align: center; color: var(--text-secondary); padding: 1rem 0;">
                     <i class="ri-information-line" style="font-size: 2rem; display: block; margin-bottom: 0.5rem;"></i>
-                    برای دریافت پیشنهاد هوشمند، حداقل باید مقداری مصرف در ۳۰ روز گذشته داشته باشید.
+                    برای دریافت پیشنهاد هوشمند، حداقل باید مقداری مصرف داشته باشید.
                 </div>
             {% endif %}
             </div>
@@ -163,8 +177,9 @@
             <div class="panel-header"><h4>{{ plan.name.replace('🥉', '').replace('🥈', '').replace('🥇', '').replace('✨', '').replace('💎', '') }} {% if '🥉' in plan.name %}🥉{% elif '🥈' in plan.name %}🥈{% elif '🥇' in plan.name %}🥇{% elif '✨' in plan.name %}✨{% elif '💎' in plan.name %}💎{% endif %}</h4></div>
             <ul class="server-stats">
                 {% if plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ plan.total_volume }}</span></li>{% endif %}
-                {% if plan.volume_de %}<li><div class="stat-label"><span class="fi fi-de"></span><span>&nbsp; آلمان</span></div><span class="stat-value">{{ plan.volume_de.replace('(🇩🇪)', '') }}</span></li>{% endif %}
-                {% if plan.volume_fr %}<li><div class="stat-label"><span class="fi fi-fr"></span><span>&nbsp; فرانسه</span></div><span class="stat-value">{{ plan.volume_fr.replace('(🇫🇷)', '') }}</span></li>{% endif %}
+                {% if plan.volume_de %}<li><div class="stat-label"><span class="fi fi-de"></span><span>&nbsp; آلمان</span></div><span class="stat-value">{{ plan.volume_de.split('(')[0] | trim }}</span></li>{% endif %}
+                <!-- {% if plan.volume_fr %}<li><div class="stat-label"><span class="fi fi-fr"></span><span class="fi fi-tr" style="margin: 0 4px;"></span><span>فرانسه یا ترکیه</span></div><span class="stat-value">{{ plan.volume_fr.split('(')[0] | trim }}</span></li>{% endif %} -->
+                {% if plan.volume_fr %}<li><div class="stat-label"><span class="fi fi-fr"></span><span class="fi fi-tr" style="margin: 0 4px;"></span><span>فرانسه یا ترکیه</span></div><span class="stat-value">{{ plan.volume_fr.split('(')[0] | trim }}</span></li>{% endif %}
                 {% if plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>{% endif %}
             </ul>
             <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
@@ -179,9 +194,9 @@
     <section class="details-grid">
         {% for plan in dedicated_plans %}
         <div class="info-card panel-card">
-            <div class="panel-header"><h4>{{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '') }}<span class="flag-emoji">{% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% endif %}</span><span class="flag-icon">{% if 'de' in plan.type or '🇩🇪' in plan.name %}<span class="fi fi-de"></span>{% elif 'fr' in plan.type or '🇫🇷' in plan.name %}<span class="fi fi-fr"></span>{% endif %}</span></h4></div>
+            <div class="panel-header"><h4>{{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '').replace('🇹🇷', '') }}<span class="flag-emoji">{% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% elif '🇹🇷' in plan.name %}🇹🇷{% endif %}</span><span class="flag-icon">{% if 'de' in plan.type or '🇩🇪' in plan.name %}<span class="fi fi-de"></span>{% elif 'fr' in plan.type or '🇫🇷' in plan.name %}<span class="fi fi-fr"></span>{% elif 'tr' in plan.type or '🇹🇷' in plan.name %}<span class="fi fi-tr"></span>{% endif %}</span></h4></div>
             <ul class="server-stats">
-                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr }}</span></li>
+                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr or plan.volume_tr }}</span></li>
                 <li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>
             </ul>
             <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
@@ -196,7 +211,7 @@
         <h3 class="section-title" style="text-align: center;">سوالات متداول</h3>
         <div class="faq-item">
             <div class="faq-question"><span>تفاوت پلن‌های ترکیبی و اختصاصی چیست؟</span><i class="ri-arrow-down-s-line"></i></div>
-            <div class="faq-answer"><p>پلن‌های <strong>ترکیبی</strong> به شما از هر دو سرور آلمان و فرانسه حجم می‌دهند که برای انعطاف‌پذیری بیشتر عالی است. پلن‌های <strong>اختصاصی</strong> فقط روی یک سرور تمرکز دارند و معمولا برای کاربرانی مناسب هستند که می‌دانند کدام کشور برای اینترنت آن‌ها پایداری بهتری دارد.</p></div>
+            <div class="faq-answer"><p>پلن‌های <strong>ترکیبی</strong> به شما از چندین سرور (آلمان، فرانسه، ترکیه) حجم می‌دهند که برای انعطاف‌پذیری بیشتر عالی است. پلن‌های <strong>اختصاصی</strong> فقط روی یک سرور تمرکز دارند و معمولا برای کاربرانی مناسب هستند که می‌دانند کدام کشور برای اینترنت آن‌ها پایداری بهتری دارد.</p></div>
         </div>
         <div class="faq-item">
             <div class="faq-question"><span>چطور بهترین پلن را انتخاب کنم؟</span><i class="ri-arrow-down-s-line"></i></div>

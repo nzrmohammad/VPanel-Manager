@@ -196,6 +196,7 @@ class SchedulerManager:
             user_info_map = {user['uuid']: user for user in all_users_info_from_api}
             all_bot_users = db.get_all_user_ids()
             separator = '\n' + '─' * 18 + '\n'
+            logger.info(f"SCHEDULER: Found {len(all_bot_users)} registered bot users to process.")
 
             for user_id in all_bot_users:
                 logger.info(f"SCHEDULER: ----- Processing user_id: {user_id} -----")
@@ -334,7 +335,7 @@ class SchedulerManager:
         if self.running: return
         
         report_time_str = DAILY_REPORT_TIME.strftime("%H:%M")
-        schedule.every().hour.at(":01").do(self._hourly_snapshots)
+        schedule.every(3).hours.at(":01").do(self._hourly_snapshots)
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
