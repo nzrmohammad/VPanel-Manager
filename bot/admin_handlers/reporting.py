@@ -139,7 +139,7 @@ def handle_paginated_list(call, params):
     elif list_type == "birthdays": 
         users = db.get_users_with_birthdays()
     elif list_type == "payments":
-        users = db.get_payment_history()
+        users = db.get_all_payments_with_user_info()
 
     list_configs = {
         "panel_users": {"format": lambda u, pg, p_type: fmt_panel_users_list(u, "Hiddify" if p_type == "hiddify" else "Marzban", pg), "back": "panel_reports"},

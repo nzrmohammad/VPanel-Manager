@@ -4,7 +4,6 @@ import signal
 import time
 from datetime import datetime
 from telebot import TeleBot
-import threading
 
 from .bot_instance import bot, admin_conversations
 from .config import LOG_LEVEL, ADMIN_IDS, BOT_TOKEN
@@ -14,6 +13,7 @@ from .user_handlers import register_user_handlers
 from .admin_router import register_admin_handlers 
 from .callback_router import register_callback_router
 from .utils import initialize_utils
+from .inline_handlers import register_inline_handlers
 
 logger = logging.getLogger(__name__)
 bot = TeleBot(BOT_TOKEN, parse_mode=None)
@@ -78,6 +78,7 @@ class HiddifyBot:
             register_user_handlers(self.bot)
             register_admin_handlers(self.bot)
             register_callback_router(self.bot)
+            register_inline_handlers(self.bot)
             logger.info("✅ Handlers registered")
             logger.info("Testing Database connectivity ...")
             db.user(0) 

@@ -155,10 +155,13 @@ def handle_user_callbacks(call: types.CallbackQuery):
 
             kb.add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
             # --- پایان تغییرات ---
-
-            bot.delete_message(call.message.chat.id, call.message.message_id)
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception as e:
+                logger.warning(f"Could not delete old message {call.message.message.id}: {e}")
+            # --- ✨ پایان اصلاحیه ---
             bot.send_photo(uid, photo=stream, caption=message_text, reply_markup=kb, parse_mode="MarkdownV2")
-        
+
         except Exception as e:
             logger.error(f"Failed to generate/send subscription link for UUID {user_uuid}: {e}", exc_info=True)
             bot.answer_callback_query(call.id, escape_markdown(get_string("err_link_generation", lang_code)), show_alert=True)

@@ -126,12 +126,15 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         volume_str = f"{info.get('usage_limit_GB', 0):.2f} GB"
         volume_line = get_string("fmt_report_total_volume", lang_code).format(volume=volume_str)
         account_lines.append(escape_markdown(volume_line))
+        
         usage_str = f"{info.get('current_usage_GB', 0):.2f} GB"
         usage_line = get_string("fmt_report_used_volume", lang_code).format(usage=usage_str)
         account_lines.append(escape_markdown(usage_line))
+        
         remaining_str = f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB"
         remaining_line = get_string("fmt_report_remaining_volume", lang_code).format(remaining=remaining_str)
         account_lines.append(escape_markdown(remaining_line))
+        
         account_lines.append(escape_markdown(get_string("fmt_report_daily_usage_header", lang_code)))
         
         breakdown = info.get('breakdown', {})
@@ -148,7 +151,9 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             expire_word = "روز"
             expire_str = f"{expire_days} {escape_markdown(expire_word)}" if expire_days >= 0 else escape_markdown(get_string("fmt_status_expired", lang_code))
         
-        account_lines.append(escape_markdown(get_string("fmt_report_expiry", lang_code)).format(expiry=expire_str))
+        expiry_line = get_string("fmt_report_expiry", lang_code).format(expiry=expire_str)
+        account_lines.append(escape_markdown(expiry_line))
+
         accounts_reports.append("\n".join(account_lines))
     
     final_report = "\n\n".join(accounts_reports)
@@ -306,3 +311,119 @@ def fmt_user_usage_history(history: list, user_name: str, lang_code: str) -> str
         lines.append(f"`{date_shamsi}`: *{escape_markdown(usage_formatted)}*")
         
     return "\n".join(lines)
+
+def fmt_inline_result(info: dict) -> tuple[str, str]:
+    """Formats user info for an inline query result. Returns (text, parse_mode)."""
+    if not info:
+        return ("❌ اطلاعات کاربر یافت نشد.", None)
+
+    # ایمپورت کردن توابع مورد نیاز
+    from .utils import escape_markdown, create_progress_bar, format_daily_usage, to_shamsi, days_until_next_birthday
+    from .database import db
+    
+    name = escape_markdown(info.get("name", "کاربر ناشناس"))
+    status = "✅" if info.get("is_active") else "❌"
+    user_uuid = info.get("uuid", "")
+    uuid_escaped = escape_markdown(user_uuid)
+
+    limit_gb = info.get("usage_limit_GB", 0)
+    usage_gb = info.get("current_usage_GB", 0)
+    remaining_gb = max(0, limit_gb - usage_gb)
+    usage_percentage = info.get("usage_percentage", 0)
+    limit_gb_str = escape_markdown(f'{limit_gb:.2f}'.replace('.00', ''))
+
+    expire_days = info.get("expire")
+    expire_text = "نامحدود" if expire_days is None else (f"{expire_days} روز" if expire_days >= 0 else "منقضی شده")
+    expire_text = escape_markdown(expire_text)
+
+    daily_usage_gb = 0
+    if user_uuid:
+        daily_usage_dict = db.get_usage_since_midnight_by_uuid(user_uuid)
+        daily_usage_gb = sum(daily_usage_dict.values())
+    daily_usage_str = escape_markdown(format_daily_usage(daily_usage_gb))
+
+    birthday_text = ""
+    access_text = ""
+    vip_text = ""
+    if user_uuid:
+        user_record = db.get_user_uuid_record(user_uuid)
+        if user_record:
+            if user_record.get('is_vip'):
+                vip_text = f" *کاربر ویژه : * ✅"
+            
+            access_flags = []
+            if user_record.get('has_access_de'):
+                access_flags.append("🇩🇪")
+            if user_record.get('has_access_fr'):
+                access_flags.append("🇫🇷")
+            if user_record.get('has_access_tr'):
+                access_flags.append("🇹🇷")
+            
+            if access_flags:
+                access_text = f" سرورها : *{''.join(access_flags)}*"
+            
+            if user_record.get('user_id'):
+                db_user = db.user(user_record['user_id'])
+                if db_user and db_user.get('birthday'):
+                    birthday_date = db_user['birthday']
+                    shamsi_birthday = to_shamsi(birthday_date)
+                    remaining_days = days_until_next_birthday(birthday_date)
+                    remaining_days_str = "امروز" if remaining_days == 0 else f"{remaining_days} روز مانده"
+                    birthday_text = f"🎂 تولد : *{escape_markdown(shamsi_birthday)}* \\({escape_markdown(remaining_days_str)}\\)"
+
+    lines = [
+        f"📊 *آمار کاربر : {name}*",
+        f"`──────────────────`",
+        f" وضعیت : *{status}*",
+    ]
+
+    if vip_text:
+        lines.append(vip_text)
+    if access_text:
+        lines.append(access_text)
+    
+    lines.append(f"📅 انقضا : *{expire_text}*")
+
+    if birthday_text:
+        lines.append(birthday_text)
+
+    lines.extend([
+        f"📦 حجم کل : *{limit_gb_str} GB*",
+        f"⚡️ مصرف امروز : *{daily_usage_str}*",
+        f"📥 حجم باقیمانده : *{escape_markdown(f'{remaining_gb:.2f}')} GB*",
+        f" bar",
+        f"`{uuid_escaped}`"
+    ])
+
+    final_text = "\n".join(lines)
+    progress_bar = create_progress_bar(usage_percentage)
+    final_text = final_text.replace(" bar", progress_bar)
+
+    return final_text, "MarkdownV2"
+
+def fmt_smart_list_inline_result(users: list, title: str) -> tuple[str, str]:
+    """Formats a smart list of users for an inline query result."""
+    from .utils import escape_markdown
+    
+    title_escaped = escape_markdown(title)
+    lines = [f"📊 *{title_escaped}*"]
+
+    if not users:
+        lines.append("\n_موردی یافت نشد._")
+        return "\n".join(lines), "MarkdownV2"
+
+    for user in users:
+        name = escape_markdown(user.get('name', 'کاربر ناشناس'))
+        expire_days = user.get('expire')
+        usage_gb = user.get('current_usage_GB', 0)
+        
+        details = []
+        if expire_days is not None:
+            expire_str = f"{expire_days} day" if expire_days >= 0 else "expired"
+            details.append(f"📅 {expire_str}")
+            
+        details.append(f"📥 {usage_gb:.2f} GB")
+
+        lines.append(f"`•` *{name}* \\({escape_markdown(' | '.join(details))}\\)")
+    
+    return "\n".join(lines), "MarkdownV2"

@@ -533,23 +533,22 @@ def handle_payment_history(call, params):
         bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
         return
 
-    panel_short = 'h' if bool(info.get('breakdown', {}).get('hiddify')) else 'm'
+    # --- بخش اصلی اصلاح شده ---
+    # از یک تابع جامع‌تر برای گرفتن اطلاعات پرداخت استفاده می‌کنیم
+    all_payments = db.get_all_payments_with_user_info()
+    # لیست پرداخت‌ها را فقط برای UUID کاربر مورد نظر فیلتر می‌کنیم
+    user_payments = [p for p in all_payments if p.get('uuid') == info['uuid']]
     
-    uuid_id = db.get_uuid_id_by_uuid(info['uuid'])
-    if not uuid_id:
-        back_cb = f"admin:us:{panel_short}:{identifier}{context_suffix}"
-        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_cb))
-        _safe_edit(uid, msg_id, "❌ کاربر در دیتابیس ربات یافت نشد.", reply_markup=kb)
-        return
-
-    payment_history = db.get_user_payment_history(uuid_id)
     user_name_raw = info.get('name', 'کاربر ناشناس')
-    text = fmt_user_payment_history(payment_history, user_name_raw, page)
+    # لیست فیلتر شده را به تابع قالب‌بندی ارسال می‌کنیم
+    text = fmt_user_payment_history(user_payments, user_name_raw, page)
+    # --- پایان بخش اصلاح شده ---
 
+    panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
     base_cb = f"admin:phist:{identifier}"
     back_cb_pagination = f"admin:us:{panel_short}:{identifier}{context_suffix}"
     
-    kb = menu.create_pagination_menu(base_cb, page, len(payment_history), back_cb_pagination, context=context)
+    kb = menu.create_pagination_menu(base_cb, page, len(user_payments), back_cb_pagination, context=context)
     _safe_edit(uid, msg_id, text, reply_markup=kb)
 
 
