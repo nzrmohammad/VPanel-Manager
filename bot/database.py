@@ -1011,52 +1011,6 @@ class DatabaseManager:
         with self._conn() as c:
             res = c.execute("DELETE FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),))
             return res.rowcount > 0
-    def get_new_users_per_month_stats(self, months: int = 6) -> List[Dict[str, Any]]:
-        """آمار کاربران جدید در هر ماه را برای نمودار باز می‌گرداند."""
-        query = f"""
-            SELECT
-                strftime('%Y-%m', created_at) as month,
-                COUNT(id) as count
-            FROM user_uuids
-            GROUP BY month
-            ORDER BY month DESC
-            LIMIT {months};
-        """
-        with self._conn() as c:
-            rows = c.execute(query).fetchall()
-            # نتیجه را برعکس می‌کنیم تا ترتیب ماه‌ها برای نمایش در نمودار درست باشد
-            return [dict(r) for r in reversed(rows)]
-        
-    def get_revenue_by_month(self, months: int = 6) -> List[Dict[str, Any]]:
-        """درآمد ماهانه را (بر اساس تعداد پرداخت) برای نمودار MRR محاسبه می‌کند."""
-        query = f"""
-            SELECT
-                strftime('%Y-%m', payment_date) as month,
-                COUNT(payment_id) as revenue_unit
-            FROM payments
-            GROUP BY month
-            ORDER BY month DESC
-            LIMIT {months};
-        """
-        with self._conn() as c:
-            rows = c.execute(query).fetchall()
-            return [dict(r) for r in reversed(rows)]
-
-    def get_daily_active_users_count(self, days: int = 30) -> List[Dict[str, Any]]:
-        """تعداد کاربران فعال یکتا در هر روز را بر اساس اسنپ‌شات‌های مصرف محاسبه می‌کند."""
-        date_limit = datetime.now(pytz.utc) - timedelta(days=days)
-        query = """
-            SELECT
-                DATE(taken_at) as date,
-                COUNT(DISTINCT uuid_id) as active_users
-            FROM usage_snapshots
-            WHERE taken_at >= ?
-            GROUP BY date
-            ORDER BY date ASC;
-        """
-        with self._conn() as c:
-            rows = c.execute(query, (date_limit,)).fetchall()
-            return [dict(r) for r in rows]
         
     def purge_user_by_telegram_id(self, user_id: int) -> bool:
         """
@@ -1218,5 +1172,11 @@ class DatabaseManager:
                 (int(status), uuid_id)
             )
             return cursor.rowcount > 0
+
+    def get_panel_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Retrieves a single panel's details by its unique name."""
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM panels WHERE name = ?", (name,)).fetchone()
+            return dict(row) if row else None
 
 db = DatabaseManager()

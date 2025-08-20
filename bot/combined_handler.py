@@ -70,18 +70,43 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
             continue
 
         for user in panel_users:
-            uuid = user.get('uuid')
-            identifier = uuid or f"marzban_{user.get('name')}"
+            # <<<<<<< START OF FIX: Robust Identifier Logic >>>>>>>>>
+            identifier = None
+            uuid = None
+
+            if panel_config['panel_type'] == 'hiddify':
+                uuid = user.get('uuid')
+                identifier = uuid
+            elif panel_config['panel_type'] == 'marzban':
+                marzban_username = user.get('username')
+                # Try to find a linked Hiddify UUID for this Marzban user.
+                linked_uuid = db.get_uuid_by_marzban_username(marzban_username)
+                if linked_uuid:
+                    identifier = linked_uuid
+                    uuid = linked_uuid
+                else:
+                    # This is a Marzban-only user with no mapping.
+                    identifier = f"marzban_{marzban_username}"
+                    uuid = None # No UUID for this user.
+            
+            if not identifier:
+                continue # Skip user if no identifier could be determined.
+            # <<<<<<< END OF FIX: Robust Identifier Logic >>>>>>>>>
             
             if identifier not in all_users_map:
                 all_users_map[identifier] = {
-                    'uuid': uuid,
+                    'uuid': uuid, # Use the determined UUID
                     'is_active': False, 'expire': None,
                     'last_online': None,
                     'current_usage_GB': 0, 'usage_limit_GB': 0,
                     'breakdown': {},
                     'panels': set()
                 }
+
+            # If we're processing a Hiddify user for an entry that was created by Marzban,
+            # make sure the 'uuid' field gets populated.
+            if uuid and not all_users_map[identifier].get('uuid'):
+                 all_users_map[identifier]['uuid'] = uuid
 
             all_users_map[identifier]['breakdown'][panel_name] = {
                 "data": user,
@@ -105,11 +130,32 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
     
     return _process_and_merge_user_data(all_users_map)
 
+
 def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
     """اطلاعات یک کاربر خاص را از تمام پنل‌های فعال دریافت می‌کند."""
     is_uuid = validate_uuid(identifier)
     all_panels = db.get_active_panels()
     
+    # <<<<<<< START OF FIX: Smart Identifier Resolution >>>>>>>>>
+    # If the identifier is a Marzban username, try to find its linked UUID.
+    # We will use the UUID to query Hiddify.
+    hiddify_uuid_to_query = None
+    marzban_username_to_query = None
+
+    # <<<<<<< START OF FIX: Smart Identifier Resolution >>>>>>>>>
+    hiddify_uuid_to_query = None
+    marzban_username_to_query = None
+
+    if is_uuid:
+        # If we have a UUID, we use it for Hiddify and find the linked Marzban username.
+        hiddify_uuid_to_query = identifier
+        marzban_username_to_query = db.get_marzban_username_by_uuid(identifier)
+    else:
+        # If we have a name, assume it might be a Marzban username and find its linked UUID.
+        marzban_username_to_query = identifier
+        hiddify_uuid_to_query = db.get_uuid_by_marzban_username(identifier)
+    # <<<<<<< END OF FIX: Smart Identifier Resolution >>>>>>>>>
+
     user_data_map = {}
 
     for panel_config in all_panels:
@@ -117,13 +163,19 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
         if not handler: continue
 
         user_info = None
-        # منطق پیدا کردن کاربر بر اساس نوع پنل
-        if panel_config['panel_type'] == 'hiddify' and is_uuid:
-            user_info = handler.user_info(identifier)
-        elif panel_config['panel_type'] == 'marzban':
-            marzban_username = db.get_marzban_username_by_uuid(identifier) if is_uuid else identifier
-            if marzban_username:
-                user_info = handler.get_user_by_username(marzban_username)
+        # Use the specific identifiers we determined earlier.
+        if panel_config['panel_type'] == 'hiddify' and hiddify_uuid_to_query:
+            user_info = handler.user_info(hiddify_uuid_to_query)
+        elif panel_config['panel_type'] == 'marzban' and marzban_username_to_query:
+            user_info = handler.get_user_by_username(marzban_username_to_query)
+        # If it's a hiddify-only user searched by name, and we didn't get a UUID, this might fail.
+        # This highlights the importance of using UUIDs as the primary search key.
+        elif panel_config['panel_type'] == 'hiddify' and not is_uuid:
+             # This is a fallback and might not always work if names are not unique as UUIDs.
+             # For now, we assume search by name that isn't a marzban user is a hiddify user.
+             # A more robust solution would require a different approach.
+             pass # We avoid querying hiddify by name to prevent ambiguity. UUID is preferred.
+
 
         if user_info:
             user_data_map[panel_config['name']] = {
@@ -134,44 +186,32 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
     if not user_data_map:
         return None
     
-    all_online_times = [
-        p['data'].get('last_online')
-        for p in user_data_map.values()
-        if p['data'].get('last_online')
-    ]
+    # The rest of the function remains the same...
+    all_online_times = [ p['data'].get('last_online') for p in user_data_map.values() if p['data'].get('last_online') ]
     most_recent_online = max(all_online_times) if all_online_times else None
-    # --- END: FIX ---
 
-    # --- START OF FIX ---
-    # ترکیب اطلاعات پیدا شده با منطق اصلاح شده
     final_info = {
         'breakdown': user_data_map,
         'is_active': any(p['data'].get('is_active') for p in user_data_map.values()),
         'last_online': most_recent_online,
         'current_usage_GB': sum(p['data'].get('current_usage_GB', 0) for p in user_data_map.values()),
         'usage_limit_GB': sum(p['data'].get('usage_limit_GB', 0) for p in user_data_map.values()),
-        # انتخاب کمترین (زودترین) تاریخ انقضا به عنوان تاریخ انقضای نهایی
         'expire': min([p['data'].get('expire') for p in user_data_map.values() if p['data'].get('expire') is not None] or [None]),
-        'uuid': identifier if is_uuid else next((p['data'].get('uuid') for p in user_data_map.values() if p['data'].get('uuid')), None),
+        'uuid': hiddify_uuid_to_query or next((p['data'].get('uuid') for p in user_data_map.values() if p['data'].get('uuid')), None),
         'name': identifier if not is_uuid else next((p['data'].get('name') for p in user_data_map.values() if p['data'].get('name')), "کاربر ناشناس")
     }
-    # --- END OF FIX ---
     
     limit = final_info['usage_limit_GB']
     usage = final_info['current_usage_GB']
     final_info['remaining_GB'] = max(0, limit - usage)
     final_info['usage_percentage'] = (usage / limit * 100) if limit > 0 else 0
     final_info['usage'] = {
-    'total_usage_GB': final_info.get('current_usage_GB', 0),
-    'data_limit_GB': final_info.get('usage_limit_GB', 0)
-}
+        'total_usage_GB': final_info.get('current_usage_GB', 0),
+        'data_limit_GB': final_info.get('usage_limit_GB', 0)
+    }
     
-    final_info['usage'] = {
-    'total_usage_GB': final_info.get('current_usage_GB', 0),
-    'data_limit_GB': final_info.get('usage_limit_GB', 0)
-}
-
     return final_info
+
 
 def search_user(query: str) -> List[Dict[str, Any]]:
     """یک کاربر را در تمام پنل‌های فعال جستجو می‌کند."""

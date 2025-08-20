@@ -17,35 +17,35 @@ def initialize_user_management_handlers(b, conv_dict):
     bot = b
     admin_conversations = conv_dict
 
-
 def handle_show_user_summary(call, params):
-    panel_map = {'h': 'hiddify', 'm': 'marzban'}
-    back_map = {'mgt': 'management_menu', 'search': 'search_menu'}
-
-    panel_short = params[0]
-    identifier = params[1]
-    panel = panel_map.get(panel_short, 'hiddify')
-
-    back_callback = None
-
-    if len(params) > 2 and params[2] in back_map:
-        back_callback = f"admin:{back_map[params[2]]}"
-
+    # <<<<<<< START OF FIX: Correctly parse params and pass panel_type to menu >>>>>>>>>
+    identifier = params[0]
+    back_target = params[1] if len(params) > 1 else 'management_menu'
+    
     info = combined_handler.get_combined_user_info(identifier)
-    if info:
-        db_user = None
-        if info.get('uuid'):
-            user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
-            if user_telegram_id:
-                db_user = db.user(user_telegram_id)
-
-        text = fmt_admin_user_summary(info, db_user)
-        kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel,
-                                                    back_callback=back_callback)
-        _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
-    else:
+    if not info:
         _safe_edit(call.from_user.id, call.message.message_id, escape_markdown("خطا در دریافت اطلاعات کاربر."),
-                   reply_markup=menu.admin_panel_management_menu(panel))
+                   reply_markup=menu.admin_search_menu()) 
+        return
+
+    db_user = None
+    if info.get('uuid'):
+        user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+        if user_telegram_id:
+            db_user = db.user(user_telegram_id)
+
+    text = fmt_admin_user_summary(info, db_user)
+    
+    back_callback = f"admin:{back_target}" if back_target in ['search_menu', 'management_menu'] else "admin:search_menu"
+    
+    # Determine the panel type to pass to the menu function
+    panel_type = 'hiddify' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'marzban'
+
+    # The missing 'panel' argument is now added
+    kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel_type, back_callback=back_callback)
+    
+    _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
+    # <<<<<<< END OF FIX >>>>>>>>>
 
 
 def handle_edit_user_menu(call, params):
@@ -201,24 +201,51 @@ def handle_toggle_status_action(call, params):
     h_success, m_success = True, True
     breakdown = info.get('breakdown', {})
 
-    if panel_to_toggle in ['hiddify', 'both'] and 'hiddify' in breakdown:
-        current_status_h = breakdown['hiddify'].get('is_active', False)
-        new_status_h = not current_status_h
-        h_success = combined_handler.hiddify_handler.modify_user(info['uuid'], data={'enable': new_status_h})
+    # --- Hiddify Toggle Logic ---
+    if panel_to_toggle in ['hiddify', 'both'] and any(p.get('type') == 'hiddify' for p in breakdown.values()):
+        hiddify_details = next((p for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+        if hiddify_details and info.get('uuid'):
+            current_status_h = hiddify_details['data'].get('is_active', False)
+            new_status_h = not current_status_h
+            panel_name = next((name for name, details in breakdown.items() if details.get('type') == 'hiddify'), None)
+            panel_config = db.get_panel_by_name(panel_name)
+            if panel_config:
+                handler = combined_handler._get_handler_for_panel(panel_config)
+                if handler: h_success = handler.modify_user(info['uuid'], data={'enable': new_status_h})
 
-    if panel_to_toggle in ['marzban', 'both'] and 'marzban' in breakdown:
-        current_status_m = breakdown['marzban'].get('is_active', False)
-        new_status_m = not current_status_m
-        m_success = combined_handler.marzban_handler.modify_user(info['name'], data={'status': 'active' if new_status_m else 'disabled'})
+    # --- Marzban Toggle Logic ---
+    if panel_to_toggle in ['marzban', 'both'] and any(p.get('type') == 'marzban' for p in breakdown.values()):
+        marzban_details = next((p for p in breakdown.values() if p.get('type') == 'marzban'), None)
+        if marzban_details:
+            marzban_username = marzban_details['data'].get('username')
+            if marzban_username:
+                current_status_m = marzban_details['data'].get('is_active', False)
+                new_status_m = not current_status_m
+                panel_name = next((name for name, details in breakdown.items() if details.get('type') == 'marzban'), None)
+                panel_config = db.get_panel_by_name(panel_name)
+                if panel_config:
+                    handler = combined_handler._get_handler_for_panel(panel_config)
+                    if handler: m_success = handler.modify_user(marzban_username, data={'status': 'active' if new_status_m else 'disabled'})
 
     if h_success and m_success:
         bot.answer_callback_query(call.id, "✅ وضعیت با موفقیت تغییر کرد.")
         new_info = combined_handler.get_combined_user_info(identifier)
         if new_info:
-            back_callback = "admin:search_menu" if context == "search" else None
-            panel_for_menu = 'hiddify' if bool(new_info.get('breakdown', {}).get('hiddify')) else 'marzban'
-            kb = menu.admin_user_interactive_management(identifier, new_info['is_active'], panel_for_menu, back_callback=back_callback)
-            _safe_edit(call.from_user.id, call.message.message_id, fmt_admin_user_summary(new_info), reply_markup=kb)
+            back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
+            
+            # <<<<<<< START OF FIX: Correctly determine and pass panel_type to menu >>>>>>>>>
+            panel_type = 'hiddify' if any(p.get('type') == 'hiddify' for p in new_info.get('breakdown', {}).values()) else 'marzban'
+            
+            db_user = None
+            if new_info.get('uuid'):
+                user_telegram_id = db.get_user_id_by_uuid(new_info['uuid'])
+                if user_telegram_id: db_user = db.user(user_telegram_id)
+            
+            text = fmt_admin_user_summary(new_info, db_user)
+            # The missing 'panel' argument is now added
+            kb = menu.admin_user_interactive_management(identifier, new_info.get('is_active', False), panel_type, back_callback=back_callback)
+            _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
+            # <<<<<<< END OF FIX >>>>>>>>>
     else:
         bot.answer_callback_query(call.id, "❌ عملیات در یک یا هر دو پنل ناموفق بود.", show_alert=True)
 
@@ -368,48 +395,41 @@ def _handle_global_search_response(message: types.Message):
         if len(results) == 1:
             user = results[0]
             identifier = user.get('uuid') or user.get('name')
-            info = combined_handler.get_combined_user_info(identifier)
-            if info:
-                db_user = None
-                if info.get('uuid'):
-                    user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
-                    if user_telegram_id:
-                        db_user = db.user(user_telegram_id)
-
-                panel = user.get('panel', 'hiddify')
-                text = fmt_admin_user_summary(info, db_user)
-                kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel,
-                                                            back_callback="admin:search_menu")
-                _safe_edit(uid, original_msg_id, text, reply_markup=kb)
+            
+            db_user = None
+            if user.get('uuid'):
+                user_telegram_id = db.get_user_id_by_uuid(user['uuid'])
+                if user_telegram_id:
+                    db_user = db.user(user_telegram_id)
+            
+            panel_type = 'hiddify' if any(p.get('type') == 'hiddify' for p in user.get('breakdown', {}).values()) else 'marzban'
+            text = fmt_admin_user_summary(user, db_user)
+            kb = menu.admin_user_interactive_management(identifier, user.get('is_active', False), panel_type,
+                                                        back_callback="admin:search_menu")
+            _safe_edit(uid, original_msg_id, text, reply_markup=kb)
         else:
             kb = types.InlineKeyboardMarkup()
             for user in results:
                 breakdown = user.get('breakdown', {})
-                on_hiddify = bool(breakdown.get('hiddify'))
-                on_marzban = bool(breakdown.get('marzban'))
-
                 panel_flags = ""
-                if on_hiddify and on_marzban:
-                    panel_flags = "🇩🇪🇫🇷"
-                elif on_hiddify:
-                    panel_flags = "🇩🇪"
-                elif on_marzban:
-                    panel_flags = "🇫🇷"
+                if any(p.get('type') == 'hiddify' for p in breakdown.values()): panel_flags += "🇩🇪"
+                if any(p.get('type') == 'marzban' for p in breakdown.values()): panel_flags += "🇫🇷"
 
-                identifier = user.get('uuid') or user.get('name')
+                # <<<<<<< START OF FIX #3: CRITICAL - Use UUID for the callback identifier >>>>>>>>>
+                # This ensures that when the user is clicked, we use the reliable UUID.
+                identifier_for_callback = user.get('uuid') or user.get('name')
+                
                 limit = user.get('usage_limit_GB', 0)
                 usage = user.get('current_usage_GB', 0)
                 status_emoji = "🟢" if user.get('is_active') else "🔴"
-
-                usage_str = f"{usage:.1f}"
-                limit_str = f"{limit:.1f}"
-                button_text = f"{status_emoji} {panel_flags} {user['name']} ({usage_str}/{limit_str} GB)"
-
-                panel = user.get('panel', 'hiddify')
-                panel_short = 'h' if panel == 'hiddify' else 'm'
-                callback_data = f"admin:us:{panel_short}:{identifier}:search"
-
+                button_text = f"{status_emoji} {panel_flags} {user['name']} ({usage:.1f}/{limit:.1f} GB)".strip()
+                
+                panel_type_for_cb = 'hiddify' if any(p.get('type') == 'hiddify' for p in breakdown.values()) else 'marzban'
+                panel_short = 'h' if panel_type_for_cb == 'hiddify' else 'm'
+                
+                callback_data = f"admin:us:{panel_short}:{identifier_for_callback}:search"
                 kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+                # <<<<<<< END OF FIX #3 >>>>>>>>>
 
             back_to_search_btn = types.InlineKeyboardButton("🔎 جستجوی جدید", callback_data="admin:sg")
             back_to_menu_btn = types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu")
@@ -609,57 +629,69 @@ def _find_user_by_telegram_id(message: types.Message):
 
     if admin_id not in admin_conversations: return
 
-    convo = admin_conversations.pop(admin_id, {})
+    # <<<<<<< FIX START >>>>>>>>>
+    # Don't pop the conversation yet, so we can check/set a flag.
+    convo = admin_conversations[admin_id]
     msg_id = convo['msg_id']
 
     try:
         target_user_id = int(text)
+        # On success, now we pop the conversation.
+        admin_conversations.pop(admin_id, None)
+        
+        _safe_edit(admin_id, msg_id, escape_markdown("⏳ در حال جستجو..."))
+
+        user_uuids = db.uuids(target_user_id)
+        if not user_uuids:
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
+            _safe_edit(admin_id, msg_id, escape_markdown(f"❌ هیچ اکانتی برای کاربر با شناسه {target_user_id} یافت نشد."), reply_markup=kb)
+            # Put conversation back to allow another try
+            admin_conversations[admin_id] = {'action_type': 'search_by_tid', 'msg_id': msg_id}
+            bot.register_next_step_handler_by_chat_id(admin_id, _find_user_by_telegram_id)
+            return
+
+        # (The rest of the success logic for finding one or multiple users remains the same)
+        if len(user_uuids) == 1:
+            uuid_str = user_uuids[0]['uuid']
+            info = combined_handler.get_combined_user_info(uuid_str)
+            if info:
+                db_user = db.user(target_user_id)
+                panel = 'hiddify' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'marzban'
+                text = fmt_admin_user_summary(info, db_user)
+                kb = menu.admin_user_interactive_management(uuid_str, info.get('is_active', False), panel, back_callback="admin:search_menu")
+                _safe_edit(admin_id, msg_id, text, reply_markup=kb)
+            else:
+                _safe_edit(admin_id, msg_id, escape_markdown("❌ خطا در دریافت اطلاعات از پنل."), reply_markup=menu.admin_search_menu())
+            return
+
+        kb = types.InlineKeyboardMarkup()
+        db_user = db.user(target_user_id)
+        first_name = escape_markdown(db_user.get('first_name', f"کاربر {target_user_id}"))
+
+        for row in user_uuids:
+            button_text = f"👤 {row.get('name', 'اکانت ناشناس')}"
+            info = combined_handler.get_combined_user_info(row['uuid'])
+            if info:
+                panel = 'hiddify' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'marzban'
+                panel_short = 'h' if panel == 'hiddify' else 'm'
+                kb.add(types.InlineKeyboardButton(button_text, callback_data=f"admin:us:{panel_short}:{row['uuid']}:search"))
+
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
+        prompt = f"چندین اکانت برای کاربر *{first_name}* یافت شد. لطفاً یکی را انتخاب کنید:"
+        _safe_edit(admin_id, msg_id, escape_markdown(prompt), reply_markup=kb)
+
+
     except ValueError:
-        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به جستجو", callback_data="admin:search_menu"))
-        _safe_edit(admin_id, msg_id, escape_markdown("❌ شناسه وارد شده نامعتبر است. لطفاً یک عدد وارد کنید."), reply_markup=kb)
-        admin_conversations[admin_id] = {'action_type': 'search_by_tid', 'msg_id': msg_id}
+        # Only edit the message to show the error if it hasn't been shown before.
+        if not convo.get('invalid_id_error_sent'):
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به جستجو", callback_data="admin:search_menu"))
+            _safe_edit(admin_id, msg_id, escape_markdown("❌ شناسه وارد شده نامعتبر است. لطفاً یک عدد وارد کنید."), reply_markup=kb)
+            # Set the flag in the conversation to prevent re-editing.
+            admin_conversations[admin_id]['invalid_id_error_sent'] = True
+        
+        # Re-register the handler to wait for the next input.
         bot.register_next_step_handler_by_chat_id(admin_id, _find_user_by_telegram_id)
         return
-
-    _safe_edit(admin_id, msg_id, escape_markdown("⏳ در حال جستجو..."))
-
-    user_uuids = db.uuids(target_user_id)
-    if not user_uuids:
-        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
-        _safe_edit(admin_id,msg_id,escape_markdown(f"❌ هیچ اکانتی برای کاربر با شناسه {target_user_id} یافت نشد."),reply_markup=kb)
-        admin_conversations[admin_id] = {'action_type': 'search_by_tid', 'msg_id': msg_id}
-        bot.register_next_step_handler_by_chat_id(admin_id, _find_user_by_telegram_id)
-        return
-
-    if len(user_uuids) == 1:
-        uuid_str = user_uuids[0]['uuid']
-        info = combined_handler.get_combined_user_info(uuid_str)
-        if info:
-            db_user = db.user(target_user_id)
-            panel = 'hiddify' if bool(info.get('breakdown', {}).get('hiddify')) else 'marzban'
-            text = fmt_admin_user_summary(info, db_user)
-            kb = menu.admin_user_interactive_management(uuid_str, info.get('is_active', False), panel, back_callback="admin:search_menu")
-            _safe_edit(admin_id, msg_id, text, reply_markup=kb)
-        else:
-            _safe_edit(admin_id, msg_id, escape_markdown("❌ خطا در دریافت اطلاعات از پنل."), reply_markup=menu.admin_search_menu())
-        return
-
-    kb = types.InlineKeyboardMarkup()
-    db_user = db.user(target_user_id)
-    first_name = escape_markdown(db_user.get('first_name', f"کاربر {target_user_id}"))
-
-    for row in user_uuids:
-        button_text = f"👤 {row.get('name', 'اکانت ناشناس')}"
-        info = combined_handler.get_combined_user_info(row['uuid'])
-        if info:
-            panel = 'hiddify' if bool(info.get('breakdown', {}).get('hiddify')) else 'marzban'
-            panel_short = 'h' if panel == 'hiddify' else 'm'
-            kb.add(types.InlineKeyboardButton(button_text, callback_data=f"admin:us:{panel_short}:{row['uuid']}:search"))
-
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
-
-    prompt = f"چندین اکانت برای کاربر *{first_name}* یافت شد. لطفاً یکی را انتخاب کنید:"
-    _safe_edit(admin_id, msg_id, escape_markdown(prompt), reply_markup=kb)
 
 
 def handle_select_panel_for_edit(call, params):

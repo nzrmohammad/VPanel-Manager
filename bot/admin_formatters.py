@@ -5,7 +5,7 @@ from .config import EMOJIS, PAGE_SIZE
 from .database import db
 from .utils import (
     format_daily_usage, escape_markdown,
-    format_relative_time , to_shamsi, days_until_next_birthday
+    format_relative_time , to_shamsi, days_until_next_birthday, create_progress_bar 
 )
 
 def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
@@ -17,37 +17,41 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
 
     report = []
     
-    # بخش ۱: اطلاعات کلی و هدر
     name = esc(info.get("name", "کاربر ناشناس"))
-    is_active = info.get('is_active', False)
-    status_text = "فعال 🟢" if is_active else "غیرفعال 🔴"
-    report.append(f"👤 *نام:* {name}  \\(وضعیت کلی: {status_text}\\)")
+    is_active_overall = info.get('is_active', False)
+    status_text_overall = "فعال 🟢" if is_active_overall else "غیرفعال 🔴"
+    report.append(f"👤 *نام:* {name}  \\(وضعیت کلی: {status_text_overall}\\)")
 
     if db_user and db_user.get('admin_note'):
         report.append(f"🗒️ *یادداشت:* {esc(db_user['admin_note'])}")
     
     report.append("")
 
-    # بخش ۲: جزئیات هر پنل
     breakdown = info.get('breakdown', {})
 
+    # <<<<<<< START OF FIX: Show individual panel status >>>>>>>>>
     def panel_block(panel_data, panel_name_str):
-        status = "فعال 🟢" if panel_data.get('is_active') else "غیرفعال 🔴"
+        # Use the specific status of the panel from its own data
+        is_panel_active = panel_data.get('is_active', False)
+        status_text_panel = "فعال 🟢" if is_panel_active else "غیرفعال 🔴"
+        
         limit = panel_data.get('usage_limit_GB', 0)
         usage = panel_data.get('current_usage_GB', 0)
         
+        title = esc(panel_name_str)
+        
         return [
-            f"*{esc(panel_name_str)}* \\(وضعیت: {status}\\)",
+            f"*{title}* \\(وضعیت: {status_text_panel}\\)",
             f"▫️ {esc('حجم:')} `{esc(f'{usage:g}')}` / `{esc(f'{limit:g} GB')}`",
             f"▫️ {esc('آخرین اتصال:')} `{esc(to_shamsi(panel_data.get('last_online'), include_time=True))}`",
             ""
         ]
+    # <<<<<<< END OF FIX >>>>>>>>>
 
     for panel_name, panel_details in breakdown.items():
         panel_data = panel_details.get('data', {})
         report.extend(panel_block(panel_data, panel_name))
 
-    # بخش ۳: اطلاعات نهایی و مشترک
     expire_days = info.get("expire")
     if expire_days is not None:
         expire_label = esc(f"{int(expire_days)} روز") if expire_days >= 0 else "منقضی شده"
@@ -57,6 +61,7 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
         report.append(f"🔑 *شناسه:* `{esc(info['uuid'])}`")
 
     return "\n".join(report).strip()
+
 
 def fmt_users_list(users: list, list_type: str, page: int) -> str:
     title_map = {

@@ -67,15 +67,16 @@ ONLINE_PAYMENT_LINK = ""
 TUTORIAL_LINKS = {
     "android": {
         "v2rayng": "https://telegra.ph/Your-V2rayNG-Tutorial-Link-Here-01-01",
-        "hiddify_next": "https://telegra.ph/Your-HiddifyNext-Tutorial-Link-Here-01-01"
+        "hiddify": "https://telegra.ph/Your-HiddifyNext-Tutorial-Link-Here-01-01"
     },
     "windows": {
         "v2rayn": "https://telegra.ph/Your-V2rayN-Tutorial-Link-Here-01-01",
-        "hiddify_next": "https://telegra.ph/Your-HiddifyNext-Win-Tutorial-Link-Here-01-01"
+        "hiddify": "https://telegra.ph/Your-HiddifyNext-Win-Tutorial-Link-Here-01-01"
     },
     "ios": {
         "streisand": "https://telegra.ph/Your-Streisand-Tutorial-Link-Here-01-01",
-        "shadowrocket": "https://telegra.ph/Your-Shadowrocket-Tutorial-Link-Here-01-01"
+        "shadowrocket": "https://telegra.ph/Your-Shadowrocket-Tutorial-Link-Here-01-01",
+        "hiddify": "https://telegra.ph/Your-HiddifyNext-Win-Tutorial-Link-Here-01-01"
     }
 }
 
