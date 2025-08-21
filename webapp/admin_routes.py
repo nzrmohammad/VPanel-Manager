@@ -341,3 +341,13 @@ def toggle_user_access_api():
         return jsonify({'success': True, 'message': 'وضعیت دسترسی تغییر کرد.'})
     else:
         return jsonify({'success': False, 'message': 'خطا در به‌روزرسانی دیتابیس.'}), 500
+    
+@admin_bp.route('/api/templates/toggle_random/<int:template_id>', methods=['POST'])
+@admin_required
+def toggle_template_random_api(template_id):
+    try:
+        db.toggle_template_random_pool(template_id)
+        return jsonify({'success': True, 'message': 'وضعیت عضویت در استخر تصادفی تغییر کرد.'})
+    except Exception as e:
+        logger.error(f"API Failed to toggle template random pool status {template_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت.'}), 500

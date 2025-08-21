@@ -23,42 +23,34 @@ class DatabaseManager:
     def _init_db(self) -> None:
         with self._conn() as c:
             try:
-                cursor = c.execute("PRAGMA table_info(user_uuids);")
-                columns = [row['name'] for row in cursor.fetchall()]
-
-                # یک تابع داخلی برای اضافه کردن ستون با مدیریت خطا
-                def add_column_if_not_exists(column_name, column_definition):
+                def add_column_if_not_exists(table, column_name, column_definition):
+                    cursor = c.execute(f"PRAGMA table_info({table});")
+                    columns = [row['name'] for row in cursor.fetchall()]
                     if column_name not in columns:
                         try:
-                            logger.info(f"Database Update: Adding '{column_name}' column...")
-                            c.execute(f"ALTER TABLE user_uuids ADD COLUMN {column_name} {column_definition};")
+                            logger.info(f"Database Update: Adding '{column_name}' column to {table}...")
+                            c.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_definition};")
                         except sqlite3.OperationalError as e:
-                            # اگر ستون از قبل وجود داشت (توسط یک worker دیگر اضافه شده)، خطا را نادیده بگیر
                             if "duplicate column name" in str(e):
-                                logger.warning(f"Column '{column_name}' already exists, likely added by another worker. Ignoring.")
+                                logger.warning(f"Column '{column_name}' already exists in {table}. Ignoring.")
                             else:
-                                raise e # اگر خطا چیز دیگری بود، آن را نمایش بده
+                                raise e
 
-                # اضافه کردن ستون‌ها با استفاده از تابع جدید
-                add_column_if_not_exists("has_access_de", "INTEGER DEFAULT 1")
-                add_column_if_not_exists("has_access_fr", "INTEGER DEFAULT 0")
-                add_column_if_not_exists("has_access_tr", "INTEGER DEFAULT 0")
+                # به‌روزرسانی جدول user_uuids
+                add_column_if_not_exists("user_uuids", "has_access_de", "INTEGER DEFAULT 1")
+                add_column_if_not_exists("user_uuids", "has_access_fr", "INTEGER DEFAULT 0")
+                add_column_if_not_exists("user_uuids", "has_access_tr", "INTEGER DEFAULT 0")
                 
+                # به‌روزرسانی جدول config_templates
+                add_column_if_not_exists("config_templates", "is_random_pool", "INTEGER DEFAULT 0")
+
                 logger.info("Database schema migration check complete.")
 
             except sqlite3.OperationalError as e:
                 if "no such table" not in str(e):
                     logger.error(f"Failed to update database schema: {e}")
-                    raise
             except Exception as e:
                 logger.error(f"An unexpected error occurred during schema migration: {e}")
-                raise
-            # --- END: Robust Database Migration Logic ---
-
-            except Exception as e:
-                logger.error(f"Failed to update database schema: {e}")
-                # If something goes wrong, we stop to avoid further issues.
-                raise
 
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -1178,5 +1170,18 @@ class DatabaseManager:
         with self._conn() as c:
             row = c.execute("SELECT * FROM panels WHERE name = ?", (name,)).fetchone()
             return dict(row) if row else None
+        
+    def toggle_template_random_pool(self, template_id: int) -> bool:
+        """وضعیت عضویت یک قالب در استخر انتخاب تصادفی را تغییر می‌دهد."""
+        with self._conn() as c:
+            cursor = c.execute("UPDATE config_templates SET is_random_pool = 1 - is_random_pool WHERE id = ?", (template_id,))
+            return cursor.rowcount > 0
+        
+    def get_templates_by_pool_status(self) -> tuple[list[dict], list[dict]]:
+        """قالب‌ها را به دو دسته عضو و غیرعضو در استخر تصادفی تقسیم می‌کند."""
+        all_templates = self.get_active_config_templates()
+        random_pool = [tpl for tpl in all_templates if tpl.get('is_random_pool')]
+        fixed_pool = [tpl for tpl in all_templates if not tpl.get('is_random_pool')]
+        return random_pool, fixed_pool
 
 db = DatabaseManager()

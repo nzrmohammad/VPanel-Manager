@@ -7,7 +7,9 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from .bot_instance import bot
 from .config import ADMIN_IDS
 from .combined_handler import get_all_users_combined, search_user
-from .user_formatters import fmt_inline_result, fmt_smart_list_inline_result
+from .user_formatters import fmt_inline_result, fmt_smart_list_inline_result, fmt_service_plans
+from .admin_formatters import fmt_card_info_inline
+from .utils import load_service_plans
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +19,10 @@ def register_inline_handlers(b):
 
     @bot.inline_handler(lambda query: query.from_user.id in ADMIN_IDS)
     def handle_admin_inline_query(inline_query: types.InlineQuery):
-        query = inline_query.query.strip()
+        query = inline_query.query.strip().lower()
 
         try:
+            # --- مدیریت درخواست کپی لینک (که قبلاً پیاده‌سازی شد) ---
             if query.startswith("copy_link:"):
                 parts = query.split(":", 2)
                 link_type = parts[1]
@@ -32,7 +35,6 @@ def register_inline_handlers(b):
                 elif link_type == "b64":
                     link_to_copy = f"{WEBAPP_BASE_URL}/user/sub/b64/{uuid}"
                 
-                # --- ✨ تغییر اصلی: قرار دادن لینک داخل بک‌تیک برای کپی شدن ---
                 message_content = f"`{link_to_copy}`"
                 
                 result = types.InlineQueryResultArticle(
@@ -41,15 +43,54 @@ def register_inline_handlers(b):
                     description="برای ارسال لینک در چت کلیک کنید.",
                     input_message_content=types.InputTextMessageContent(
                         message_text=message_content,
-                        parse_mode="MarkdownV2" # استفاده از Markdown برای فعال شدن بک‌تیک
+                        parse_mode="MarkdownV2"
                     )
                 )
                 bot.answer_inline_query(inline_query.id, [result], cache_time=1)
                 return
 
             results = []
-            if not query:
-                # منطق لیست‌های هوشمند (بدون تغییر باقی می‌ماند)
+            
+            # --- منطق کلمات کلیدی برای کارت و سرویس‌ها ---
+            if query in ["کارت", "card"]:
+                text, parse_mode = fmt_card_info_inline()
+                results.append(types.InlineQueryResultArticle(
+                    id='send_card_info',
+                    title="💳 ارسال اطلاعات کارت",
+                    description="اطلاعات کارت به کارت را در چت ارسال می‌کند.",
+                    input_message_content=types.InputTextMessageContent(
+                        message_text=text,
+                        parse_mode=parse_mode
+                    )
+                ))
+
+            elif query in ["سرویس", "سرویسها", "services", "plans"]:
+                all_plans = load_service_plans()
+                lang_code = 'fa'
+                
+                plan_categories = {
+                    "combined": {"title": "🚀 ارسال پلن‌های ترکیبی", "plans": []},
+                    "germany": {"title": "🇩🇪 ارسال پلن‌های آلمان", "plans": []},
+                    "france": {"title": "🇫🇷 ارسال پلن‌های فرانسه", "plans": []},
+                    "turkey": {"title": "🇹🇷 ارسال پلن‌های ترکیه", "plans": []} # دسته جدید ترکیه
+                }
+
+                for plan in all_plans:
+                    plan_type = plan.get("type")
+                    if plan_type in plan_categories:
+                        plan_categories[plan_type]["plans"].append(plan)
+
+                for key, value in plan_categories.items():
+                    if value["plans"]:
+                        text = fmt_service_plans(value["plans"], key, lang_code)
+                        results.append(types.InlineQueryResultArticle(
+                            id=f'send_plans_{key}', title=value["title"],
+                            description=f"تعداد: {len(value['plans'])} پلن",
+                            input_message_content=types.InputTextMessageContent(text, parse_mode="MarkdownV2")
+                        ))
+
+            elif not query:
+                # منطق لیست‌های هوشمند (بدون تغییر)
                 all_users = get_all_users_combined()
                 expiring_soon_users = [u for u in all_users if u.get('expire') is not None and 0 <= u['expire'] <= 3]
                 expiring_soon_users.sort(key=lambda u: u.get('expire', 99))
@@ -63,9 +104,9 @@ def register_inline_handlers(b):
                     list_text, parse_mode = fmt_smart_list_inline_result(top_consumers[:5], "پرمصرف‌ترین کاربران")
                     description = ", ".join([u.get('name', 'N/A') for u in top_consumers[:3]])
                     results.append(types.InlineQueryResultArticle(id='smart_list_top_consumers', title="🏆 پرمصرف‌ترین کاربران", description=description, input_message_content=types.InputTextMessageContent(message_text=list_text, parse_mode=parse_mode)))
-            
+
             else:
-                # منطق جستجوی عادی کاربر (بدون تغییر)
+                # منطق جستجوی کاربر (بدون تغییر)
                 found_users = search_user(query)
                 for i, user in enumerate(found_users[:10]):
                     keyboard = InlineKeyboardMarkup(row_width=2)

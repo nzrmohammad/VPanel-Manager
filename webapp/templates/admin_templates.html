@@ -34,7 +34,10 @@
     .action-btn.special-btn.active i::before {
         content: "\F1AC"; /* Remixicon filled star */
     }
-
+    .action-btn.random-pool-btn.active {
+        color: #f59e0b; /* همان رنگ زرد دکمه VIP */
+        background-color: rgba(245, 158, 11, 0.1);
+    }
     /* --- Server Type Selector Styles --- */
     .server-type-selector .action-btn {
         opacity: 0.3;
@@ -117,6 +120,7 @@
                                 
                                 <td style="text-align: center;">
                                     <button class="action-btn special-btn {% if tpl.is_special %}active{% endif %}" title="تغییر وضعیت ویژه (VIP)"><i class="ri-star-line"></i></button>
+                                    <button class="action-btn random-pool-btn {% if tpl.is_random_pool %}active{% endif %}" title="افزودن/حذف از استخر انتخاب تصادفی"><i class="ri-shuffle-line"></i></button>
                                     <button class="action-btn toggle-btn" title="تغییر وضعیت فعال/غیرفعال"><i class="ri-loop-left-line"></i></button>
                                     <button class="action-btn edit-btn" title="ویرایش"><i class="ri-pencil-line"></i></button>
                                     <button class="action-btn delete-btn" title="حذف"><i class="ri-delete-bin-line"></i></button>
@@ -252,7 +256,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 showFeedback(result.message, result.success);
                 if (result.success) { row.remove(); }
             });
-        } else if (button.classList.contains('server-type-btn')) {
+        } 
+        else if (button.classList.contains('random-pool-btn')) {
+            button.disabled = true;
+            fetch(`/admin/api/templates/toggle_random/${templateId}`, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken }
+            }).then(res => res.json()).then(result => {
+                if (result.success) {
+                    button.classList.toggle('active');
+                } else { showFeedback('خطا در تغییر وضعیت استخر تصادفی.', false); }
+            }).finally(() => { button.disabled = false; });
+        }
+        else if (button.classList.contains('server-type-btn')) {
             const type = button.dataset.type;
             fetch(`/admin/api/templates/set_server_type/${templateId}`, {
                 method: 'POST',

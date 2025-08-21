@@ -303,56 +303,72 @@ def create_info_config(user_uuid: str) -> Optional[str]:
 def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> list[str]:
     from . import combined_handler
     import urllib.parse
+    import random
+    from .config import RANDOM_SERVERS_COUNT
 
     user_info = combined_handler.get_combined_user_info(user_main_uuid)
     user_record = db.get_user_uuid_record(user_main_uuid)
-
     if not user_info or not user_record:
         logger.warning(f"Could not generate subscription for UUID {user_main_uuid}. User info or DB record not found.")
         return []
 
     user_settings = db.get_user_settings(user_id)
     show_info_conf = user_settings.get('show_info_config', True)
-
-    final_configs = []
+    
+    final_configs_to_process = []
 
     if show_info_conf:
         info_config = create_info_config(user_main_uuid)
         if info_config:
-            final_configs.append(info_config)
+            final_configs_to_process.append(info_config)
 
-    # --- START OF FIX ---
-    # خواندن صحیح دسترسی‌های کاربر از دیتابیس
     has_access_de = user_record.get('has_access_de', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     is_user_vip = user_record.get('is_vip', False)
     user_name = user_record.get('name', 'کاربر')
-    # --- END OF FIX ---
 
+    # --- ✨ شروع منطق کاملاً جدید برای حفظ ترتیب ---
+    # ۱. دریافت تمام کانفیگ‌های فعال با حفظ ترتیب اصلی (بر اساس ID)
     all_active_templates = db.get_active_config_templates()
 
-    for template in all_active_templates:
-        config_str = template['template_str']
-        is_template_special = template.get('is_special', False)
-        server_type = template.get('server_type', 'none')
-
-        # بررسی دسترسی کاربر به نوع سرور کانفیگ
-        if server_type == 'fr' and not has_access_fr:
-            continue
-        if server_type == 'de' and not has_access_de:
-            continue
-        if server_type == 'tr' and not has_access_tr:
-            continue
+    # ۲. فیلتر کردن کانفیگ‌ها بر اساس دسترسی کاربر
+    eligible_templates = []
+    for tpl in all_active_templates:
+        is_special = tpl.get('is_special', False)
+        server_type = tpl.get('server_type', 'none')
         
-        # بررسی دسترسی کاربر به کانفیگ‌های ویژه (VIP)
-        if is_template_special and not is_user_vip:
+        if (is_special and not is_user_vip) or \
+           (server_type == 'de' and not has_access_de) or \
+           (server_type == 'fr' and not has_access_fr) or \
+           (server_type == 'tr' and not has_access_tr):
             continue
+        eligible_templates.append(tpl)
 
-        final_configs.append(config_str)
+    # ۳. جدا کردن کانفیگ‌های ثابت از کانفیگ‌های داخل استخر تصادفی
+    fixed_templates = [tpl for tpl in eligible_templates if not tpl.get('is_random_pool')]
+    random_pool_templates = [tpl for tpl in eligible_templates if tpl.get('is_random_pool')]
+
+    # ۴. انتخاب تصادفی از استخر (در صورت نیاز)
+    chosen_random_templates = []
+    if RANDOM_SERVERS_COUNT and RANDOM_SERVERS_COUNT > 0 and len(random_pool_templates) > RANDOM_SERVERS_COUNT:
+        chosen_random_templates = random.sample(random_pool_templates, RANDOM_SERVERS_COUNT)
+    else:
+        chosen_random_templates = random_pool_templates # اگر تعداد کمتر بود، همه را انتخاب کن
+
+    # ۵. ترکیب کانفیگ‌های ثابت و کانفیگ‌های انتخاب شده از استخر
+    final_template_objects = fixed_templates + chosen_random_templates
+    
+    # ۶. مرتب‌سازی لیست نهایی بر اساس ID اصلی برای حفظ ترتیب اولیه
+    final_template_objects.sort(key=lambda x: x['id'], reverse=False)
+    
+    # ۷. استخراج رشته کانفیگ‌ها از آبجکت‌های مرتب شده
+    final_configs_to_process.extend([tpl['template_str'] for tpl in final_template_objects])
+    # --- ✨ پایان منطق جدید ---
 
     processed_configs = []
-    for config_str in final_configs:
+    for config_str in final_configs_to_process:
+        # جایگزینی متغیرها در تمام کانفیگ‌ها
         if "{new_uuid}" in config_str or "{name}" in config_str:
             config_str = config_str.replace("{new_uuid}", user_main_uuid)
             config_str = config_str.replace("{name}", urllib.parse.quote(user_name))

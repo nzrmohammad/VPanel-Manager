@@ -581,3 +581,27 @@ def fmt_admin_quick_dashboard(stats: dict) -> str:
     ]
     
     return "\n".join(lines)
+
+def fmt_card_info_inline() -> tuple[str, str]:
+    """Formats the card payment info for an inline result."""
+    from .config import CARD_PAYMENT_INFO
+    from .utils import escape_markdown
+
+    if not (CARD_PAYMENT_INFO and CARD_PAYMENT_INFO.get("card_number")):
+        return (escape_markdown("اطلاعات کارت در فایل کانفیگ تعریف نشده است."), "MarkdownV2")
+
+    title = "اطلاعات کارت به کارت"
+    holder_label = "نام صاحب حساب"
+    number_label = "شماره کارت"
+    
+    holder_name = escape_markdown(CARD_PAYMENT_INFO.get("card_holder", ""))
+    card_number = escape_markdown(CARD_PAYMENT_INFO.get("card_number", ""))
+    bank_name = escape_markdown(CARD_PAYMENT_INFO.get("bank_name", ""))
+
+    # --- ✨ تغییر اصلی: escape کردن پرانتزها ---
+    text = (
+        f"*{escape_markdown(title)}*\n\n"
+        f"*{escape_markdown(holder_label)} : *{holder_name}\n"
+        f"*{escape_markdown(number_label)} \\({bank_name}\\):*\n`{card_number}`"
+    )
+    return text, "MarkdownV2"

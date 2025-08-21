@@ -317,8 +317,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if not info:
         return ("❌ اطلاعات کاربر یافت نشد.", None)
 
-    # ایمپورت کردن توابع مورد نیاز
-    from .utils import escape_markdown, create_progress_bar, format_daily_usage, to_shamsi, days_until_next_birthday
+    from .utils import escape_markdown, create_progress_bar, format_daily_usage
     from .database import db
     
     name = escape_markdown(info.get("name", "کاربر ناشناس"))
@@ -342,14 +341,13 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
         daily_usage_gb = sum(daily_usage_dict.values())
     daily_usage_str = escape_markdown(format_daily_usage(daily_usage_gb))
 
-    birthday_text = ""
     access_text = ""
     vip_text = ""
     if user_uuid:
         user_record = db.get_user_uuid_record(user_uuid)
         if user_record:
             if user_record.get('is_vip'):
-                vip_text = f" *کاربر ویژه : * ✅"
+                vip_text = " کاربر ویژه : ✅"
             
             access_flags = []
             if user_record.get('has_access_de'):
@@ -360,16 +358,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
                 access_flags.append("🇹🇷")
             
             if access_flags:
-                access_text = f" سرورها : *{''.join(access_flags)}*"
-            
-            if user_record.get('user_id'):
-                db_user = db.user(user_record['user_id'])
-                if db_user and db_user.get('birthday'):
-                    birthday_date = db_user['birthday']
-                    shamsi_birthday = to_shamsi(birthday_date)
-                    remaining_days = days_until_next_birthday(birthday_date)
-                    remaining_days_str = "امروز" if remaining_days == 0 else f"{remaining_days} روز مانده"
-                    birthday_text = f"🎂 تولد : *{escape_markdown(shamsi_birthday)}* \\({escape_markdown(remaining_days_str)}\\)"
+                access_text = f" سرورها : {''.join(access_flags)}"
 
     lines = [
         f"📊 *آمار کاربر : {name}*",
@@ -382,15 +371,12 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if access_text:
         lines.append(access_text)
     
-    lines.append(f"📅 انقضا : *{expire_text}*")
-
-    if birthday_text:
-        lines.append(birthday_text)
-
     lines.extend([
+        f"📅 انقضا : *{expire_text}*",
         f"📦 حجم کل : *{limit_gb_str} GB*",
-        f"⚡️ مصرف امروز : *{daily_usage_str}*",
+        f"🔥 حجم مصرف شده : *{escape_markdown(f'{usage_gb:.2f}')} GB*",
         f"📥 حجم باقیمانده : *{escape_markdown(f'{remaining_gb:.2f}')} GB*",
+        f"⚡️ مصرف امروز : *{daily_usage_str}*",
         f" bar",
         f"`{uuid_escaped}`"
     ])

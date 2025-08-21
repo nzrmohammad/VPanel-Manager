@@ -53,6 +53,8 @@ DAILY_USAGE_ALERT_THRESHOLD_GB = 5
 
 WELCOME_MESSAGE_DELAY_HOURS = 48
 
+RANDOM_SERVERS_COUNT = 10
+
 # --- Payment Information ---
 # اطلاعات پرداخت کارت به کارت (در صورت خالی بودن، این گزینه نمایش داده نمی‌شود)
 CARD_PAYMENT_INFO = {
@@ -62,7 +64,6 @@ CARD_PAYMENT_INFO = {
 }
 
 ONLINE_PAYMENT_LINK = ""
-
 
 TUTORIAL_LINKS = {
     "android": {
