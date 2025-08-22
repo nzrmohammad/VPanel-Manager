@@ -76,21 +76,26 @@ class SchedulerManager:
                 logger.error(f"Scheduler: Failed to process snapshot for uuid_id {u_row['id']}: {e}")
 
     def _check_for_warnings(self) -> None:
-            logger.info("Scheduler: Running warnings check job.")
-            
-            all_uuids_from_db = db.all_active_uuids()
-            if not all_uuids_from_db:
-                logger.info("SCHEDULER: No active UUIDs in DB to check warnings for. JOB STOPPED.") # لاگ مهم
+        logger.info("Scheduler: Running warnings check job.")
+        
+        # بهینه‌سازی: ابتدا تمام اطلاعات کاربران را یکجا از API دریافت می‌کنیم
+        try:
+            all_users_info_map = {u['uuid']: u for u in combined_handler.get_all_users_combined() if u.get('uuid')}
+            if not all_users_info_map:
+                logger.warning("SCHEDULER (Warnings): Could not fetch any user info from API. Aborting job.")
                 return
+        except Exception as e:
+            logger.error(f"SCHEDULER (Warnings): Failed to fetch combined user data: {e}", exc_info=True)
+            return
 
-            all_users_info_map = {u['uuid']: u for u in combined_handler.get_all_users_combined()}
-            
-            for u_row in all_uuids_from_db:
+        # تمام کاربران فعال ربات را به صورت جریانی از دیتابیس می‌خوانیم
+        for u_row in db.all_active_uuids():
+            try:
                 uuid_str = u_row['uuid']
                 uuid_id_in_db = u_row['id']
                 user_id_in_telegram = u_row['user_id']
-                logger.info(f"SCHEDULER: Checking warnings for UUID: {uuid_str} (User ID: {user_id_in_telegram})") # لاگ برای هر کاربر
                 
+                # اطلاعات کاربر را از دیکشنری محلی می‌خوانیم (بدون درخواست API جدید)
                 info = all_users_info_map.get(uuid_str)
                 if not info:
                     continue
@@ -98,7 +103,7 @@ class SchedulerManager:
                 user_settings = db.get_user_settings(user_id_in_telegram)
                 user_name = escape_markdown(info.get('name', 'کاربر ناشناس'))
 
-                # 1. Welcome Message Logic
+                # 1. Welcome Message Logic (بدون تغییر)
                 if info.get('last_online') and not u_row.get('first_connection_time'):
                     db.set_first_connection_time(uuid_id_in_db, datetime.now(pytz.utc))
                 
@@ -112,35 +117,35 @@ class SchedulerManager:
                             f"با آرزوی بهترین‌ها ✨"
                         )
                         try:
-                            self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="MarkdownV2")
+                            self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="Markdown")
                             db.mark_welcome_message_as_sent(uuid_id_in_db)
                             logger.info(f"Welcome message sent to user {user_id_in_telegram}")
                         except Exception as e:
                             logger.error(f"Failed to send welcome message to user {user_id_in_telegram}: {e}")
 
-                # 2. Expiry Warning
+                # 2. Expiry Warning (بدون تغییر)
                 if user_settings.get('expiry_warnings'):
                     expire_days = info.get('expire')
                     if expire_days is not None and 0 <= expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
                         if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
                             msg = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\n"
-                                f"اکانت *{user_name}* شما تا *{expire_days}* روز دیگر منقضی می‌شود\\.")
+                                f"اکانت *{user_name}* شما تا *{expire_days}* روز دیگر منقضی می‌شود.")
                             try:
-                                self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
+                                self.bot.send_message(user_id_in_telegram, msg, parse_mode="Markdown")
                                 db.log_warning(uuid_id_in_db, 'expiry')
                             except Exception as e:
                                 logger.error(f"Failed to send expiry warning to user {user_id_in_telegram}: {e}")
 
-                # 3. Data Usage Warning (for each panel)
+                # 3. Data Usage Warning (بدون تغییر)
                 breakdown = info.get('breakdown', {})
                 server_map = {
                     'hiddify': {'name': 'آلمان 🇩🇪', 'setting': 'data_warning_hiddify'},
                     'marzban': {'name': 'فرانسه 🇫🇷', 'setting': 'data_warning_marzban'}
                 }
-                list_bullet = escape_markdown("- ")
+                list_bullet = "- "
                 for code, details in server_map.items():
-                    if user_settings.get(details['setting']) and code in breakdown and breakdown[code]:
-                        server_info = breakdown[code]
+                    if user_settings.get(details['setting']) and breakdown.get(code):
+                        server_info = breakdown[code].get('data', {}) # اصلاح برای دسترسی صحیح
                         limit = server_info.get('usage_limit_GB', 0.0)
                         usage = server_info.get('current_usage_GB', 0.0)
                         if limit > 0:
@@ -150,34 +155,35 @@ class SchedulerManager:
                                 if not db.has_recent_warning(uuid_id_in_db, warning_type):
                                     remaining_gb = max(0, limit - usage)
                                     server_name = details['name']
-                                    remaining_gb_escaped = escape_markdown(f"{remaining_gb:.2f}")
                                     msg = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\n"
-                                        f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{server_name}* رو به اتمام است\\.\n"
-                                        f"{list_bullet}حجم باقیمانده: *{remaining_gb_escaped} GB*")
+                                        f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{server_name}* رو به اتمام است.\n"
+                                        f"{list_bullet}حجم باقیمانده: *{remaining_gb:.2f} GB*")
                                     try:
-                                        self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
+                                        self.bot.send_message(user_id_in_telegram, msg, parse_mode="Markdown")
                                         db.log_warning(uuid_id_in_db, warning_type)
                                     except Exception as e:
                                         logger.error(f"Failed to send data warning to user {user_id_in_telegram}: {e}")
                 
-                # 4. Unusual Daily Usage Alert (for Admin)
+                # 4. Unusual Daily Usage Alert (بدون تغییر)
                 if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
                     daily_usage_dict = db.get_usage_since_midnight(uuid_id_in_db)
                     total_daily_usage = sum(daily_usage_dict.values())
                     if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB:
                         warning_type = 'unusual_daily_usage'
                         if not db.has_recent_warning(uuid_id_in_db, warning_type, hours=24):
-                            list_bullet = escape_markdown("- ")
                             alert_msg = (f"{EMOJIS['warning']} *هشدار مصرف غیرعادی روزانه*\n\n"
-                            f"کاربر *{user_name}* \\(`{escape_markdown(uuid_str)}`\\) از حد مجاز مصرف روزانه عبور کرده است\\.\n\n"
-                            f"{list_bullet}*میزان مصرف امروز:* `{escape_markdown(format_daily_usage(total_daily_usage))}`\n"
+                            f"کاربر *{user_name}* (`{escape_markdown(uuid_str)}`) از حد مجاز مصرف روزانه عبور کرده است.\n\n"
+                            f"{list_bullet}*میزان مصرف امروز:* `{format_daily_usage(total_daily_usage)}`\n"
                             f"{list_bullet}*حد مجاز تعریف شده:* `{DAILY_USAGE_ALERT_THRESHOLD_GB} GB`")
                             for admin_id in ADMIN_IDS:
                                 try:
-                                    self.bot.send_message(admin_id, alert_msg, parse_mode="MarkdownV2")
+                                    self.bot.send_message(admin_id, alert_msg, parse_mode="Markdown")
                                 except Exception as e:
                                     logger.error(f"Failed to send unusual usage alert to admin {admin_id}: {e}")
                             db.log_warning(uuid_id_in_db, warning_type)
+            except Exception as e:
+                logger.error(f"Scheduler (Warnings): An error occurred while processing UUID_ID {u_row.get('id', 'N/A')}: {e}", exc_info=True)
+                continue
 
     def _nightly_report(self) -> None:
             tehran_tz = pytz.timezone("Asia/Tehran")

@@ -305,7 +305,7 @@ def _get_birthday_step(message: types.Message, original_msg_id: int):
     uid, birthday_str = message.from_user.id, message.text.strip()
     lang_code = db.get_user_language(uid)
 
-    # --- ۱. پیام کاربر حذف می‌شود ---
+    # ۱. پیام کاربر (که حاوی تاریخ است) حذف می‌شود
     try:
         bot.delete_message(chat_id=uid, message_id=message.message_id)
     except Exception as e:
@@ -315,7 +315,7 @@ def _get_birthday_step(message: types.Message, original_msg_id: int):
         gregorian_date = jdatetime.datetime.strptime(birthday_str, '%Y/%m/%d').togregorian().date()
         db.update_user_birthday(uid, gregorian_date)
         
-        # --- ۲. پیام قبلی با استفاده از original_msg_id ویرایش می‌شود ---
+        # ۲. پیام اصلی ربات با استفاده از original_msg_id ویرایش می‌شود
         success_text = escape_markdown(get_string("birthday_success", lang_code))
         back_button_text = get_string('back_to_main_menu', lang_code)
         kb = types.InlineKeyboardMarkup().add(
@@ -324,11 +324,11 @@ def _get_birthday_step(message: types.Message, original_msg_id: int):
         _safe_edit(uid, original_msg_id, success_text, reply_markup=kb, parse_mode="MarkdownV2")
 
     except ValueError:
-        # در صورت خطا، پیام قبلی ویرایش شده و دوباره راهنمایی نمایش داده می‌شود
-        prompt = _build_formatted_prompt(get_string("birthday_invalid_format", lang_code))
+        # در صورت خطا، پیام اصلی ویرایش شده و دوباره راهنمایی نمایش داده می‌شود
+        prompt = escape_markdown(get_string("birthday_invalid_format", lang_code)).replace("YYYY/MM/DD", "`YYYY/MM/DD`")
         _safe_edit(uid, original_msg_id, prompt, parse_mode="MarkdownV2")
         
-        # و ربات دوباره منتظر پاسخ صحیح می‌ماند
+        # ربات دوباره منتظر پاسخ صحیح می‌ماند
         bot.register_next_step_handler_by_chat_id(uid, _get_birthday_step, original_msg_id=original_msg_id)
 
 def _handle_add_uuid_request(call: types.CallbackQuery):

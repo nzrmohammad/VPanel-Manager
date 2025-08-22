@@ -168,17 +168,23 @@ class DatabaseManager:
             )
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
-        """Calculates daily usage for both panels with a more robust method."""
+        """Calculates daily usage by summing positive differences between snapshots to correctly handle resets."""
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
         today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
-        
         today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
-        result = {'hiddify': 0.0, 'marzban': 0.0}
-
         with self._conn() as c:
-            # Get the last snapshot from *before* today's midnight
+            # Get all of today's snapshots, ordered by time
+            today_snapshots_query = """
+                SELECT hiddify_usage_gb, marzban_usage_gb
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at >= ?
+                ORDER BY taken_at ASC;
+            """
+            today_rows = c.execute(today_snapshots_query, (uuid_id, today_midnight_utc)).fetchall()
+
+            # Get the last snapshot from before today's midnight to use as the starting point
             yesterday_last_snapshot_query = """
                 SELECT hiddify_usage_gb, marzban_usage_gb
                 FROM usage_snapshots
@@ -187,81 +193,87 @@ class DatabaseManager:
                 LIMIT 1;
             """
             yesterday_row = c.execute(yesterday_last_snapshot_query, (uuid_id, today_midnight_utc)).fetchone()
-            
-            start_hiddify = yesterday_row['hiddify_usage_gb'] if yesterday_row else 0
-            start_marzban = yesterday_row['marzban_usage_gb'] if yesterday_row else 0
 
-            # Get the first and last snapshots from *today*
-            today_snapshots_query = """
-                SELECT 
-                    MIN(hiddify_usage_gb) as h_min, MAX(hiddify_usage_gb) as h_max,
-                    MIN(marzban_usage_gb) as m_min, MAX(marzban_usage_gb) as m_max
-                FROM usage_snapshots
-                WHERE uuid_id = ? AND taken_at >= ?
-            """
-            today_row = c.execute(today_snapshots_query, (uuid_id, today_midnight_utc)).fetchone()
+            # Set initial usage values from yesterday's last snapshot, or 0 if none exists
+            last_h_usage = yesterday_row['hiddify_usage_gb'] if yesterday_row else 0
+            last_m_usage = yesterday_row['marzban_usage_gb'] if yesterday_row else 0
 
-            if today_row and today_row['h_max'] is not None:
-                # If the first snapshot of today is smaller than yesterday's last, it means usage was reset
-                if today_row['h_min'] < start_hiddify:
-                    start_hiddify = 0
-                result['hiddify'] = max(0, today_row['h_max'] - start_hiddify)
+            h_total_usage = 0.0
+            m_total_usage = 0.0
 
-            if today_row and today_row['m_max'] is not None:
-                if today_row['m_min'] < start_marzban:
-                    start_marzban = 0
-                result['marzban'] = max(0, today_row['m_max'] - start_marzban)
+            # Iterate through today's snapshots to calculate cumulative usage
+            for row in today_rows:
+                current_h_usage = row['hiddify_usage_gb']
+                current_m_usage = row['marzban_usage_gb']
 
-        return result
+                # Calculate Hiddify usage, adding only positive differences
+                if current_h_usage is not None and last_h_usage is not None:
+                    h_diff = current_h_usage - last_h_usage
+                    if h_diff > 0:
+                        h_total_usage += h_diff
+                    last_h_usage = current_h_usage
+
+                # Calculate Marzban usage, adding only positive differences
+                if current_m_usage is not None and last_m_usage is not None:
+                    m_diff = current_m_usage - last_m_usage
+                    if m_diff > 0:
+                        m_total_usage += m_diff
+                    last_m_usage = current_m_usage
+
+            return {'hiddify': h_total_usage, 'marzban': m_total_usage}
     
     def get_weekly_usage_by_uuid(self, uuid_str: str) -> Dict[str, float]:
-            """مصرف هفتگی کاربر را از ابتدای روز شنبه تا لحظه فعلی محاسبه می‌کند."""
-            uuid_id = self.get_uuid_id_by_uuid(uuid_str)
-            if not uuid_id:
-                return {'hiddify': 0.0, 'marzban': 0.0}
+        """مصرف هفتگی کاربر را با محاسبه مجموع افزایش‌های مثبت مصرف برای مدیریت صحیح ریست شدن حجم محاسبه می‌کند."""
+        uuid_id = self.get_uuid_id_by_uuid(uuid_str)
+        if not uuid_id:
+            return {'hiddify': 0.0, 'marzban': 0.0}
 
-            tehran_tz = pytz.timezone("Asia/Tehran")
-            now_in_tehran = datetime.now(tehran_tz)
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_in_tehran = datetime.now(tehran_tz)
+        
+        today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+        days_since_saturday = (today_jalali.weekday() + 1) % 7 # شنبه = 0
+        week_start_tehran = (now_in_tehran - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start_utc = week_start_tehran.astimezone(pytz.utc)
+
+        with self._conn() as c:
+            week_snapshots_query = """
+                SELECT hiddify_usage_gb, marzban_usage_gb
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at >= ?
+                ORDER BY taken_at ASC;
+            """
+            week_rows = c.execute(week_snapshots_query, (uuid_id, week_start_utc)).fetchall()
+
+            last_snapshot_before_week_query = """
+                SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1
+            """
+            last_week_row = c.execute(last_snapshot_before_week_query, (uuid_id, week_start_utc)).fetchone()
+
+            last_h = last_week_row['hiddify_usage_gb'] if last_week_row else 0
+            last_m = last_week_row['marzban_usage_gb'] if last_week_row else 0
             
-            # پیدا کردن اولین روز هفته (شنبه) در تقویم جلالی
-            today_jalali = jdatetime.datetime.now(tz=tehran_tz)
-            days_since_saturday = today_jalali.weekday()
-            week_start_tehran = (now_in_tehran - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0)
-            week_start_utc = week_start_tehran.astimezone(pytz.utc)
+            total_h = 0.0
+            total_m = 0.0
 
-            result = {'hiddify': 0.0, 'marzban': 0.0}
-            with self._conn() as c:
-                # دریافت آخرین اسنپ‌شات قبل از شروع هفته
-                last_snapshot_before_week = c.execute("""
-                    SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots
-                    WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1
-                """, (uuid_id, week_start_utc)).fetchone()
+            for row in week_rows:
+                current_h = row['hiddify_usage_gb']
+                current_m = row['marzban_usage_gb']
 
-                start_hiddify = last_snapshot_before_week['hiddify_usage_gb'] if last_snapshot_before_week else 0
-                start_marzban = last_snapshot_before_week['marzban_usage_gb'] if last_snapshot_before_week else 0
-
-                # دریافت اولین و آخرین اسنپ‌شات در طول هفته فعلی برای بررسی ریست شدن حجم
-                snapshots_this_week = c.execute("""
-                    SELECT MIN(hiddify_usage_gb) as h_min, MAX(hiddify_usage_gb) as h_max,
-                        MIN(marzban_usage_gb) as m_min, MAX(marzban_usage_gb) as m_max
-                    FROM usage_snapshots
-                    WHERE uuid_id = ? AND taken_at >= ?
-                """, (uuid_id, week_start_utc)).fetchone()
-
-                if snapshots_this_week:
-                    # بررسی ریست شدن حجم برای Hiddify
-                    if snapshots_this_week['h_min'] is not None and snapshots_this_week['h_min'] < start_hiddify:
-                        start_hiddify = 0
-                    if snapshots_this_week['h_max'] is not None:
-                        result['hiddify'] = max(0, snapshots_this_week['h_max'] - start_hiddify)
-
-                    # بررسی ریست شدن حجم برای Marzban
-                    if snapshots_this_week['m_min'] is not None and snapshots_this_week['m_min'] < start_marzban:
-                        start_marzban = 0
-                    if snapshots_this_week['m_max'] is not None:
-                        result['marzban'] = max(0, snapshots_this_week['m_max'] - start_marzban)
-
-            return result
+                if current_h is not None and last_h is not None:
+                    h_diff = current_h - last_h
+                    if h_diff > 0:
+                        total_h += h_diff
+                    last_h = current_h
+                
+                if current_m is not None and last_m is not None:
+                    m_diff = current_m - last_m
+                    if m_diff > 0:
+                        total_m += m_diff
+                    last_m = current_m
+                    
+            return {'hiddify': total_h, 'marzban': total_m}
     
     def get_panel_usage_in_intervals(self, uuid_id: int, panel_name: str) -> Dict[int, float]:
         if panel_name not in ['hiddify_usage_gb', 'marzban_usage_gb']:
@@ -421,32 +433,43 @@ class DatabaseManager:
         with self._conn() as c:
             c.execute("DELETE FROM user_uuids WHERE uuid=?", (uuid,))
 
-    def all_active_uuids(self) -> List[Dict[str, Any]]:
+    def all_active_uuids(self): # -> Generator[Dict[str, Any], None, None]
+        """
+        تمام UUIDهای فعال را به صورت یک generator برمی‌گرداند تا از بارگذاری همه در حافظه جلوگیری شود.
+        """
         with self._conn() as c:
-            rows = c.execute("SELECT id, user_id, uuid, created_at FROM user_uuids WHERE is_active=1").fetchall()
-            return [dict(r) for r in rows]
+            cursor = c.execute("SELECT id, user_id, uuid, created_at FROM user_uuids WHERE is_active=1")
+            for row in cursor:
+                yield dict(row)
             
-    def get_all_user_ids(self) -> list[int]:
+    def get_all_user_ids(self):
+        """تمام شناسه‌های کاربری را به صورت جریانی (generator) برمی‌گرداند."""
         with self._conn() as c:
-            return [r['user_id'] for r in c.execute("SELECT user_id FROM users")]
+            cursor = c.execute("SELECT user_id FROM users")
+            for row in cursor:
+                yield row['user_id']
         
-    def get_all_bot_users(self) -> List[Dict[str, Any]]:
+    def get_all_bot_users(self):
+        """تمام کاربران ربات را به صورت جریانی (generator) برمی‌گرداند."""
         with self._conn() as c:
-            rows = c.execute("SELECT user_id, username, first_name, last_name FROM users ORDER BY user_id").fetchall()
-            return [dict(r) for r in rows]
+            cursor = c.execute("SELECT user_id, username, first_name, last_name FROM users ORDER BY user_id")
+            for row in cursor:
+                yield dict(row)
         
     def update_user_birthday(self, user_id: int, birthday_date: datetime.date):
         with self._conn() as c:
             c.execute("UPDATE users SET birthday = ? WHERE user_id = ?", (birthday_date, user_id))
 
-    def get_users_with_birthdays(self) -> List[Dict[str, Any]]:
+    def get_users_with_birthdays(self):
+        """کاربران دارای تاریخ تولد را به صورت جریانی (generator) برمی‌گرداند."""
         with self._conn() as c:
-            rows = c.execute("""
+            cursor = c.execute("""
                 SELECT user_id, first_name, username, birthday FROM users
                 WHERE birthday IS NOT NULL
                 ORDER BY strftime('%m-%d', birthday)
-            """).fetchall()
-            return [dict(r) for r in rows]
+            """)
+            for row in cursor:
+                yield dict(row)
         
     def get_user_id_by_uuid(self, uuid: str) -> Optional[int]:
         with self._conn() as c:
@@ -567,11 +590,8 @@ class DatabaseManager:
                 rows = c.execute("SELECT payment_date FROM payments WHERE uuid_id = ? ORDER BY payment_date DESC", (uuid_id,)).fetchall()
                 return [dict(r) for r in rows]
 
-    def get_all_payments_with_user_info(self) -> List[Dict[str, Any]]:
-        """
-        لیست تمام رکوردهای پرداخت را به همراه اطلاعات کاربر مربوطه
-        (شامل دسترسی به پنل‌ها برای تشخیص صحیح) برمی‌گرداند.
-        """
+    def get_all_payments_with_user_info(self):
+        """تمام پرداخت‌ها را به همراه اطلاعات کاربر به صورت جریانی (generator) برمی‌گرداند."""
         query = """
             SELECT
                 p.payment_id,
@@ -589,8 +609,9 @@ class DatabaseManager:
             ORDER BY p.payment_date DESC;
         """
         with self._conn() as c:
-            rows = c.execute(query).fetchall()
-            return [dict(r) for r in rows]
+            cursor = c.execute(query)
+            for row in cursor:
+                yield dict(row)
 
     def update_user_note(self, user_id: int, note: Optional[str]) -> None:
         """Updates or removes the admin note for a given user."""
@@ -743,60 +764,69 @@ class DatabaseManager:
 
     def get_daily_usage_summary(self, days: int = 7) -> List[Dict[str, Any]]:
         """
-        Calculates the total daily usage (sum of Hiddify and Marzban) for a specified number of days, handling usage resets.
-        This function is designed for use in the admin dashboard usage chart.
-        Output: A list of dictionaries, each containing 'date' and 'total_gb'.
+        مجموع مصرف روزانه تمام کاربران را برای نمودار داشبورد ادمین محاسبه می‌کند.
+        این نسخه اصلاح شده، با پردازش داده‌ها در پایتون، ریست شدن حجم را به درستی مدیریت می‌کند.
         """
-        logger.info(f"Calculating daily usage summary for the last {days} days.")
+        logger.info(f"Calculating daily usage summary for the last {days} days (reset-aware).")
         tehran_tz = pytz.timezone("Asia/Tehran")
         summary = []
 
+        # دریافت تمام اسنپ‌شات‌های دوره مورد نظر به صورت یکجا برای بهینگی
+        start_date_utc = (datetime.now(tehran_tz) - timedelta(days=days)).astimezone(pytz.utc)
         query = """
-            SELECT
-                SUM(CASE
-                    WHEN h_max < h_min THEN h_max
-                    ELSE h_max - h_min
-                END) as total_h,
-                SUM(CASE
-                    WHEN m_max < m_min THEN m_max
-                    ELSE m_max - m_min
-                END) as total_m
-            FROM (
-                SELECT
-                    uuid_id,
-                    MAX(hiddify_usage_gb) as h_max,
-                    MIN(hiddify_usage_gb) as h_min,
-                    MAX(marzban_usage_gb) as m_max,
-                    MIN(marzban_usage_gb) as m_min
-                FROM usage_snapshots
-                WHERE taken_at >= ? AND taken_at < ?
-                GROUP BY uuid_id
-            )
+            SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at
+            FROM usage_snapshots
+            WHERE taken_at >= ?
+            ORDER BY uuid_id, taken_at ASC;
         """
-
+        
         with self._conn() as c:
-            # --- START OF FIX ---
-            # ابتدا نیمه‌شب امروز را به عنوان مبنا در نظر می‌گیریم
-            today_start_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+            all_snapshots = c.execute(query, (start_date_utc,)).fetchall()
+            
+            # دریافت آخرین اسنپ‌شات قبل از شروع دوره برای هر کاربر
+            last_snapshots_before_period_query = """
+                SELECT s1.uuid_id, s1.hiddify_usage_gb, s1.marzban_usage_gb
+                FROM usage_snapshots s1
+                LEFT JOIN usage_snapshots s2 ON s1.uuid_id = s2.uuid_id AND s1.taken_at < s2.taken_at
+                WHERE s2.uuid_id IS NULL AND s1.taken_at < ?;
+            """
+            # Note: The above query might be slow on very large datasets without proper indexing.
+            # A simpler approach is to fetch within the loop, which is acceptable for moderate user counts.
+            
+            daily_totals = { (datetime.now(tehran_tz).date() - timedelta(days=i)): {'h': 0.0, 'm': 0.0} for i in range(days) }
 
-            # حلقه را برعکس اجرا می‌کنیم تا تاریخ‌ها برای نمودار به ترتیب صعودی باشند
-            for i in range(days - 1, -1, -1):
-                # شروع و پایان روز مورد نظر را با کم کردن روز از مبنا محاسبه می‌کنیم
-                day_start_tehran = today_start_tehran - timedelta(days=i)
-                day_end_tehran = day_start_tehran + timedelta(days=1)
-            # --- END OF FIX ---
+            snapshots_by_user = {}
+            for snap in all_snapshots:
+                snapshots_by_user.setdefault(snap['uuid_id'], []).append(snap)
+
+            for uuid_id, user_snaps in snapshots_by_user.items():
+                last_row = c.execute("""
+                    SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots
+                    WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1
+                """, (uuid_id, start_date_utc)).fetchone()
+
+                last_h = last_row['hiddify_usage_gb'] if last_row else 0
+                last_m = last_row['marzban_usage_gb'] if last_row else 0
                 
-                day_start_utc = day_start_tehran.astimezone(pytz.utc)
-                day_end_utc = day_end_tehran.astimezone(pytz.utc)
+                for snap in user_snaps:
+                    snap_date_local = snap['taken_at'].astimezone(tehran_tz).date()
+                    
+                    h_diff = max(0, snap['hiddify_usage_gb'] - last_h)
+                    m_diff = max(0, snap['marzban_usage_gb'] - last_m)
+                    
+                    if snap_date_local in daily_totals:
+                        daily_totals[snap_date_local]['h'] += h_diff
+                        daily_totals[snap_date_local]['m'] += m_diff
+                    
+                    last_h = snap['hiddify_usage_gb']
+                    last_m = snap['marzban_usage_gb']
 
-                row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
-                
-                total_gb = 0
-                if row and (row['total_h'] is not None or row['total_m'] is not None):
-                    total_gb = (row['total_h'] or 0) + (row['total_m'] or 0)
-
+            # تبدیل دیکشنری به لیست مرتب شده برای خروجی
+            sorted_dates = sorted(daily_totals.keys())
+            for dt in sorted_dates:
+                total_gb = daily_totals[dt]['h'] + daily_totals[dt]['m']
                 summary.append({
-                    'date': day_start_tehran.strftime('%Y-%m-%d'),
+                    'date': dt.strftime('%Y-%m-%d'),
                     'total_gb': round(total_gb, 2)
                 })
 
