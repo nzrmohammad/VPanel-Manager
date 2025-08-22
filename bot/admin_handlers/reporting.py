@@ -241,7 +241,7 @@ def handle_quick_dashboard(call, params):
         _safe_edit(uid, msg_id, "❌ خطا در تولید داشبورد", reply_markup=menu.admin_panel())
 
 def handle_test_report_command(message: types.Message):
-    """Handles the /test_report <user_id> command for admins."""
+    """Handles the /test_report <user_id> command for admins, checking user settings."""
     admin_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -251,7 +251,15 @@ def handle_test_report_command(message: types.Message):
         
         target_user_id = int(parts[1])
         
-        bot.send_message(admin_id, f"⏳ در حال ساخت و ارسال گزارش تستی برای کاربر `{target_user_id}`\\.\\.\\.", parse_mode="MarkdownV2")
+        # --- FIX: Check user settings and escape the warning message ---
+        user_settings = db.get_user_settings(target_user_id)
+        if not user_settings.get('daily_reports', True):
+            warning_text = f"⚠️ کاربر `{target_user_id}` دریافت گزارش روزانه را غیرفعال کرده است. پیامی ارسال نشد."
+            bot.send_message(admin_id, escape_markdown(warning_text), parse_mode="MarkdownV2")
+            return
+        # --- END OF FIX ---
+
+        bot.send_message(admin_id, f"⏳ در حال ساخت و ارسال گزارش روزانه تستی برای کاربر `{target_user_id}`\\.\\.\\.", parse_mode="MarkdownV2")
 
         all_users_info_from_api = combined_handler.get_all_users_combined()
         user_info_map = {user['uuid']: user for user in all_users_info_from_api}
@@ -282,8 +290,15 @@ def handle_test_report_command(message: types.Message):
         lang_code = db.get_user_language(target_user_id)
         report_text = fmt_user_report(user_infos_for_report, lang_code)
         
+        # Send to admin first
         bot.send_message(admin_id, header + report_text, parse_mode="MarkdownV2")
-        bot.send_message(target_user_id, header + report_text, parse_mode="MarkdownV2")
+        # Then send to the target user
+        sent_message = bot.send_message(target_user_id, header + report_text, parse_mode="MarkdownV2")
+        
+        # --- FIX: Log the sent message for auto-deletion ---
+        if sent_message:
+            db.add_sent_report(target_user_id, sent_message.message_id)
+        # --- END OF FIX ---
         
         bot.send_message(admin_id, "✅ گزارش با موفقیت به ادمین و کاربر ارسال شد\\.", parse_mode="MarkdownV2")
 
@@ -294,7 +309,7 @@ def handle_test_report_command(message: types.Message):
         bot.send_message(admin_id, f"❌ خطایی در هنگام ساخت گزارش رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
 
 def handle_test_weekly_report_command(message: types.Message):
-    """Handles the /test_weekly_report <user_id> command for admins."""
+    """Handles the /test_weekly_report <user_id> command for admins, checking user settings."""
     admin_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -303,6 +318,14 @@ def handle_test_weekly_report_command(message: types.Message):
             return
         
         target_user_id = int(parts[1])
+
+        # --- FIX: Check user settings and escape the warning message ---
+        user_settings = db.get_user_settings(target_user_id)
+        if not user_settings.get('weekly_reports', True):
+            warning_text = f"⚠️ کاربر `{target_user_id}` دریافت گزارش هفتگی را غیرفعال کرده است. پیامی ارسال نشد."
+            bot.send_message(admin_id, escape_markdown(warning_text), parse_mode="MarkdownV2")
+            return
+        # --- END OF FIX ---
         
         bot.send_message(admin_id, f"⏳ در حال ساخت و ارسال گزارش هفتگی تستی برای کاربر `{target_user_id}`\\.\\.\\.", parse_mode="MarkdownV2")
 
@@ -334,7 +357,13 @@ def handle_test_weekly_report_command(message: types.Message):
         report_text = fmt_user_weekly_report(user_infos_for_report, lang_code)
         
         bot.send_message(admin_id, header + report_text, parse_mode="MarkdownV2")
-        bot.send_message(target_user_id, header + report_text, parse_mode="MarkdownV2")
+        sent_message = bot.send_message(target_user_id, header + report_text, parse_mode="MarkdownV2")
+
+        # --- FIX: Log the sent message for auto-deletion ---
+        if sent_message:
+            db.add_sent_report(target_user_id, sent_message.message_id)
+        # --- END OF FIX ---
+        
         bot.send_message(admin_id, "✅ گزارش هفتگی تستی با موفقیت به ادمین و کاربر ارسال شد\\.", parse_mode="MarkdownV2")
 
     except ValueError:

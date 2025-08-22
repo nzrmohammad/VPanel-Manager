@@ -213,7 +213,9 @@ class SchedulerManager:
                         header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                         report_text = fmt_admin_report(all_users_info_from_api, db)
                         try:
-                            self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
+                            sent_message = self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
+                            if sent_message:
+                                db.add_sent_report(user_id, sent_message.message_id)
                             logger.info(f"SCHEDULER: Admin report sent to {user_id}.")
                         except Exception as e:
                             logger.error(f"SCHEDULER: Failed to send ADMIN report to {user_id}: {e}", exc_info=True)
@@ -239,7 +241,9 @@ class SchedulerManager:
                             lang_code = db.get_user_language(user_id)
                             report_text = fmt_user_report(user_infos_for_report, lang_code)
                             try:
-                                self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
+                                sent_message = self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
+                                if sent_message:
+                                    db.add_sent_report(user_id, sent_message.message_id)
                                 logger.info(f"SCHEDULER: Personal user report sent to {user_id}.")
                             except Exception as e:
                                 logger.error(f"SCHEDULER: Failed to send USER report to {user_id}: {e}", exc_info=True)
@@ -345,8 +349,10 @@ class SchedulerManager:
                     header = f"📊 *گزارش هفتگی* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                     lang_code = db.get_user_language(user_id)
                     report_text = fmt_user_weekly_report(user_infos_for_report, lang_code)
-                    self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
-                    time.sleep(0.2) # To avoid hitting rate limits
+                    sent_message = self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
+                    if sent_message:
+                        db.add_sent_report(user_id, sent_message.message_id)
+                    time.sleep(0.2)
 
             except Exception as e:
                 logger.error(f"SCHEDULER (Weekly): CRITICAL FAILURE while processing main loop for user {user_id}: {e}", exc_info=True)
@@ -371,6 +377,32 @@ class SchedulerManager:
             except Exception as e:
                 logger.error(f"Scheduler: Database VACUUM failed: {e}")
 
+    def _cleanup_old_reports(self) -> None:
+        """Deletes old report messages based on user settings."""
+        logger.info("Scheduler: Running job to clean up old report messages.")
+        reports_to_delete = db.get_old_reports_to_delete(hours=12) # حذف گزارش‌های قدیمی‌تر از ۱۲ ساعت
+
+        if not reports_to_delete:
+            logger.info("Scheduler: No old reports to delete.")
+            return
+
+        logger.info(f"Scheduler: Found {len(reports_to_delete)} report messages to clean up.")
+        for report in reports_to_delete:
+            try:
+                self.bot.delete_message(chat_id=report['user_id'], message_id=report['message_id'])
+                logger.info(f"Successfully deleted report message {report['message_id']} for user {report['user_id']}.")
+            except apihelper.ApiTelegramException as e:
+                # اگر پیام از قبل حذف شده یا کاربر ربات را بلاک کرده باشد، خطا نمی‌دهیم
+                if 'message to delete not found' in str(e) or 'user is deactivated' in str(e) or 'chat not found' in str(e):
+                    logger.warning(f"Could not delete message {report['message_id']} for user {report['user_id']} (it may already be gone).")
+                else:
+                    logger.error(f"API error deleting report for user {report['user_id']}: {e}")
+            except Exception as e:
+                logger.error(f"Generic error deleting report for user {report['user_id']}: {e}")
+            finally:
+                # در هر صورت (موفقیت یا شکست)، رکورد را از دیتابیس حذف می‌کنیم تا دوباره تلاش نشود
+                db.delete_sent_report_record(report['id'])
+
     def start(self) -> None:
         if self.running: return
         
@@ -381,11 +413,12 @@ class SchedulerManager:
         schedule.every().friday.at("23:50", self.tz_str).do(self._weekly_report)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
+        schedule.every(8).hours.do(self._cleanup_old_reports)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
         
         self.running = True
         threading.Thread(target=self._runner, daemon=True).start()
-        logger.info(f"Scheduler started. Nightly report at {report_time_str} ({self.tz_str}). Online user reports will update every {ONLINE_REPORT_UPDATE_HOURS} hours. Birthday gift job scheduled for 00:05 ({self.tz_str})")
+        logger.info(f"Scheduler started. Nightly report at {report_time_str} ({self.tz_str}). Weekly report on Fridays at 23:55. Cleanup job runs every 8 hours.")
 
     def shutdown(self) -> None:
         logger.info("Scheduler: Shutting down...")

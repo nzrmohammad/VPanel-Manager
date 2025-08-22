@@ -549,24 +549,28 @@ def _process_new_name(message: types.Message, uuid_id: int, original_msg_id: int
                    reply_markup=menu.account_menu(uuid_id, lang_code))
 
 def _show_tutorial_main_menu(call: types.CallbackQuery):
-    prompt = "لطفاً سیستم‌عامل خود را برای دریافت آموزش انتخاب کنید:"
-    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.tutorial_main_menu())
+    lang_code = db.get_user_language(call.from_user.id)
+    prompt = get_string("prompt_select_os", lang_code)
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.tutorial_main_menu(lang_code))
 
 def _show_tutorial_os_menu(call: types.CallbackQuery, os_type: str):
-    prompt = f"یکی از نرم‌افزارهای زیر را برای مشاهده آموزش انتخاب کنید:"
-    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.tutorial_os_menu(os_type))
+    lang_code = db.get_user_language(call.from_user.id)
+    prompt = get_string("prompt_select_app", lang_code)
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.tutorial_os_menu(os_type, lang_code))
 
 def _send_tutorial_link(call: types.CallbackQuery, os_type: str, app_name: str):
+    lang_code = db.get_user_language(call.from_user.id)
     try:
         link = TUTORIAL_LINKS[os_type][app_name]
         app_display_name = f"{os_type.capitalize()} - {app_name.capitalize().replace('_', ' ')}"
         
-        text = f"✅ آموزش کامل شما برای <b>{app_display_name}</b> آماده است.\n\n" \
-               f"لطفاً روی دکمه زیر کلیک کنید تا آموزش را در مرورگر خود مشاهده نمایید."
+        header = get_string("tutorial_ready_header", lang_code).format(app_display_name=app_display_name)
+        body = get_string("tutorial_ready_body", lang_code)
+        text = f"<b>{header}</b>\n\n{body}"
                
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("🔗 مشاهده آموزش کامل", url=link))
-        kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست نرم‌افزارها", callback_data=f"tutorial_os:{os_type}"))
+        kb.add(types.InlineKeyboardButton(get_string("btn_view_tutorial", lang_code), url=link))
+        kb.add(types.InlineKeyboardButton(get_string("btn_back_to_apps", lang_code), callback_data=f"tutorial_os:{os_type}"))
         
         _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb, parse_mode="HTML")
 

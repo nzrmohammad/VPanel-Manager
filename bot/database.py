@@ -35,14 +35,11 @@ class DatabaseManager:
                                 logger.warning(f"Column '{column_name}' already exists in {table}. Ignoring.")
                             else:
                                 raise e
-
-                # به‌روزرسانی جدول user_uuids
-                add_column_if_not_exists("user_uuids", "has_access_de", "INTEGER DEFAULT 1")
-                add_column_if_not_exists("user_uuids", "has_access_fr", "INTEGER DEFAULT 0")
-                add_column_if_not_exists("user_uuids", "has_access_tr", "INTEGER DEFAULT 0")
-                
-                # به‌روزرسانی جدول config_templates
-                add_column_if_not_exists("config_templates", "is_random_pool", "INTEGER DEFAULT 0")
+                add_column_if_not_exists("users", "auto_delete_reports", "INTEGER DEFAULT 0")
+                # --- START: New Columns ---
+                add_column_if_not_exists("users", "auto_delete_reports", "INTEGER DEFAULT 1")
+                add_column_if_not_exists("users", "weekly_reports", "INTEGER DEFAULT 1")
+                # --- END: New Columns ---
 
                 logger.info("Database schema migration check complete.")
 
@@ -65,7 +62,9 @@ class DatabaseManager:
                     data_warning_marzban INTEGER DEFAULT 1,
                     show_info_config INTEGER DEFAULT 1,        
                     admin_note TEXT,
-                    lang_code TEXT DEFAULT 'fa'
+                    lang_code TEXT DEFAULT 'fa',
+                    weekly_reports INTEGER DEFAULT 1,
+                    auto_delete_reports INTEGER DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +116,7 @@ class DatabaseManager:
                     template_str TEXT NOT NULL,
                     is_active INTEGER DEFAULT 1,
                     is_special INTEGER DEFAULT 0,
+                    is_random_pool INTEGER DEFAULT 0,
                     server_type TEXT DEFAULT 'none',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -137,6 +137,12 @@ class DatabaseManager:
                     token TEXT PRIMARY KEY,
                     uuid TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+               CREATE TABLE IF NOT EXISTS sent_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE IF NOT EXISTS panels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -351,23 +357,25 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self._conn() as c:
-            row = c.execute("SELECT daily_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config, auto_delete_reports FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 return {
                     'daily_reports': bool(row['daily_reports']), 
+                    'weekly_reports': bool(row['weekly_reports']),
                     'expiry_warnings': bool(row['expiry_warnings']),
                     'data_warning_hiddify': bool(row['data_warning_hiddify']),
                     'data_warning_marzban': bool(row['data_warning_marzban']),
-                    'show_info_config': bool(row['show_info_config'])
+                    'show_info_config': bool(row['show_info_config']),
+                    'auto_delete_reports': bool(row['auto_delete_reports'])
                 }
             return {
-                'daily_reports': True, 'expiry_warnings': True, 
+                'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True, 
                 'data_warning_hiddify': True, 'data_warning_marzban': True,
-                'show_info_config': True
+                'show_info_config': True, 'auto_delete_reports': True
             }
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
-            if setting not in ['daily_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban', 'show_info_config']: return
+            if setting not in ['daily_reports', 'weekly_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban', 'show_info_config', 'auto_delete_reports']: return
             with self._conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
 
@@ -1262,5 +1270,29 @@ class DatabaseManager:
                     "total_usage": h_usage + m_usage
                 })
         return history
+
+    def add_sent_report(self, user_id: int, message_id: int):
+        """یک رکورد برای پیام گزارش ارسال شده ثبت می‌کند."""
+        with self._conn() as c:
+            c.execute("INSERT INTO sent_reports (user_id, message_id, sent_at) VALUES (?, ?, ?)",
+                      (user_id, message_id, datetime.now(pytz.utc)))
+
+    def get_old_reports_to_delete(self, hours: int = 12) -> List[Dict[str, Any]]:
+        """پیام‌های گزارشی که قدیمی‌تر از زمان مشخص شده هستند را برمی‌گرداند."""
+        time_limit = datetime.now(pytz.utc) - timedelta(hours=hours)
+        query = """
+            SELECT sr.id, sr.user_id, sr.message_id
+            FROM sent_reports sr
+            JOIN users u ON sr.user_id = u.user_id
+            WHERE sr.sent_at < ? AND u.auto_delete_reports = 1
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (time_limit,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_sent_report_record(self, record_id: int):
+        """یک رکورد را از جدول sent_reports پس از تلاش برای حذف، پاک می‌کند."""
+        with self._conn() as c:
+            c.execute("DELETE FROM sent_reports WHERE id = ?", (record_id,))
 
 db = DatabaseManager()

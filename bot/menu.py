@@ -18,8 +18,7 @@ class Menu:
         btn_settings = types.InlineKeyboardButton(f"{EMOJIS['bell']} {get_string('settings', lang_code)}", callback_data="settings")
         btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
-        btn_tutorials = types.InlineKeyboardButton(f"📚 آموزش اتصال", callback_data="tutorials")
-
+        btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_settings, btn_services)
@@ -114,7 +113,7 @@ class Menu:
         kb = types.InlineKeyboardMarkup(row_width=2)
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
-        btn_turkey = types.InlineKeyboardButton(f"🇹🇷 سرویس‌های ترکیه", callback_data="show_plans:turkey")
+        btn_turkey = types.InlineKeyboardButton(f"🇹🇷 {get_string('btn_cat_tr', lang_code)}", callback_data="show_plans:turkey")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
         btn_payment_methods = types.InlineKeyboardButton(get_string('btn_payment_methods', lang_code), callback_data="show_payment_options")
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
@@ -147,64 +146,61 @@ class Menu:
         kb.add(btn_back)
         return kb
 
-    # --- NEW MENUS FOR TUTORIALS ---
-    def tutorial_main_menu(self) -> types.InlineKeyboardMarkup:
+    def tutorial_main_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
-            types.InlineKeyboardButton("🤖 Android", callback_data="tutorial_os:android"),
-            types.InlineKeyboardButton("🖥️ Windows", callback_data="tutorial_os:windows"),
-            types.InlineKeyboardButton("🍏 iOS", callback_data="tutorial_os:ios")
+            types.InlineKeyboardButton(get_string('os_android', lang_code), callback_data="tutorial_os:android"),
+            types.InlineKeyboardButton(get_string('os_windows', lang_code), callback_data="tutorial_os:windows"),
+            types.InlineKeyboardButton(get_string('os_ios', lang_code), callback_data="tutorial_os:ios")
         )
-        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
         return kb
 
-    def tutorial_os_menu(self, os_type: str) -> types.InlineKeyboardMarkup:
-        """
-        اصلاح شده: دکمه‌های جدید برای اپلیکیشن Happ به منوی اندروید و iOS اضافه شده است.
-        """
+    def tutorial_os_menu(self, os_type: str, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=1)
         
         if os_type == 'android':
-            kb.add(types.InlineKeyboardButton("V2rayNG (پیشنهادی)", callback_data="tutorial_app:android:v2rayng"))
-            kb.add(types.InlineKeyboardButton("Hiddify", callback_data="tutorial_app:android:hiddify"))
-            kb.add(types.InlineKeyboardButton("Happ", callback_data="tutorial_app:android:happ"))
+            kb.add(types.InlineKeyboardButton(get_string('app_v2rayng', lang_code), callback_data="tutorial_app:android:v2rayng"))
+            kb.add(types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:android:hiddify"))
+            kb.add(types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:android:happ"))
 
         elif os_type == 'windows':
-            kb.add(types.InlineKeyboardButton("V2rayN", callback_data="tutorial_app:windows:v2rayn"))
-            kb.add(types.InlineKeyboardButton("Hiddify", callback_data="tutorial_app:windows:hiddify"))
+            kb.add(types.InlineKeyboardButton(get_string('app_v2rayn', lang_code), callback_data="tutorial_app:windows:v2rayn"))
+            kb.add(types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:windows:hiddify"))
             
         elif os_type == 'ios':
-            kb.add(types.InlineKeyboardButton("Shadowrocket (پولی)", callback_data="tutorial_app:ios:shadowrocket"))
-            kb.add(types.InlineKeyboardButton("Streisand (پیشنهادی)", callback_data="tutorial_app:ios:streisand"))
-            kb.add(types.InlineKeyboardButton("Hiddify", callback_data="tutorial_app:ios:hiddify"))
-            kb.add(types.InlineKeyboardButton("Happ", callback_data="tutorial_app:ios:happ"))
+            kb.add(types.InlineKeyboardButton(get_string('app_shadowrocket', lang_code), callback_data="tutorial_app:ios:shadowrocket"))
+            kb.add(types.InlineKeyboardButton(get_string('app_streisand', lang_code), callback_data="tutorial_app:ios:streisand"))
+            kb.add(types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:ios:hiddify"))
+            kb.add(types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:ios:happ"))
 
-        kb.add(types.InlineKeyboardButton("🔙 بازگشت به سیستم‌عامل‌ها", callback_data="tutorials"))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('btn_back_to_os', lang_code)}", callback_data="tutorials"))
         return kb
 
     def settings(self, settings_dict: dict, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         
-        daily_text = f"📊 {get_string('daily_report', lang_code)}: {'✅' if settings_dict.get('daily_reports', True) else '❌'}"
-        expiry_text = f"⏰ {get_string('expiry_warning', lang_code)}: {'✅' if settings_dict.get('expiry_warnings', True) else '❌'}"
+        daily_text = f"📊 {get_string('daily_report', lang_code)} {'✅' if settings_dict.get('daily_reports', True) else '❌'}"
+        weekly_text = f"📅 {get_string('weekly_report', lang_code)} {'✅' if settings_dict.get('weekly_reports', True) else '❌'}"
         kb.add(
             types.InlineKeyboardButton(daily_text, callback_data="toggle_daily_reports"),
-            types.InlineKeyboardButton(expiry_text, callback_data="toggle_expiry_warnings")
-        )
-        
-        hiddify_text = f"🇩🇪 {get_string('data_warning_de', lang_code)}: {'✅' if settings_dict.get('data_warning_hiddify', True) else '❌'}"
-        marzban_text = f"🇫🇷 {get_string('data_warning_fr', lang_code)}: {'✅' if settings_dict.get('data_warning_marzban', True) else '❌'}"
-        kb.add(
-            types.InlineKeyboardButton(hiddify_text, callback_data="toggle_data_warning_hiddify"),
-            types.InlineKeyboardButton(marzban_text, callback_data="toggle_data_warning_marzban")
+            types.InlineKeyboardButton(weekly_text, callback_data="toggle_weekly_reports")
         )
 
-        # --- NEW BUTTON ---
-        info_config_text = f"ℹ️ کانفیگ اطلاعات: {'✅' if settings_dict.get('show_info_config', True) else '❌'}"
+        expiry_text = f"⏰ {get_string('expiry_warning', lang_code)} {'✅' if settings_dict.get('expiry_warnings', True) else '❌'}"
+        auto_delete_text = f"🗑️ {get_string('auto_delete_reports', lang_code)} {'✅' if settings_dict.get('auto_delete_reports', True) else '❌'}"
         kb.add(
-            types.InlineKeyboardButton(info_config_text, callback_data="toggle_show_info_config")
+            types.InlineKeyboardButton(expiry_text, callback_data="toggle_expiry_warnings"),
+            types.InlineKeyboardButton(auto_delete_text, callback_data="toggle_auto_delete_reports")
         )
-        # --- END NEW BUTTON ---
+        
+        hiddify_text = f"🪫 {get_string('data_warning_de', lang_code)} {'✅' if settings_dict.get('data_warning_hiddify', True) else '❌'}"
+        marzban_text = f"🪫 {get_string('data_warning_fr_tr', lang_code)} {'✅' if settings_dict.get('data_warning_marzban', True) else '❌'}"
+        kb.add(types.InlineKeyboardButton(hiddify_text, callback_data="toggle_data_warning_hiddify"),
+            types.InlineKeyboardButton(marzban_text, callback_data="toggle_data_warning_marzban"))
+
+        info_config_text = f"ℹ️ {get_string('info_config', lang_code)} {'✅' if settings_dict.get('show_info_config', True) else '❌'}"
+        kb.add(types.InlineKeyboardButton(info_config_text, callback_data="toggle_show_info_config"))
 
         kb.add(types.InlineKeyboardButton(f"🌐 {get_string('change_language', lang_code)}", callback_data="change_language"))
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
@@ -504,11 +500,9 @@ class Menu:
     def get_links_menu(self, uuid_id: int, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
-            # از فایل زبان برای لیبل دکمه‌ها استفاده کنید
             types.InlineKeyboardButton(f"📋 {get_string('btn_link_normal', lang_code)}", callback_data=f"getlink_normal_{uuid_id}"),
             types.InlineKeyboardButton(f"📝 {get_string('btn_link_b64', lang_code)}", callback_data=f"getlink_b64_{uuid_id}")
         )
-        # دکمه بازگشت را نیز چندزبانه کنید
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data=f"acc_{uuid_id}"))
         return kb
 

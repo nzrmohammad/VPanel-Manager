@@ -260,7 +260,10 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
     }
     type_title = get_string(type_map.get(plan_type, "fmt_plan_type_general"), lang_code)
     
-    title = f'*{escape_markdown(get_string("fmt_plans_title", lang_code).format(type_title=type_title))}*'
+    raw_title_template = get_string("fmt_plans_title", lang_code)
+    formatted_title = raw_title_template.format(type_title=type_title)
+    title = f'*{escape_markdown(formatted_title)}*'
+    
     lines = [title]
     
     separator = "`────────────────────`"
@@ -302,8 +305,10 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
 
 
 def fmt_panel_quick_stats(panel_name: str, stats: dict, lang_code: str) -> str:
-    title_str = get_string('fmt_panel_stats_title', lang_code).format(panel_name=panel_name)
-    title = f"*{escape_markdown(title_str)}*"
+    raw_title_template = get_string('fmt_panel_stats_title', lang_code)
+    formatted_title = raw_title_template.format(panel_name=panel_name)
+    title = f"*{escape_markdown(formatted_title)}*"
+
     
     lines = [title, ""]
     if not stats:
