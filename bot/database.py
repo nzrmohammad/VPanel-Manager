@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 import logging
 import pytz
-import uuid as uuid_generator
+import jdatetime
 import secrets
 
 logger = logging.getLogger(__name__)
@@ -207,6 +207,55 @@ class DatabaseManager:
                 result['marzban'] = max(0, today_row['m_max'] - start_marzban)
 
         return result
+    
+    def get_weekly_usage_by_uuid(self, uuid_str: str) -> Dict[str, float]:
+            """مصرف هفتگی کاربر را از ابتدای روز شنبه تا لحظه فعلی محاسبه می‌کند."""
+            uuid_id = self.get_uuid_id_by_uuid(uuid_str)
+            if not uuid_id:
+                return {'hiddify': 0.0, 'marzban': 0.0}
+
+            tehran_tz = pytz.timezone("Asia/Tehran")
+            now_in_tehran = datetime.now(tehran_tz)
+            
+            # پیدا کردن اولین روز هفته (شنبه) در تقویم جلالی
+            today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+            days_since_saturday = today_jalali.weekday()
+            week_start_tehran = (now_in_tehran - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start_utc = week_start_tehran.astimezone(pytz.utc)
+
+            result = {'hiddify': 0.0, 'marzban': 0.0}
+            with self._conn() as c:
+                # دریافت آخرین اسنپ‌شات قبل از شروع هفته
+                last_snapshot_before_week = c.execute("""
+                    SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots
+                    WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1
+                """, (uuid_id, week_start_utc)).fetchone()
+
+                start_hiddify = last_snapshot_before_week['hiddify_usage_gb'] if last_snapshot_before_week else 0
+                start_marzban = last_snapshot_before_week['marzban_usage_gb'] if last_snapshot_before_week else 0
+
+                # دریافت اولین و آخرین اسنپ‌شات در طول هفته فعلی برای بررسی ریست شدن حجم
+                snapshots_this_week = c.execute("""
+                    SELECT MIN(hiddify_usage_gb) as h_min, MAX(hiddify_usage_gb) as h_max,
+                        MIN(marzban_usage_gb) as m_min, MAX(marzban_usage_gb) as m_max
+                    FROM usage_snapshots
+                    WHERE uuid_id = ? AND taken_at >= ?
+                """, (uuid_id, week_start_utc)).fetchone()
+
+                if snapshots_this_week:
+                    # بررسی ریست شدن حجم برای Hiddify
+                    if snapshots_this_week['h_min'] is not None and snapshots_this_week['h_min'] < start_hiddify:
+                        start_hiddify = 0
+                    if snapshots_this_week['h_max'] is not None:
+                        result['hiddify'] = max(0, snapshots_this_week['h_max'] - start_hiddify)
+
+                    # بررسی ریست شدن حجم برای Marzban
+                    if snapshots_this_week['m_min'] is not None and snapshots_this_week['m_min'] < start_marzban:
+                        start_marzban = 0
+                    if snapshots_this_week['m_max'] is not None:
+                        result['marzban'] = max(0, snapshots_this_week['m_max'] - start_marzban)
+
+            return result
     
     def get_panel_usage_in_intervals(self, uuid_id: int, panel_name: str) -> Dict[int, float]:
         if panel_name not in ['hiddify_usage_gb', 'marzban_usage_gb']:
@@ -1183,5 +1232,35 @@ class DatabaseManager:
         random_pool = [tpl for tpl in all_templates if tpl.get('is_random_pool')]
         fixed_pool = [tpl for tpl in all_templates if not tpl.get('is_random_pool')]
         return random_pool, fixed_pool
+    
+    def get_user_daily_usage_history_by_panel(self, uuid_id: int, days: int = 7) -> list:
+        """تاریخچه مصرف روزانه کاربر را به تفکیک هر پنل برای تعداد روز مشخص شده برمی‌گرداند."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        history = []
+        with self._conn() as c:
+            for i in range(days):
+                target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
+                day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+                day_end_utc = day_start_utc + timedelta(days=1)
+                
+                query = """
+                    SELECT
+                        (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
+                        (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as m_usage
+                    FROM usage_snapshots
+                    WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
+                """
+                row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
+                
+                h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
+                m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
+                
+                history.append({
+                    "date": target_date,
+                    "hiddify_usage": h_usage,
+                    "marzban_usage": m_usage,
+                    "total_usage": h_usage + m_usage
+                })
+        return history
 
 db = DatabaseManager()

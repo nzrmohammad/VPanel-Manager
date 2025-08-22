@@ -160,6 +160,7 @@
   "btn_change_name": "Change Name",
   "prompt_enter_new_name": "Please enter the new display name for this config (at least 3 characters):",
   "err_name_too_short": "The entered name is too short. Operation cancelled.",
-  "msg_name_changed_success": "✅ Your config name has been successfully changed.\n\n⚠️ To see the change, please update your subscription link in your application."
-
+  "msg_name_changed_success": "✅ Your config name has been successfully changed.\n\n⚠️ To see the change, please update your subscription link in your application.",
+  "weekly_usage_header": "📊 This Week's Total Usage:",
+  "weekly_report_footer": "⚡️ Total usage this week for all accounts: {usage}"
 }

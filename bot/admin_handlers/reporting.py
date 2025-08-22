@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 import pytz
+import jdatetime
 from telebot import types
 from .. import combined_handler
 from ..database import db
@@ -9,12 +10,12 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info
 )
+from ..user_formatters import fmt_user_report, fmt_user_weekly_report
 from ..utils import _safe_edit, escape_markdown
 from ..hiddify_api_handler import HiddifyAPIHandler
 from ..marzban_api_handler import MarzbanAPIHandler
-from ..admin_formatters import fmt_hiddify_panel_info
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -35,11 +36,7 @@ def handle_health_check(call, params):
     """وضعیت اولین پنل فعال Hiddify را بررسی و نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     _safe_edit(uid, msg_id, escape_markdown("⏳ در حال بررسی وضعیت پنل Hiddify..."))
-    
-    # --- START OF FIX ---
-    # منوی بازگشت به جای منوی انتخاب سرور استفاده شده است
     back_to_status_menu = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:system_status_menu"))
-    # --- END OF FIX ---
 
     try:
         active_hiddify_panel = next((p for p in db.get_active_panels() if p['panel_type'] == 'hiddify'), None)
@@ -67,10 +64,7 @@ def handle_marzban_system_stats(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id
     _safe_edit(uid, msg_id, escape_markdown("⏳ در حال دریافت آمار از پنل Marzban..."))
 
-    # --- START OF FIX ---
-    # منوی بازگشت به جای منوی انتخاب سرور استفاده شده است
     back_to_status_menu = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin:system_status_menu"))
-    # --- END OF FIX ---
 
     try:
         active_marzban_panel = next((p for p in db.get_active_panels() if p['panel_type'] == 'marzban'), None)
@@ -179,12 +173,10 @@ def handle_report_by_plan_selection(call, params):
 def _find_users_matching_plan_specs(all_users, plan_specs_set, invert_match=False):
     filtered_users = []
     for user in all_users:
-        # This logic needs to be adapted for dynamic panels if plans are panel-specific
-        # For now, it assumes combined volume logic
+
         user_vol_de = 0
         user_vol_fr = 0
         for panel_name, panel_data in user.get('breakdown', {}).items():
-            # A simple assumption, this might need refinement based on your plan structure
             if 'germany' in panel_name.lower():
                 user_vol_de += panel_data.get('usage_limit_GB', 0)
             elif 'france' in panel_name.lower():
@@ -198,9 +190,6 @@ def _find_users_matching_plan_specs(all_users, plan_specs_set, invert_match=Fals
     return filtered_users
 
 def handle_list_users_by_plan(call, params):
-    # This function may need more significant changes depending on how plans
-    # are defined across multiple dynamic panels.
-    # The current logic might not be perfectly accurate anymore.
     bot.answer_callback_query(call.id, "گزارش بر اساس پلن در حال بازبینی برای سیستم جدید است.")
 
 def handle_list_users_no_plan(call, params):
@@ -220,7 +209,7 @@ def handle_quick_dashboard(call, params):
         now_utc = datetime.now(pytz.utc)
         
         for user in all_users_data:
-            if user.get('uuid'): # Only process users with UUIDs for DB-related stats
+            if user.get('uuid'):
                 daily_usage = db.get_usage_since_midnight_by_uuid(user['uuid'])
                 stats['total_usage_today_gb'] += sum(daily_usage.values())
                 
@@ -250,3 +239,106 @@ def handle_quick_dashboard(call, params):
     except Exception as e:
         logger.error(f"Failed to generate quick dashboard: {e}", exc_info=True)
         _safe_edit(uid, msg_id, "❌ خطا در تولید داشبورد", reply_markup=menu.admin_panel())
+
+def handle_test_report_command(message: types.Message):
+    """Handles the /test_report <user_id> command for admins."""
+    admin_id = message.from_user.id
+    try:
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "فرمت دستور اشتباه است. لطفاً به این شکل استفاده کنید:\n`/test_report USER_ID`", parse_mode="MarkdownV2")
+            return
+        
+        target_user_id = int(parts[1])
+        
+        bot.send_message(admin_id, f"⏳ در حال ساخت و ارسال گزارش تستی برای کاربر `{target_user_id}`\\.\\.\\.", parse_mode="MarkdownV2")
+
+        all_users_info_from_api = combined_handler.get_all_users_combined()
+        user_info_map = {user['uuid']: user for user in all_users_info_from_api}
+        
+        user_uuids_from_db = db.uuids(target_user_id)
+        if not user_uuids_from_db:
+            bot.send_message(admin_id, f"❌ کاربری با شناسه `{target_user_id}` در دیتابیس ربات یافت نشد\\.", parse_mode="MarkdownV2")
+            return
+            
+        user_infos_for_report = []
+        for u_row in user_uuids_from_db:
+            if u_row['uuid'] in user_info_map:
+                user_data = user_info_map[u_row['uuid']]
+                user_data['db_id'] = u_row['id']
+                user_infos_for_report.append(user_data)
+
+        if not user_infos_for_report:
+            bot.send_message(admin_id, f"❌ اکانت فعالی برای کاربر `{target_user_id}` در پنل‌ها یافت نشد\\.", parse_mode="MarkdownV2")
+            return
+            
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
+        now_str = now_shamsi.strftime("%Y/%m/%d - %H:%M")
+        separator = '\n' + '─' * 18 + '\n'
+
+        header = f"🧪 *گزارش تستی* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+        lang_code = db.get_user_language(target_user_id)
+        report_text = fmt_user_report(user_infos_for_report, lang_code)
+        
+        bot.send_message(admin_id, header + report_text, parse_mode="MarkdownV2")
+        bot.send_message(target_user_id, header + report_text, parse_mode="MarkdownV2")
+        
+        bot.send_message(admin_id, "✅ گزارش با موفقیت به ادمین و کاربر ارسال شد\\.", parse_mode="MarkdownV2")
+
+    except ValueError:
+        bot.reply_to(message, "❌ شناسه کاربر باید یک عدد باشد\\.", parse_mode="MarkdownV2")
+    except Exception as e:
+        logger.error(f"Error in handle_test_report_command for user_id {message.text.split()[1] if len(message.text.split()) > 1 else 'N/A'}: {e}", exc_info=True)
+        bot.send_message(admin_id, f"❌ خطایی در هنگام ساخت گزارش رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
+
+def handle_test_weekly_report_command(message: types.Message):
+    """Handles the /test_weekly_report <user_id> command for admins."""
+    admin_id = message.from_user.id
+    try:
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "فرمت دستور اشتباه است. لطفاً به این شکل استفاده کنید:\n`/test_weekly_report USER_ID`", parse_mode="MarkdownV2")
+            return
+        
+        target_user_id = int(parts[1])
+        
+        bot.send_message(admin_id, f"⏳ در حال ساخت و ارسال گزارش هفتگی تستی برای کاربر `{target_user_id}`\\.\\.\\.", parse_mode="MarkdownV2")
+
+        all_users_info_from_api = combined_handler.get_all_users_combined()
+        user_info_map = {user['uuid']: user for user in all_users_info_from_api}
+        
+        user_uuids_from_db = db.uuids(target_user_id)
+        if not user_uuids_from_db:
+            bot.send_message(admin_id, f"❌ کاربری با شناسه `{target_user_id}` در دیتابیس ربات یافت نشد\\.", parse_mode="MarkdownV2")
+            return
+            
+        user_infos_for_report = []
+        for u_row in user_uuids_from_db:
+            if u_row['uuid'] in user_info_map:
+                user_infos_for_report.append(user_info_map[u_row['uuid']])
+
+        if not user_infos_for_report:
+            bot.send_message(admin_id, f"❌ اکانت فعالی برای کاربر `{target_user_id}` در پنل‌ها یافت نشد\\.", parse_mode="MarkdownV2")
+            return
+            
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
+        now_str = now_shamsi.strftime("%Y/%m/%d - %H:%M")
+        separator = '\n' + '─' * 18 + '\n'
+
+        header = f"📊 *گزارش هفتگی* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+        lang_code = db.get_user_language(target_user_id)
+        report_text = fmt_user_weekly_report(user_infos_for_report, lang_code)
+        
+        bot.send_message(admin_id, header + report_text, parse_mode="MarkdownV2")
+        bot.send_message(target_user_id, header + report_text, parse_mode="MarkdownV2")
+        bot.send_message(admin_id, "✅ گزارش هفتگی تستی با موفقیت به ادمین و کاربر ارسال شد\\.", parse_mode="MarkdownV2")
+
+    except ValueError:
+        bot.reply_to(message, "❌ شناسه کاربر باید یک عدد باشد\\.", parse_mode="MarkdownV2")
+    except Exception as e:
+        logger.error(f"Error in handle_test_weekly_report_command for user_id {message.text.split()[1] if len(message.text.split()) > 1 else 'N/A'}: {e}", exc_info=True)
+        bot.send_message(admin_id, f"❌ خطایی در هنگام ساخت گزارش رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")

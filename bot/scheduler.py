@@ -12,7 +12,7 @@ from .database import db
 from .utils import escape_markdown, format_daily_usage
 from .menu import menu
 from .admin_formatters import fmt_admin_report, fmt_online_users_list
-from .user_formatters import fmt_user_report
+from .user_formatters import fmt_user_report, fmt_user_weekly_report
 from .config import (
     DAILY_REPORT_TIME,
     TEHRAN_TZ,
@@ -312,6 +312,46 @@ class SchedulerManager:
                 except Exception as e:
                     logger.error(f"Scheduler: Failed to send birthday message to user {user_id}: {e}")
 
+    def _weekly_report(self) -> None:
+        """Sends a weekly usage report to all users."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
+        now_str = now_shamsi.strftime("%Y/%m/%d - %H:%M")
+        logger.info(f"SCHEDULER: ----- Running WEEKLY report at {now_str} -----")
+
+        all_users_info_from_api = combined_handler.get_all_users_combined()
+        if not all_users_info_from_api:
+            logger.warning("SCHEDULER (Weekly): Could not fetch any user info from API. JOB STOPPED.")
+            return
+            
+        user_info_map = {user['uuid']: user for user in all_users_info_from_api}
+        all_bot_users = db.get_all_user_ids()
+        separator = '\n' + '─' * 18 + '\n'
+
+        for user_id in all_bot_users:
+            try:
+                user_uuids_from_db = db.uuids(user_id)
+                user_infos_for_report = []
+                
+                if not user_uuids_from_db:
+                    continue
+
+                for u_row in user_uuids_from_db:
+                    if u_row['uuid'] in user_info_map:
+                        user_infos_for_report.append(user_info_map[u_row['uuid']])
+                
+                if user_infos_for_report:
+                    header = f"📊 *گزارش هفتگی* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+                    lang_code = db.get_user_language(user_id)
+                    report_text = fmt_user_weekly_report(user_infos_for_report, lang_code)
+                    self.bot.send_message(user_id, header + report_text, parse_mode="MarkdownV2")
+                    time.sleep(0.2) # To avoid hitting rate limits
+
+            except Exception as e:
+                logger.error(f"SCHEDULER (Weekly): CRITICAL FAILURE while processing main loop for user {user_id}: {e}", exc_info=True)
+                continue
+
     def _run_monthly_vacuum(self) -> None:
         # 1. Daily cleanup of old snapshots
         logger.info("Scheduler: Running daily job to clean up old snapshots.")
@@ -338,6 +378,7 @@ class SchedulerManager:
         schedule.every(3).hours.at(":01").do(self._hourly_snapshots)
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
+        schedule.every().friday.at("23:50", self.tz_str).do(self._weekly_report)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)

@@ -1,10 +1,8 @@
-# bot/admin_router.py
 import logging
 from telebot import types
+from .config import ADMIN_IDS
 from .bot_instance import bot, admin_conversations
 
-# --- START: CORRECTED IMPORTS ---
-# این بخش حالا به درستی کار خواهد کرد چون __init__.py کامل است
 from .admin_handlers import (
     user_management, 
     reporting, 
@@ -14,19 +12,15 @@ from .admin_handlers import (
     plan_management, 
     panel_management
 )
-# --- END: CORRECTED IMPORTS ---
 
-from .admin_hiddify_handlers import (_start_add_hiddify_user_convo, 
-                                      initialize_hiddify_handlers, handle_add_user_back_step)
-from .admin_marzban_handlers import (_start_add_marzban_user_convo, 
-                                     initialize_marzban_handlers)
+from .admin_hiddify_handlers import (_start_add_hiddify_user_convo, initialize_hiddify_handlers, handle_add_user_back_step)
+from .admin_marzban_handlers import (_start_add_marzban_user_convo, initialize_marzban_handlers)
 from .menu import menu
 from .utils import _safe_edit
 
 logger = logging.getLogger(__name__)
 
 def register_admin_handlers(bot):
-    # این بخش بدون تغییر باقی می‌ماند
     initialize_hiddify_handlers(bot, admin_conversations)
     initialize_marzban_handlers(bot, admin_conversations)
     group_actions.initialize_group_actions_handlers(bot, admin_conversations)
@@ -37,7 +31,14 @@ def register_admin_handlers(bot):
     plan_management.initialize_plan_management_handlers(bot, admin_conversations)
     panel_management.initialize_panel_management_handlers(bot, admin_conversations)
 
-# ... (بقیه محتوای فایل admin_router.py بدون هیچ تغییری باقی می‌ماند) ...
+    @bot.message_handler(commands=['test_report'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def test_report_command(message: types.Message):
+        reporting.handle_test_report_command(message)
+
+    @bot.message_handler(commands=['test_weekly_report'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def test_weekly_report_command(message: types.Message):
+        reporting.handle_test_weekly_report_command(message)
+
 # ===================================================================
 # Simple Menu Functions
 # ===================================================================
