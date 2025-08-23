@@ -200,7 +200,7 @@ class SchedulerManager:
             logger.info(f"SCHEDULER: Fetched {len(all_users_info_from_api)} total users from API.")
 
             user_info_map = {user['uuid']: user for user in all_users_info_from_api}
-            all_bot_users = db.get_all_user_ids()
+            all_bot_users = list(db.get_all_user_ids())
             separator = '\n' + '─' * 18 + '\n'
             logger.info(f"SCHEDULER: Found {len(all_bot_users)} registered bot users to process.")
 
