@@ -348,11 +348,10 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
     active_users = 0
     total_daily_hiddify, total_daily_marzban = 0.0, 0.0
-    # این لیست اکنون برای کاربرانی است که امروز مصرف داشته‌اند
     active_today_users, expiring_soon_users, new_users_today, expired_recently_users = [], [], [], []
     
     now_utc = datetime.now(pytz.utc)
-    db_users_map = {u['uuid']: u.get('created_at') for u in db_manager.all_active_uuids()}
+    db_users_map = {u['uuid']: u for u in db_manager.get_all_user_uuids()}
 
     for user_info in all_users_from_api:
         if user_info.get("is_active"):
@@ -366,7 +365,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             user_info['daily_usage_dict'] = daily_usage_dict
             daily_usage_sum = sum(daily_usage_dict.values())
 
-        # *** تغییر اصلی: فیلتر کردن بر اساس مصرف روزانه > 0 ***
         if daily_usage_sum > 0:
             active_today_users.append(user_info)
 
@@ -377,9 +375,11 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             elif -2 <= expire_days < 0:
                 expired_recently_users.append(user_info)
 
-        created_at = db_users_map.get(user_info.get('uuid'))
-        if created_at and isinstance(created_at, datetime) and (now_utc - created_at.astimezone(pytz.utc)).days < 1:
-            new_users_today.append(user_info)
+        created_at_info = db_users_map.get(user_info.get('uuid'))
+        if created_at_info and created_at_info.get('created_at'):
+            created_at = created_at_info['created_at']
+            if isinstance(created_at, datetime) and (now_utc - created_at.astimezone(pytz.utc)).days < 1:
+                new_users_today.append(user_info)
 
     total_daily_all = total_daily_hiddify + total_daily_marzban
     list_bullet = escape_markdown("- ")
@@ -388,14 +388,12 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         f"{EMOJIS['gear']} *{escape_markdown('خلاصه وضعیت کل پنل')}*",
         f"{list_bullet}{EMOJIS['user']} تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
         f"{list_bullet}{EMOJIS['success']} اکانت‌های فعال : *{active_users}*",
-        # *** تغییر اصلی: بروزرسانی تعداد کاربران آنلاین به فعالان امروز ***
         f"{list_bullet}{EMOJIS['wifi']} کاربران فعال امروز : *{len(active_today_users)}*",
         f"{list_bullet}{EMOJIS['lightning']} *مصرف کل امروز :* `{escape_markdown(format_daily_usage(total_daily_all))}`",
         f"{list_bullet} 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-        f"{list_bullet} 🇫🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+        f"{list_bullet} 🇫🇷🇹🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
 
-    # *** تغییر اصلی: استفاده از لیست و عنوان جدید ***
     if active_today_users:
         report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['success']} {escape_markdown('کاربران فعال امروز و مصرفشان')}*")
         active_today_users.sort(key=lambda u: u.get('name', ''))
@@ -404,19 +402,32 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             daily_dict = user.get('daily_usage_dict', {})
             
             usage_parts = []
-            breakdown = user.get('breakdown', {})
-            for panel_name, panel_details in breakdown.items():
-                panel_type = panel_details.get('type')
-                if panel_type:
-                    flag = "🇩🇪" if panel_type == "hiddify" else "🇫🇷" if panel_type == "marzban" else ""
-                    daily_usage_val = daily_dict.get(panel_type, 0.0)
-                    # فقط در صورتی که مصرفی وجود داشته باشد، آن را نمایش بده
-                    if daily_usage_val > 0:
-                        daily_str = escape_markdown(format_daily_usage(daily_usage_val))
-                        usage_parts.append(f"{flag} `{daily_str}`")
+            
+            # --- ✅ START OF THE FIX ---
+            # Get user access rights from the db_users_map we already fetched
+            user_db_record = db_users_map.get(user.get('uuid'))
+
+            # Hiddify (Germany)
+            hiddify_usage = daily_dict.get('hiddify', 0.0)
+            if hiddify_usage > 0:
+                usage_parts.append(f"🇩🇪 `{escape_markdown(format_daily_usage(hiddify_usage))}`")
+
+            # Marzban (France/Turkey)
+            marzban_usage = daily_dict.get('marzban', 0.0)
+            if marzban_usage > 0 and user_db_record:
+                flags = []
+                if user_db_record.get('has_access_fr'):
+                    flags.append("🇫🇷")
+                if user_db_record.get('has_access_tr'):
+                    flags.append("🇹🇷")
+                
+                if flags:
+                    flag_str = "".join(flags)
+                    usage_parts.append(f"{flag_str} `{escape_markdown(format_daily_usage(marzban_usage))}`")
+            # --- ✅ END OF THE FIX ---
 
             usage_str = escape_markdown(" | ").join(usage_parts)
-            if usage_str: # فقط اگر مصرفی برای نمایش وجود داشت، کاربر را اضافه کن
+            if usage_str:
                 report_lines.append(f"`•` *{user_name} :* {usage_str}")
 
     if expiring_soon_users:

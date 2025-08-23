@@ -1,3 +1,5 @@
+# nzrmohammad/vpanel-manager/VPanel-Manager-aa3b4f7623a793527cfa3d33f8968c1f80909dbb/bot/custom_bot.py
+
 import logging
 import sys
 import signal
@@ -16,9 +18,10 @@ from .utils import initialize_utils
 from .inline_handlers import register_inline_handlers
 
 logger = logging.getLogger(__name__)
+# bot is initialized here but the instance from bot_instance is used for consistency
 bot = TeleBot(BOT_TOKEN, parse_mode=None)
 initialize_utils(bot)
-scheduler = SchedulerManager(bot)
+scheduler = SchedulerManager(bot) # The scheduler instance is created here
 
 def setup_bot_logging():
     class UserIdFilter(logging.Filter):
@@ -76,7 +79,9 @@ class HiddifyBot:
             logger.info("Registering handlers ...")
             initialize_utils(self.bot)
             register_user_handlers(self.bot)
-            register_admin_handlers(self.bot)
+            # ✅ --- FIX: Pass the scheduler instance as an argument ---
+            register_admin_handlers(self.bot, self.scheduler)
+            # --------------------------------------------------------
             register_callback_router(self.bot)
             register_inline_handlers(self.bot)
             logger.info("✅ Handlers registered")

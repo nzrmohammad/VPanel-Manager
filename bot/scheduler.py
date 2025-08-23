@@ -1,7 +1,9 @@
+# nzrmohammad/vpanel-manager/VPanel-Manager-aa3b4f7623a793527cfa3d33f8968c1f80909dbb/bot/scheduler.py
+
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import schedule
 import pytz
 import jdatetime
@@ -48,7 +50,7 @@ class SchedulerManager:
                 return
                 
             user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
-            all_uuids_from_db = list(db.all_active_uuids()) # Convert generator to list to log count
+            all_uuids_from_db = list(db.all_active_uuids())
             logger.info(f"SCHEDULER (Snapshot): Found {len(all_uuids_from_db)} active UUIDs in DB to process.")
 
             for u_row in all_uuids_from_db:
@@ -76,9 +78,16 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"SCHEDULER (Snapshot): A critical error occurred during the snapshot job: {e}", exc_info=True)
 
-    def _check_for_warnings(self) -> None:
+    def _check_for_warnings(self, target_user_id: int = None) -> None:
         logger.info("SCHEDULER: Starting warnings check job.")
         
+        if target_user_id:
+            active_uuids_list = [row for row in db.all_active_uuids() if row['user_id'] == target_user_id]
+            logger.info(f"SCHEDULER (Warnings - TEST MODE): Checking warnings for target user {target_user_id}.")
+        else:
+            active_uuids_list = list(db.all_active_uuids())
+            logger.info(f"SCHEDULER (Warnings): Checking warnings for {len(active_uuids_list)} active UUIDs.")
+
         try:
             all_users_info_map = {u['uuid']: u for u in combined_handler.get_all_users_combined() if u.get('uuid')}
             if not all_users_info_map:
@@ -88,8 +97,6 @@ class SchedulerManager:
             logger.error(f"SCHEDULER (Warnings): Failed to fetch combined user data: {e}", exc_info=True)
             return
 
-        active_uuids_list = list(db.all_active_uuids())
-        logger.info(f"SCHEDULER (Warnings): Checking warnings for {len(active_uuids_list)} active UUIDs.")
         processed_count = 0
 
         for u_row in active_uuids_list:
@@ -113,13 +120,13 @@ class SchedulerManager:
                     first_conn_time = u_row['first_connection_time'].replace(tzinfo=pytz.utc)
                     if (datetime.now(pytz.utc) - first_conn_time).total_seconds() >= WELCOME_MESSAGE_DELAY_HOURS * 3600:
                         welcome_text = (
-                            f"🎉 *به جمع ما خوش آمدی!* 🎉\n\n"
-                            f"از اینکه به ما اعتماد کردی خوشحالیم. امیدواریم از کیفیت سرویس لذت ببری.\n\n"
-                            f"💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم.\n\n"
-                            f"با آرزوی بهترین‌ها ✨"
+                            "🎉 *به جمع ما خوش آمدی\\!* 🎉\n\n"
+                            "از اینکه به ما اعتماد کردی خوشحالیم\\. امیدواریم از کیفیت سرویس لذت ببری\\.\n\n"
+                            "💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم\\.\n\n"
+                            "با آرزوی بهترین‌ها ✨"
                         )
                         try:
-                            self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="Markdown")
+                            self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="MarkdownV2")
                             db.mark_welcome_message_as_sent(uuid_id_in_db)
                             logger.info(f"Welcome message sent to user {user_id_in_telegram}")
                         except Exception as e:
@@ -131,9 +138,9 @@ class SchedulerManager:
                     if expire_days is not None and 0 <= expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
                         if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
                             msg = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\n"
-                                f"اکانت *{user_name}* شما تا *{expire_days}* روز دیگر منقضی می‌شود.")
+                                f"اکانت *{user_name}* شما تا *{expire_days}* روز دیگر منقضی می‌شود\\.")
                             try:
-                                self.bot.send_message(user_id_in_telegram, msg, parse_mode="Markdown")
+                                self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
                                 db.log_warning(uuid_id_in_db, 'expiry')
                             except Exception as e:
                                 logger.error(f"Failed to send expiry warning to user {user_id_in_telegram}: {e}")
@@ -158,10 +165,10 @@ class SchedulerManager:
                                     remaining_gb = max(0, limit - usage)
                                     server_name = details['name']
                                     msg = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\n"
-                                        f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{server_name}* رو به اتمام است.\n"
-                                        f"{list_bullet}حجم باقیمانده: *{remaining_gb:.2f} GB*")
+                                        f"کاربر گرامی، حجم اکانت *{user_name}* شما در سرور *{escape_markdown(server_name)}* رو به اتمام است\\.\n"
+                                        f"{escape_markdown(list_bullet)}حجم باقیمانده: *{remaining_gb:.2f} GB*")
                                     try:
-                                        self.bot.send_message(user_id_in_telegram, msg, parse_mode="Markdown")
+                                        self.bot.send_message(user_id_in_telegram, msg, parse_mode="MarkdownV2")
                                         db.log_warning(uuid_id_in_db, warning_type)
                                     except Exception as e:
                                         logger.error(f"Failed to send data warning to user {user_id_in_telegram}: {e}")
@@ -174,12 +181,12 @@ class SchedulerManager:
                         warning_type = 'unusual_daily_usage'
                         if not db.has_recent_warning(uuid_id_in_db, warning_type, hours=24):
                             alert_msg = (f"{EMOJIS['warning']} *هشدار مصرف غیرعادی روزانه*\n\n"
-                            f"کاربر *{user_name}* (`{escape_markdown(uuid_str)}`) از حد مجاز مصرف روزانه عبور کرده است.\n\n"
-                            f"{list_bullet}*میزان مصرف امروز:* `{format_daily_usage(total_daily_usage)}`\n"
-                            f"{list_bullet}*حد مجاز تعریف شده:* `{DAILY_USAGE_ALERT_THRESHOLD_GB} GB`")
+                            f"کاربر *{user_name}* \\(`{escape_markdown(uuid_str)}`\\) از حد مجاز مصرف روزانه عبور کرده است\\.\n\n"
+                            f"{escape_markdown(list_bullet)}*میزان مصرف امروز:* `{format_daily_usage(total_daily_usage)}`\n"
+                            f"{escape_markdown(list_bullet)}*حد مجاز تعریف شده:* `{DAILY_USAGE_ALERT_THRESHOLD_GB} GB`")
                             for admin_id in ADMIN_IDS:
                                 try:
-                                    self.bot.send_message(admin_id, alert_msg, parse_mode="Markdown")
+                                    self.bot.send_message(admin_id, alert_msg, parse_mode="MarkdownV2")
                                 except Exception as e:
                                     logger.error(f"Failed to send unusual usage alert to admin {admin_id}: {e}")
                             db.log_warning(uuid_id_in_db, warning_type)
@@ -190,15 +197,15 @@ class SchedulerManager:
                 continue
         logger.info(f"SCHEDULER: Finished warnings check job. Processed {processed_count} users.")
 
-    def _nightly_report(self) -> None:
+    def _nightly_report(self, target_user_id: int = None) -> None:
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_gregorian = datetime.now(tehran_tz)
         
-        is_friday = jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 5
-
-        if is_friday:
-            logger.info("SCHEDULER (Nightly): Today is Friday. Skipping daily report to send weekly report later.")
-            return
+        if not target_user_id:
+            is_friday = jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 5
+            if is_friday:
+                logger.info("SCHEDULER (Nightly): Today is Friday. Skipping daily report to send weekly report later.")
+                return
 
         now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
         now_str = now_shamsi.strftime("%Y/%m/%d - %H:%M")
@@ -212,7 +219,13 @@ class SchedulerManager:
         logger.info(f"SCHEDULER: Fetched {len(all_users_info_from_api)} total users from API.")
 
         user_info_map = {user['uuid']: user for user in all_users_info_from_api}
-        all_bot_users = list(db.get_all_user_ids())
+        
+        if target_user_id:
+            all_bot_users = [target_user_id]
+            logger.info(f"SCHEDULER (Nightly - TEST MODE): Running for target user {target_user_id}.")
+        else:
+            all_bot_users = list(db.get_all_user_ids())
+            
         separator = '\n' + '─' * 18 + '\n'
         logger.info(f"SCHEDULER: Found {len(all_bot_users)} registered bot users to process.")
 
@@ -221,7 +234,7 @@ class SchedulerManager:
             
             try:
                 user_settings = db.get_user_settings(user_id)
-                if not user_settings.get('daily_reports', True):
+                if not user_settings.get('daily_reports', True) and not target_user_id:
                     logger.info(f"SCHEDULER: User {user_id} has disabled daily reports. Skipping.")
                     continue
                 
@@ -230,7 +243,6 @@ class SchedulerManager:
                     header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                     report_text = fmt_admin_report(all_users_info_from_api, db)
                     final_message = header + report_text
-                    logger.debug(f"SCHEDULER (Admin Report): Final message content:\n{final_message}")
                     try:
                         sent_message = self.bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
                         if sent_message:
@@ -239,14 +251,12 @@ class SchedulerManager:
                     except Exception as e:
                         logger.error(f"SCHEDULER: Failed to send ADMIN report to {user_id}: {e}", exc_info=True)
 
-                logger.info(f"SCHEDULER: Now checking for personal user report for user_id: {user_id}.")
                 user_uuids_from_db = db.uuids(user_id)
                 user_infos_for_report = []
                 
                 if not user_uuids_from_db:
                     logger.warning(f"SCHEDULER: User {user_id} has no UUIDs registered in the bot's DB. Skipping user report.")
                 else:
-                    logger.info(f"SCHEDULER: User {user_id} has {len(user_uuids_from_db)} UUID(s) in DB. Matching with API data...")
                     for u_row in user_uuids_from_db:
                         if u_row['uuid'] in user_info_map:
                             user_data = user_info_map[u_row['uuid']]
@@ -254,12 +264,10 @@ class SchedulerManager:
                             user_infos_for_report.append(user_data)
                     
                     if user_infos_for_report:
-                        logger.info(f"SCHEDULER (User Report): Preparing to send personal report to user {user_id}.")
                         header = f"🌙 *گزارش شبانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                         lang_code = db.get_user_language(user_id)
                         report_text = fmt_user_report(user_infos_for_report, lang_code)
                         final_message = header + report_text
-                        logger.debug(f"SCHEDULER (User Report): Final message content:\n{final_message}")
                         try:
                             sent_message = self.bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
                             if sent_message:
@@ -287,8 +295,7 @@ class SchedulerManager:
         
         for msg_info in messages_to_update:
             try:
-                chat_id = msg_info['chat_id']
-                message_id = msg_info['message_id']
+                chat_id, message_id = msg_info['chat_id'], msg_info['message_id']
                 
                 online_list = [u for u in combined_handler.get_all_users_combined() if u.get('last_online') and (datetime.now(pytz.utc) - u['last_online']).total_seconds() < 180]
 
@@ -333,11 +340,11 @@ class SchedulerManager:
             if gift_applied_successfully:
                 try:
                     gift_message = (
-                        f"🎉 *تولدت مبارک!* 🎉\n\n"
-                        f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی.\n"
+                        f"🎉 *تولدت مبارک\\!* 🎉\n\n"
+                        f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
                         f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
-                        f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد!**\n\n"
-                        f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی."
+                        f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
+                        f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\."
                     )
                     self.bot.send_message(user_id, gift_message, parse_mode="MarkdownV2")
                     logger.info(f"Scheduler: Sent birthday gift to user {user_id}.")
@@ -345,8 +352,7 @@ class SchedulerManager:
                     logger.error(f"Scheduler: Failed to send birthday message to user {user_id}: {e}")
         logger.info("Scheduler: Finished daily birthday gift job.")
 
-    def _weekly_report(self) -> None:
-        """Sends a weekly usage report to all users."""
+    def _weekly_report(self, target_user_id: int = None) -> None:
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_gregorian = datetime.now(tehran_tz)
         now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
@@ -359,7 +365,13 @@ class SchedulerManager:
             return
             
         user_info_map = {user['uuid']: user for user in all_users_info_from_api}
-        all_bot_users = list(db.get_all_user_ids())
+        
+        if target_user_id:
+            all_bot_users = [target_user_id]
+            logger.info(f"SCHEDULER (Weekly - TEST MODE): Running for target user {target_user_id}.")
+        else:
+            all_bot_users = list(db.get_all_user_ids())
+            
         separator = '\n' + '─' * 18 + '\n'
         logger.info(f"SCHEDULER (Weekly): Found {len(all_bot_users)} users to process for weekly report.")
 
@@ -367,7 +379,7 @@ class SchedulerManager:
         for user_id in all_bot_users:
             try:
                 user_settings = db.get_user_settings(user_id)
-                if not user_settings.get('weekly_reports', True):
+                if not user_settings.get('weekly_reports', True) and not target_user_id:
                     logger.info(f"SCHEDULER (Weekly): User {user_id} has disabled weekly reports. Skipping.")
                     continue
 
@@ -386,7 +398,6 @@ class SchedulerManager:
                     lang_code = db.get_user_language(user_id)
                     report_text = fmt_user_weekly_report(user_infos_for_report, lang_code)
                     final_message = header + report_text
-                    logger.debug(f"SCHEDULER (Weekly Report): Final message content for user {user_id}:\n{final_message}")
                     sent_message = self.bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
                     if sent_message:
                         db.add_sent_report(user_id, sent_message.message_id)
@@ -401,15 +412,12 @@ class SchedulerManager:
 
     def _run_monthly_vacuum(self) -> None:
         logger.info("Scheduler: Starting daily DB cleanup and monthly VACUUM check.")
-        # 1. Daily cleanup of old snapshots
         try:
-            # We keep 7 days of data to be safe for calculations.
             deleted_count = db.delete_old_snapshots(days_to_keep=7)
             logger.info(f"Scheduler (Cleanup): Daily snapshot cleanup successful. Deleted {deleted_count} old records.")
         except Exception as e:
             logger.error(f"Scheduler (Cleanup): Daily snapshot cleanup failed: {e}")
 
-        # 2. Monthly VACUUM on the first day of the month
         today = datetime.now(self.tz)
         if today.day == 1:
             logger.info("Scheduler (VACUUM): It's the first of the month, running database VACUUM job.")
@@ -421,7 +429,6 @@ class SchedulerManager:
         logger.info("Scheduler: Finished DB cleanup job.")
 
     def _cleanup_old_reports(self) -> None:
-        """Deletes old report messages based on user settings."""
         logger.info("Scheduler: Starting job to clean up old report messages.")
         reports_to_delete = db.get_old_reports_to_delete(hours=12)
 

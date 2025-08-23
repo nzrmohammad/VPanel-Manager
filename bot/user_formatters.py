@@ -180,7 +180,6 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         return ""
 
     accounts_reports = []
-    
     separator = '`──────────────────`'
 
     for info in user_infos:
@@ -211,6 +210,9 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 has_usage_data = True
                 date_shamsi = to_shamsi(item['date'])
                 
+                usage_formatted = format_daily_usage(item['total_usage'])
+                account_lines.append(f"\n در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
+                
                 daily_breakdown_parts = []
                 if has_access_de and item['hiddify_usage'] > 0.001:
                     daily_breakdown_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(item['hiddify_usage']))}")
@@ -221,18 +223,17 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 if marzban_flags and item['marzban_usage'] > 0.001:
                     daily_breakdown_parts.append(f"{''.join(marzban_flags)} {escape_markdown(format_daily_usage(item['marzban_usage']))}")
                 
-                breakdown_str = f" \\({', '.join(daily_breakdown_parts)}\\)" if daily_breakdown_parts else ""
-                
-                usage_formatted = format_daily_usage(item['total_usage'])
-                account_lines.append(f" در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*{breakdown_str}")
+                if daily_breakdown_parts:
+                    breakdown_str = f" \\({', '.join(daily_breakdown_parts)}\\)"
+                    account_lines.append(f" {breakdown_str}")
         
         if not has_usage_data:
-            account_lines.append(f"_{escape_markdown('در این هفته مصرفی برای این اکانت ثبت نشده است.')}_")
+            account_lines.append(f"\n_{escape_markdown('در این هفته مصرفی برای این اکانت ثبت نشده است.')}_")
 
         usage_footer_str = format_daily_usage(current_week_usage)
         footer_template = get_string("weekly_usage_header", lang_code)
-        formatted_footer = footer_template.format(usage=usage_footer_str)
-        account_lines.append(f'\n⚡️ *{escape_markdown(formatted_footer)}*')
+        final_footer_line = f"{footer_template} {usage_footer_str}"
+        account_lines.append(f'\n\n⚡️ *{escape_markdown(final_footer_line)}*')
         
         accounts_reports.append("\n".join(account_lines))
 

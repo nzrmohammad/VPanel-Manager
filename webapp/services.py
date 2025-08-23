@@ -210,8 +210,8 @@ def generate_comprehensive_report_data():
     now_utc = datetime.now(pytz.utc)
     
     summary = {
-        "total_users": len(all_users_data), "active_users": 0, "total_de": 0, "total_fr": 0,
-        "active_de": 0, "active_fr": 0, "online_users": 0, "usage_de_gb": 0, "usage_fr_gb": 0
+        "total_users": len(all_users_data), "active_users": 0, "total_de": 0, "total_fr_tr": 0,
+        "active_de": 0, "active_fr_tr": 0, "online_users": 0, "usage_de_gb": 0, "usage_fr_tr_gb": 0
     }
     online_users, active_last_24h, inactive_1_to_7_days, never_connected, expiring_soon_users = set(), [], [], [], []
 
@@ -219,28 +219,45 @@ def generate_comprehensive_report_data():
         user['name'] = escape(user.get('name', ''))
         user['usage'] = {'total_usage_GB': user.get('current_usage_GB', 0), 'data_limit_GB': user.get('usage_limit_GB', 0)}
         uuid = user.get('uuid')
-        user_breakdown = user.get('breakdown', {})
-        on_hiddify = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
-        on_marzban = any(p.get('type') == 'marzban' for p in user_breakdown.values())
+        
         panels = []
-        if on_hiddify:
+        db_record = db.get_user_uuid_record(uuid) if uuid else None
+
+        if any(p.get('type') == 'hiddify' for p in user.get('breakdown', {}).values()):
             panels.append('🇩🇪')
+            if user.get("is_active"):
+                summary['active_de'] += 1
             summary['total_de'] += 1
-        if on_marzban:
-            panels.append('🇫🇷')
-            summary['total_fr'] += 1
+
+        marzban_flags = []
+        if db_record:
+            if db_record.get('has_access_fr'):
+                marzban_flags.append('🇫🇷')
+            if db_record.get('has_access_tr'):
+                marzban_flags.append('🇹🇷')
+        
+        if marzban_flags:
+            panels.extend(marzban_flags)
+            if user.get("is_active"):
+                summary['active_fr_tr'] += 1
+            summary['total_fr_tr'] += 1
+        
         user['panel_display'] = ' '.join(panels) if panels else '?'
+
         user_daily_usage = db.get_usage_since_midnight_by_uuid(uuid) if uuid else {'hiddify': 0, 'marzban': 0}
         summary['usage_de_gb'] += user_daily_usage.get('hiddify', 0)
-        summary['usage_fr_gb'] += user_daily_usage.get('marzban', 0)
+        summary['usage_fr_tr_gb'] += user_daily_usage.get('marzban', 0)
+
         if user.get("is_active"):
             summary['active_users'] += 1
-            if on_hiddify: summary['active_de'] += 1
-            if on_marzban: summary['active_fr'] += 1
-        if user.get('expire') is not None and 0 <= user.get('expire') <= 7: expiring_soon_users.append(user)
+            
+        if user.get('expire') is not None and 0 <= user.get('expire') <= 7: 
+            expiring_soon_users.append(user)
+            
         last_online = user.get('last_online')
         if last_online:
-            if last_online >= (now_utc - timedelta(minutes=3)): online_users.add(uuid)
+            if last_online >= (now_utc - timedelta(minutes=3)): 
+                online_users.add(uuid)
             if last_online >= (now_utc - timedelta(hours=24)):
                 user['last_online_relative'] = format_relative_time(last_online)
                 active_last_24h.append(user)
@@ -251,35 +268,43 @@ def generate_comprehensive_report_data():
             never_connected.append(user)
 
     summary['online_users'] = len(online_users)
-    summary['total_usage'] = f"{(summary['usage_de_gb'] + summary['usage_fr_gb']):.2f} GB"
+    summary['total_usage'] = f"{(summary['usage_de_gb'] + summary['usage_fr_tr_gb']):.2f} GB"
+    
     top_consumers = sorted([u for u in all_users_data if u.get('usage', {}).get('data_limit_GB', 0) > 0], key=lambda u: u.get('usage', {}).get('total_usage_GB', 0), reverse=True)[:10]
     
-    users_with_payments = db.get_all_payments_with_user_info()
+    # --- ✅ START OF THE FIX ---
+    # Convert generators to lists before passing them to the template
+    users_with_payments = list(db.get_all_payments_with_user_info())
+    bot_users = list(db.get_all_bot_users())
+    users_with_birthdays = list(db.get_users_with_birthdays())
+    # --- ✅ END OF THE FIX ---
+
     for p in users_with_payments:
         p['payment_date_shamsi'] = to_shamsi(p.get('payment_date'), include_time=True)
-        panels = []
-        if p.get('has_access_de'): panels.append('🇩🇪')
-        if p.get('has_access_fr'): panels.append('🇫🇷')
-        p['panel_display'] = ' '.join(panels) if panels else '?'
-        
-        # --- START OF FIX for Payment Table ---
-        # کلید 'config_name' را به 'name' تغییر می‌دهیم تا در جدول به درستی نمایش داده شود
+        payment_panels = []
+        if p.get('has_access_de'): payment_panels.append('🇩🇪')
+        if p.get('has_access_fr'): payment_panels.append('🇫🇷')
+        if p.get('has_access_tr'): payment_panels.append('🇹🇷')
+        p['panel_display'] = ' '.join(payment_panels) if payment_panels else '?'
         p['name'] = escape(p.get('config_name', ''))
-        # --- END OF FIX for Payment Table ---
         p['first_name'] = escape(p.get('first_name', ''))
         p['username'] = escape(p.get('username', ''))
 
-    users_with_birthdays = db.get_users_with_birthdays()
-    # (کد این بخش بدون تغییر باقی می‌ماند)
+    for b_user in users_with_birthdays:
+        b_user['days_remaining'] = days_until_next_birthday(b_user.get('birthday'))
+        b_user['birthday_shamsi'] = to_shamsi(b_user.get('birthday'))
+
     return {
         "summary": summary, "active_last_24h": sorted(active_last_24h, key=lambda u: u.get('last_online', now_utc), reverse=True),
         "inactive_1_to_7_days": sorted(inactive_1_to_7_days, key=lambda u: u.get('last_online', now_utc), reverse=True),
         "never_connected": sorted(never_connected, key=lambda u: u.get('name', '').lower()),
         "top_consumers": top_consumers, "expiring_soon_users": sorted(expiring_soon_users, key=lambda u: u.get('expire', float('inf'))),
-        "bot_users": db.get_all_bot_users(), "users_with_payments": users_with_payments,
+        "bot_users": bot_users, 
+        "users_with_payments": users_with_payments,
         "users_with_birthdays": sorted(users_with_birthdays, key=lambda u: u.get('days_remaining', 999)),
         "today_shamsi": to_shamsi(datetime.now(), include_time=False)
     }
+
 
 def get_all_payments_for_admin():
     try:

@@ -16,11 +16,12 @@ from .admin_handlers import (
 from .admin_hiddify_handlers import (_start_add_hiddify_user_convo, initialize_hiddify_handlers, handle_add_user_back_step)
 from .admin_marzban_handlers import (_start_add_marzban_user_convo, initialize_marzban_handlers)
 from .menu import menu
-from .utils import _safe_edit
+from .utils import _safe_edit, escape_markdown
 
 logger = logging.getLogger(__name__)
 
-def register_admin_handlers(bot):
+def register_admin_handlers(bot, scheduler):
+# -----------------------------------------------
     initialize_hiddify_handlers(bot, admin_conversations)
     initialize_marzban_handlers(bot, admin_conversations)
     group_actions.initialize_group_actions_handlers(bot, admin_conversations)
@@ -39,11 +40,44 @@ def register_admin_handlers(bot):
     def test_weekly_report_command(message: types.Message):
         reporting.handle_test_weekly_report_command(message)
 
-    # --- START: NEW COMMAND HANDLER FOR WELCOME MESSAGE TEST ---
     @bot.message_handler(commands=['test_welcome'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def test_welcome_message_command(message: types.Message):
         reporting.handle_test_welcome_message_command(message)
-    # --- END: NEW COMMAND HANDLER ---
+        
+    # --- START: NEW TEST COMMANDS FOR SCHEDULER ---
+    @bot.message_handler(commands=['test_nightly'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_nightly_report(message: types.Message):
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال اجرای تست گزارش شبانه (فقط برای شما)...")
+        try:
+            scheduler._nightly_report(target_user_id=admin_id)
+            bot.send_message(admin_id, "✅ تست گزارش شبانه با موفقیت انجام شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست گزارش شبانه: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_nightly command: {e}", exc_info=True)
+
+    @bot.message_handler(commands=['test_weekly'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_weekly_report(message: types.Message):
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال اجرای تست گزارش هفتگی (فقط برای شما)...")
+        try:
+            scheduler._weekly_report(target_user_id=admin_id)
+            bot.send_message(admin_id, "✅ تست گزارش هفتگی با موفقیت انجام شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست گزارش هفتگی: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_weekly command: {e}", exc_info=True)
+
+    @bot.message_handler(commands=['test_warnings'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_warnings_check(message: types.Message):
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال اجرای تست بررسی هشدارها (فقط برای شما)...")
+        try:
+            scheduler._check_for_warnings(target_user_id=admin_id)
+            bot.send_message(admin_id, "✅ تست بررسی هشدارها با موفقیت انجام شد. اگر شرایط لازم را داشته باشید، پیام هشدار دریافت خواهید کرد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست بررسی هشدارها: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_warnings command: {e}", exc_info=True)
+    # --- END: NEW TEST COMMANDS FOR SCHEDULER ---
 
 # ===================================================================
 # Simple Menu Functions
@@ -66,9 +100,6 @@ def _handle_user_analysis_menu(call, params):
 
 def _handle_system_status_menu(call, params):
     _safe_edit(call.from_user.id, call.message.message_id, "📊 لطفاً پنل مورد نظر برای مشاهده وضعیت را انتخاب کنید:", reply_markup=menu.admin_system_status_menu())
-
-def _handle_group_actions_menu(call, params):
-    _safe_edit(call.from_user.id, call.message.message_id, "⚙️ لطفاً نوع دستور گروهی را انتخاب کنید:", reply_markup=menu.admin_group_actions_menu())
 
 def _handle_panel_management_menu(call, params):
     bot.clear_step_handler_by_chat_id(call.from_user.id)
