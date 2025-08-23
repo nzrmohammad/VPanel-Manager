@@ -545,6 +545,13 @@ class DatabaseManager:
         with self._conn() as c:
             c.execute("UPDATE user_uuids SET welcome_message_sent = 1 WHERE id = ?", (uuid_id,))
 
+    def reset_welcome_message_sent(self, uuid_id: int):
+        """
+        Resets the welcome message sent flag for a specific UUID. Used for testing purposes.
+        """
+        with self._conn() as c:
+            c.execute("UPDATE user_uuids SET welcome_message_sent = 0 WHERE id = ?", (uuid_id,))
+
     def add_payment_record(self, uuid_id: int) -> bool:
         """یک رکورد پرداخت برای کاربر با تاریخ فعلی ثبت می‌کند."""
         with self._conn() as c:

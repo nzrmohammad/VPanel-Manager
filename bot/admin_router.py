@@ -39,6 +39,12 @@ def register_admin_handlers(bot):
     def test_weekly_report_command(message: types.Message):
         reporting.handle_test_weekly_report_command(message)
 
+    # --- START: NEW COMMAND HANDLER FOR WELCOME MESSAGE TEST ---
+    @bot.message_handler(commands=['test_welcome'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def test_welcome_message_command(message: types.Message):
+        reporting.handle_test_welcome_message_command(message)
+    # --- END: NEW COMMAND HANDLER ---
+
 # ===================================================================
 # Simple Menu Functions
 # ===================================================================

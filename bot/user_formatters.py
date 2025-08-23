@@ -16,13 +16,11 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     if not info:
         return escape_markdown(get_string("fmt_err_getting_info", lang_code))
 
-    # واکشی اطلاعات دسترسی کاربر از دیتابیس
     user_record = db.get_user_uuid_record(info.get("uuid", ""))
     has_access_de = user_record.get('has_access_de', False) if user_record else False
     has_access_fr = user_record.get('has_access_fr', False) if user_record else False
     has_access_tr = user_record.get('has_access_tr', False) if user_record else False
 
-    # بخش ۱: اطلاعات کلی و هدر
     raw_name = info.get("name", get_string('unknown_user', lang_code))
     is_active_overall = info.get("is_active", False)
     status_emoji = get_string("fmt_status_active", lang_code) if is_active_overall else get_string("fmt_status_inactive", lang_code)
@@ -33,19 +31,16 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     separator = "`──────────────────`"
     report.append(separator)
     
-    # بخش ۲: جزئیات هر پنل به صورت جداگانه
     breakdown = info.get('breakdown', {})
     
     def format_panel_details(panel_data, daily_usage, panel_type):
         flags = ""
-        # تعیین پرچم بر اساس دسترسی‌ها
         if panel_type == 'hiddify' and has_access_de:
             flags = "🇩🇪"
         elif panel_type == 'marzban':
             if has_access_fr: flags += "🇫🇷"
             if has_access_tr: flags += "🇹🇷"
         
-        # اگر پرچمی وجود نداشت (یعنی کاربر به این پنل دسترسی ندارد)، چیزی نمایش نده
         if not flags:
             return []
 
@@ -69,7 +64,6 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
         daily_usage = daily_usage_dict.get(panel_type, 0.0) if panel_type else 0.0
         report.extend(format_panel_details(panel_data, daily_usage, panel_type))
 
-    # بخش ۳: اطلاعات نهایی و مشترک
     expire_days = info.get("expire")
     expire_label = get_string("fmt_expire_unlimited", lang_code)
     if expire_days is not None:
@@ -113,7 +107,6 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
     total_daily_usage_all_accounts = 0.0
 
     for info in user_infos:
-        # واکشی اطلاعات دسترسی برای نمایش صحیح پرچم‌ها
         user_record = db.get_user_uuid_record(info.get("uuid", ""))
         has_access_de = user_record.get('has_access_de', False) if user_record else False
         has_access_fr = user_record.get('has_access_fr', False) if user_record else False
@@ -142,7 +135,6 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         
         account_lines.append(escape_markdown(get_string("fmt_report_daily_usage_header", lang_code)))
         
-        # نمایش مصرف روزانه به تفکیک سرورهای فعال کاربر
         breakdown = info.get('breakdown', {})
         for panel_name, panel_details in breakdown.items():
             panel_type = panel_details.get('type')
@@ -156,7 +148,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
                     if has_access_fr: flags += "🇫🇷"
                     if has_access_tr: flags += "🇹🇷"
                 
-                if flags: # فقط در صورتی نمایش بده که کاربر به آن سرور دسترسی دارد
+                if flags:
                     account_lines.append(f" {flags} : {escape_markdown(format_daily_usage(panel_daily_usage))}")
 
         expire_days = info.get("expire")
@@ -188,7 +180,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         return ""
 
     accounts_reports = []
-    total_weekly_usage_all_accounts = 0.0
+    
+    separator = '`──────────────────`'
 
     for info in user_infos:
         uuid = info.get("uuid")
@@ -200,7 +193,6 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         if not uuid_id or not user_record:
             continue
 
-        # دریافت دسترسی‌های کاربر به سرورها
         has_access_de = user_record.get('has_access_de', False)
         has_access_fr = user_record.get('has_access_fr', False)
         has_access_tr = user_record.get('has_access_tr', False)
@@ -208,16 +200,15 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         name = info.get("name", get_string('unknown_user', lang_code))
         header = get_string("fmt_report_account_header", lang_code).format(name=name)
         
-        # استفاده از تابع جدید برای دریافت تاریخچه تفکیکی
         daily_history = db.get_user_daily_usage_history_by_panel(uuid_id, days=7)
         current_week_usage = sum(item['total_usage'] for item in daily_history)
-        total_weekly_usage_all_accounts += current_week_usage
 
         account_lines = [f'*{escape_markdown(header)}*']
         
-        # نمایش تاریخچه مصرف روز به روز با تفکیک سرور
+        has_usage_data = False
         for item in reversed(daily_history):
             if item['total_usage'] > 0.001:
+                has_usage_data = True
                 date_shamsi = to_shamsi(item['date'])
                 
                 daily_breakdown_parts = []
@@ -230,22 +221,23 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 if marzban_flags and item['marzban_usage'] > 0.001:
                     daily_breakdown_parts.append(f"{''.join(marzban_flags)} {escape_markdown(format_daily_usage(item['marzban_usage']))}")
                 
-                # اگر تفکیک مصرف وجود داشت، آن را در خط جدید با تورفتگی نمایش بده
-                breakdown_str = f"\n \\({', '.join(daily_breakdown_parts)}\\) \n" if daily_breakdown_parts else ""
+                breakdown_str = f" \\({', '.join(daily_breakdown_parts)}\\)" if daily_breakdown_parts else ""
                 
                 usage_formatted = format_daily_usage(item['total_usage'])
                 account_lines.append(f" در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*{breakdown_str}")
         
+        if not has_usage_data:
+            account_lines.append(f"_{escape_markdown('در این هفته مصرفی برای این اکانت ثبت نشده است.')}_")
+
+        usage_footer_str = format_daily_usage(current_week_usage)
+        footer_template = get_string("weekly_usage_header", lang_code)
+        formatted_footer = footer_template.format(usage=usage_footer_str)
+        account_lines.append(f'\n⚡️ *{escape_markdown(formatted_footer)}*')
+        
         accounts_reports.append("\n".join(account_lines))
 
-    final_report = "\n\n".join(accounts_reports)
+    final_report = f"\n{separator}\n".join(accounts_reports)
     
-    usage_footer_str = format_daily_usage(total_weekly_usage_all_accounts)
-    footer_template = get_string("weekly_report_footer", lang_code)
-    formatted_footer = footer_template.format(usage=usage_footer_str)
-    footer_text = f'\n\n*{escape_markdown(formatted_footer)}*'
-    
-    final_report += footer_text
     return final_report
 
 def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> str:

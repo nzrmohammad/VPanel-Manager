@@ -371,3 +371,57 @@ def handle_test_weekly_report_command(message: types.Message):
     except Exception as e:
         logger.error(f"Error in handle_test_weekly_report_command for user_id {message.text.split()[1] if len(message.text.split()) > 1 else 'N/A'}: {e}", exc_info=True)
         bot.send_message(admin_id, f"❌ خطایی در هنگام ساخت گزارش رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
+
+def handle_test_welcome_message_command(message: types.Message):
+    """Handles the /test_welcome <user_id> command for admins."""
+    admin_id = message.from_user.id
+    try:
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "فرمت دستور اشتباه است. لطفاً به این شکل استفاده کنید:\n`/test_welcome USER_ID`", parse_mode="MarkdownV2")
+            return
+        
+        target_user_id = int(parts[1])
+
+        user_uuids = db.uuids(target_user_id)
+        if not user_uuids:
+            bot.send_message(admin_id, f"❌ کاربری با شناسه تلگرام `{target_user_id}` یافت نشد یا هیچ اکانتی ثبت نکرده است.", parse_mode="MarkdownV2")
+            return
+        
+        uuid_id_to_test = user_uuids[0]['id']
+
+        db.set_first_connection_time(uuid_id_to_test, datetime.now(pytz.utc))
+        db.reset_welcome_message_sent(uuid_id_to_test)
+        
+        bot.send_message(admin_id, f"⏳ در حال آماده‌سازی و ارسال پیام خوش‌آمدگویی تستی برای کاربر `{target_user_id}`...", parse_mode="MarkdownV2")
+
+        welcome_text = (
+            f"🎉 *{escape_markdown('به جمع ما خوش آمدی!')}* 🎉\n\n"
+            f"{escape_markdown('از اینکه به ما اعتماد کردی خوشحالیم. امیدواریم از کیفیت سرویس لذت ببری.')}\n\n"
+            f"{escape_markdown('💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم.')}\n\n"
+            f"{escape_markdown('با آرزوی بهترین‌ها ✨')}"
+        )
+        
+        admin_header = escape_markdown(f"نمونه پیام خوشامدگویی برای کاربر {target_user_id}:")
+        final_message_for_admin = f"*{admin_header}*\n\n{welcome_text}"
+        final_message_for_user = welcome_text
+
+        # --- START: NEW DEBUG LOGS ---
+        logger.debug(f"TEST_WELCOME: Message for admin:\n{final_message_for_admin}")
+        logger.debug(f"TEST_WELCOME: Message for user:\n{final_message_for_user}")
+        # --- END: NEW DEBUG LOGS ---
+
+        try:
+            bot.send_message(admin_id, final_message_for_admin, parse_mode="MarkdownV2")
+            bot.send_message(target_user_id, final_message_for_user, parse_mode="MarkdownV2")
+            db.mark_welcome_message_as_sent(uuid_id_to_test)
+            bot.send_message(admin_id, f"✅ پیام خوش‌آمدگویی با موفقیت به کاربر `{target_user_id}` ارسال شد و وضعیت در دیتابیس ثبت گردید.", parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.error(f"Failed to send welcome message to user {target_user_id} during test: {e}")
+            bot.send_message(admin_id, f"❌ خطا در ارسال پیام به کاربر: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
+
+    except ValueError:
+        bot.reply_to(message, "❌ شناسه کاربر باید یک عدد باشد.", parse_mode="MarkdownV2")
+    except Exception as e:
+        logger.error(f"Error in handle_test_welcome_message_command for user_id {message.text.split()[1] if len(message.text.split()) > 1 else 'N/A'}: {e}", exc_info=True)
+        bot.send_message(admin_id, f"❌ خطایی در هنگام اجرای تست رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
