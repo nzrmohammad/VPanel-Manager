@@ -230,22 +230,17 @@ def search_user(query: str) -> List[Dict[str, Any]]:
     return results
 
 def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int = 0, target_panel_type: Optional[str] = None) -> bool:
-    """
-    اصلاح شده: یک پارامتر جدید (target_panel_type) برای اعمال تغییرات فقط روی یک پنل خاص اضافه شده است.
-    """
     user_info = get_combined_user_info(identifier)
     if not user_info: return False
 
     all_panels_map = {p['name']: p for p in db.get_active_panels()}
     any_success = False
 
-    # اگر پنل خاصی مشخص شده، فقط آن را ویرایش کن. در غیر این صورت، همه را ویرایش کن.
     panels_to_modify = user_info.get('breakdown', {}).items()
 
     for panel_name, panel_details in panels_to_modify:
         panel_type = panel_details.get('type')
         
-        # اگر پنل خاصی مشخص شده و این پنل آن نیست، از آن عبور کن
         if target_panel_type and panel_type != target_panel_type:
             continue
 
@@ -257,7 +252,6 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
 
         user_panel_data = panel_details.get('data', {})
         
-        # منطق افزودن روز و حجم برای هر پنل
         if panel_type == 'hiddify' and user_info.get('uuid'):
             current_limit = user_panel_data.get('usage_limit_GB', 0)
             current_days = user_panel_data.get('expire', 0)
@@ -266,7 +260,6 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
             if add_gb > 0:
                 payload['usage_limit_GB'] = current_limit + add_gb
             if add_days > 0:
-                # اگر کاربر منقضی شده، روزها را به تاریخ امروز اضافه کن
                 base_days = max(0, current_days)
                 payload['package_days'] = base_days + add_days
             
@@ -276,7 +269,13 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
         elif panel_type == 'marzban' and user_panel_data.get('username'):
             if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
                 any_success = True
-                
+
+    if any_success and add_days > 0 and user_info.get('uuid'):
+        uuid_id = db.get_uuid_id_by_uuid(user_info['uuid'])
+        if uuid_id:
+            db.reset_renewal_reminder_sent(uuid_id)
+            logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} (UUID_ID: {uuid_id}) due to manual day extension.")
+            
     return any_success
 
 

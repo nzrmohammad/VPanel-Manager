@@ -32,11 +32,14 @@ def payment_history_page(uuid):
     user_data = user_service.get_processed_user_data(uuid)
     if not user_data:
         abort(404, "کاربر یافت نشد")
+
+    payment_history_list = user_data.get("payment_history", [])
     
-    for payment in user_data.get("payment_history", []):
+    for payment in payment_history_list:
         payment['shamsi_date'] = to_shamsi(payment['payment_date'], include_time=True)
-        
+    
     return render_template('user_payment_history.html', user=user_data)
+
 
 @user_bp.route('/sub/<string:uuid>')
 def serve_normal_subscription(uuid):

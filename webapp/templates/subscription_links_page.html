@@ -37,24 +37,6 @@
     </div>
 
     <div class="config-card">
-        <div class="config-header"><i class="ri-download-cloud-2-line"></i><h3>کانفیگ اختصاصی (برای v2rayN)</h3></div>
-        <ul class="config-list">
-            <li>
-                <div class="config-item">
-                    <div class="config-details">
-                        <span class="config-name">فایل کانفیگ سرورلس (JSON)</span>
-                    </div>
-                    <div class="config-actions">
-                        <a href="{{ url_for('user.serve_serverless_config', uuid=uuid) }}" class="action-btn" title="دانلود فایل JSON" download>
-                            <i class="ri-download-2-line"></i>
-                        </a>
-                    </div>
-                </div>
-            </li>
-        </ul>
-    </div>
-
-    <div class="config-card">
         <div class="config-header"><i class="ri-links-line"></i><h3>لینک‌های اشتراک</h3></div>
         <ul class="config-list">
             {% for link in subscription_links %}
@@ -94,6 +76,23 @@
             {% else %}
             <li><div class="config-item"><span class="config-name">هیچ کانفیگ فعالی یافت نشد.</span></div></li>
             {% endfor %}
+        </ul>
+    </div>
+        <div class="config-card">
+        <div class="config-header"><i class="ri-download-cloud-2-line"></i><h3>کانفیگ اختصاصی</h3></div>
+        <ul class="config-list">
+            <li>
+                <div class="config-item">
+                    <div class="config-details">
+                        <span class="config-name">فایل کانفیگ (JSON)</span>
+                    </div>
+                    <div class="config-actions">
+                        <a href="{{ url_for('user.serve_serverless_config', uuid=uuid) }}" class="action-btn" title="دانلود فایل" download>
+                            <i class="ri-download-2-line"></i>
+                        </a>
+                    </div>
+                </div>
+            </li>
         </ul>
     </div>
 {% endblock %}

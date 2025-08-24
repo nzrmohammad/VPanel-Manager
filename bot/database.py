@@ -40,6 +40,8 @@ class DatabaseManager:
                 add_column_if_not_exists("users", "auto_delete_reports", "INTEGER DEFAULT 1")
                 add_column_if_not_exists("users", "weekly_reports", "INTEGER DEFAULT 1")
                 # --- END: New Columns ---
+                add_column_if_not_exists("user_uuids", "renewal_reminder_sent", "INTEGER DEFAULT 0")
+
 
                 logger.info("Database schema migration check complete.")
 
@@ -76,6 +78,7 @@ class DatabaseManager:
                     updated_at TIMESTAMP,
                     first_connection_time TIMESTAMP,
                     welcome_message_sent INTEGER DEFAULT 0,
+                    renewal_reminder_sent INTEGER DEFAULT 0,
                     is_vip INTEGER DEFAULT 0,
                     has_access_de INTEGER DEFAULT 1,
                     has_access_fr INTEGER DEFAULT 0,
@@ -433,12 +436,11 @@ class DatabaseManager:
         with self._conn() as c:
             c.execute("DELETE FROM user_uuids WHERE uuid=?", (uuid,))
 
-    def all_active_uuids(self): # -> Generator[Dict[str, Any], None, None]
-        """
-        تمام UUIDهای فعال را به صورت یک generator برمی‌گرداند تا از بارگذاری همه در حافظه جلوگیری شود.
-        """
+    def all_active_uuids(self):
+        """Yields all active UUIDs along with their reminder status."""
         with self._conn() as c:
-            cursor = c.execute("SELECT id, user_id, uuid, created_at FROM user_uuids WHERE is_active=1")
+            # Added renewal_reminder_sent to the selected columns
+            cursor = c.execute("SELECT id, user_id, uuid, created_at, first_connection_time, welcome_message_sent, renewal_reminder_sent FROM user_uuids WHERE is_active=1")
             for row in cursor:
                 yield dict(row)
             
@@ -558,6 +560,16 @@ class DatabaseManager:
             c.execute("INSERT INTO payments (uuid_id, payment_date) VALUES (?, ?)",
                       (uuid_id, datetime.now(pytz.utc)))
             return True
+
+    def set_renewal_reminder_sent(self, uuid_id: int):
+        """Sets the renewal reminder flag to 1 (sent)."""
+        with self._conn() as c:
+            c.execute("UPDATE user_uuids SET renewal_reminder_sent = 1 WHERE id = ?", (uuid_id,))
+
+    def reset_renewal_reminder_sent(self, uuid_id: int):
+        """Resets the renewal reminder flag to 0 (not sent)."""
+        with self._conn() as c:
+            c.execute("UPDATE user_uuids SET renewal_reminder_sent = 0 WHERE id = ?", (uuid_id,))
 
     def get_payment_counts(self) -> Dict[str, int]:
             """تعداد کل پرداختی‌ها را به ازای هر نام کاربری برمی‌گرداند."""

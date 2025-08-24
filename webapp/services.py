@@ -308,21 +308,21 @@ def generate_comprehensive_report_data():
 
 def get_all_payments_for_admin():
     try:
-        # Get all payment records, which now include panel access flags from the DB query
-        payments_data = db.get_all_payments_with_user_info()
+        # FIX: Convert the generator to a list immediately upon fetching
+        payments_data = list(db.get_all_payments_with_user_info())
 
         for payment in payments_data:
             payment['payment_date_shamsi'] = to_shamsi(payment.get('payment_date'), include_time=True)
 
-            # Use the direct flags from the query for reliability
             panels = []
             if payment.get('has_access_de'):
                 panels.append('🇩🇪')
             if payment.get('has_access_fr'):
                 panels.append('🇫🇷')
+            if payment.get('has_access_tr'):
+                panels.append('🇹🇷')
             payment['panel_display'] = ' '.join(panels) if panels else '?'
 
-            # Escape data for security
             payment['config_name'] = escape(payment.get('config_name'))
             payment['first_name'] = escape(payment.get('first_name'))
             payment['username'] = escape(payment.get('username'))
@@ -334,13 +334,9 @@ def get_all_payments_for_admin():
 
 def get_paginated_users(args):
     """
-    لیستی از کاربران را برای نمایش در پنل ادمین با قابلیت جستجو، فیلتر، صفحه‌بندی و تمام اطلاعات تکمیلی لازم برمی‌گرداند.
+    Fetches and prepares a paginated list of users for the admin panel,
+    ensuring all data is sanitized for safe JSON rendering.
     """
-    from .services import search_user, get_all_users_combined
-    from bot.utils import to_shamsi, format_relative_time, format_usage
-    from datetime import datetime, timedelta
-    import pytz
-
     try:
         page = int(args.get('page', 1))
     except (ValueError, TypeError):
@@ -356,42 +352,39 @@ def get_paginated_users(args):
     else:
         all_users = get_all_users_combined()
 
-    # --- START: Data Enrichment ---
-    # اضافه کردن اطلاعات تکمیلی به هر کاربر
+    # Data Enrichment and Sanitization Loop
     for user in all_users:
-        uuid = user.get('uuid')
-        if not uuid:
-            user['total_daily_usage_gb'] = 0
-            user['payment_count'] = 0
-            user['is_vip'] = False
-        else:
-            uuid_record = db.get_user_uuid_record(uuid)
-            if uuid_record:
-                uuid_id = uuid_record['id']
-                daily_usage_dict = db.get_usage_since_midnight(uuid_id)
-                user['total_daily_usage_gb'] = sum(daily_usage_dict.values())
-                user['payment_count'] = len(db.get_user_payment_history(uuid_id))
-                user['is_vip'] = uuid_record.get('is_vip', False)
-            else:
-                user['total_daily_usage_gb'] = 0
-                user['payment_count'] = 0
-                user['is_vip'] = False
-        
-        user['total_daily_usage_formatted'] = format_usage(user.get('total_daily_usage_gb', 0))
-        
-        breakdown = user.get('breakdown', {})
-        user['on_hiddify'] = any(p.get('type') == 'hiddify' for p in breakdown.values())
-        user['on_marzban'] = any(p.get('type') == 'marzban' for p in breakdown.values())
-        
-        user['last_online_relative'] = format_relative_time(user.get('last_online'))
+        # ✅ FIX: Securely escape all user-generated or formatted strings
+        user['name'] = escape(user.get('name', 'کاربر ناشناس'))
+        user['last_online_relative'] = escape(format_relative_time(user.get('last_online')))
         
         expire_days = user.get('expire')
         if expire_days is not None and expire_days >= 0:
             user['expire_shamsi'] = to_shamsi(datetime.now() + timedelta(days=expire_days))
         else:
             user['expire_shamsi'] = "نامحدود" if expire_days is None else "منقضی"
-    # --- END: Data Enrichment ---
+        user['expire_shamsi'] = escape(user['expire_shamsi'])
 
+        uuid = user.get('uuid')
+        if uuid:
+            uuid_record = db.get_user_uuid_record(uuid)
+            if uuid_record:
+                uuid_id = uuid_record['id']
+                user['total_daily_usage_gb'] = sum(db.get_usage_since_midnight(uuid_id).values())
+                user['payment_count'] = len(db.get_user_payment_history(uuid_id))
+                user['is_vip'] = uuid_record.get('is_vip', False)
+            else:
+                user.update({'total_daily_usage_gb': 0, 'payment_count': 0, 'is_vip': False})
+        else:
+            user.update({'total_daily_usage_gb': 0, 'payment_count': 0, 'is_vip': False})
+        
+        user['total_daily_usage_formatted'] = escape(format_usage(user.get('total_daily_usage_gb', 0)))
+        
+        breakdown = user.get('breakdown', {})
+        user['on_hiddify'] = any(p.get('type') == 'hiddify' for p in breakdown.values())
+        user['on_marzban'] = any(p.get('type') == 'marzban' for p in breakdown.values())
+
+    # Filtering Logic
     if panel_filter != 'all':
         panel_type_to_check = 'hiddify' if panel_filter == 'de' else 'marzban'
         all_users = [u for u in all_users if u.get(f'on_{panel_type_to_check}')]
@@ -408,6 +401,7 @@ def get_paginated_users(args):
 
     all_users.sort(key=lambda u: u.get('name', '').lower())
 
+    # Pagination Logic
     total = len(all_users)
     start = (page - 1) * per_page
     end = start + per_page
