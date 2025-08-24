@@ -1332,4 +1332,25 @@ class DatabaseManager:
         with self._conn() as c:
             c.execute("DELETE FROM sent_reports WHERE id = ?", (record_id,))
 
+    def get_sent_warnings_since_midnight(self) -> list:
+        """
+        گزارشی از هشدارهایی که از نیمه‌شب امروز ارسال شده‌اند را برمی‌گرداند.
+        """
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        today_midnight_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
+
+        query = """
+            SELECT
+                uu.name,
+                wl.warning_type
+            FROM warning_log wl
+            JOIN user_uuids uu ON wl.uuid_id = uu.id
+            WHERE wl.sent_at >= ?
+            ORDER BY uu.name;
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (today_midnight_utc,)).fetchall()
+            return [dict(r) for r in rows]
+
 db = DatabaseManager()

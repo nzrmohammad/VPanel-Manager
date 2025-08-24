@@ -7,6 +7,8 @@ import urllib.parse
 import logging
 from datetime import datetime, timedelta
 from bot.config import ADMIN_SUPPORT_CONTACT
+import os
+import json
 
 logger = logging.getLogger(__name__)
 user_bp = Blueprint('user', __name__, url_prefix='/user')
@@ -239,3 +241,48 @@ def user_profile_page(uuid):
     user_basic = db.user(user_id) or {}
     
     return render_template('user_profile.html', user=user_data, settings=user_settings, user_basic=user_basic)
+
+@user_bp.route('/<string:uuid>/serverless.json')
+def serve_serverless_config(uuid):
+    """
+    این روت، فایل قالب کانفیگ سرورلس را خوانده، UUID کاربر را در آن جایگزین کرده
+    و به عنوان یک فایل JSON قابل دانلود به کاربر ارائه می‌دهد.
+    """
+    user_record = db.get_user_uuid_record(uuid)
+    # اگر کاربر فعال نباشد یا وجود نداشته باشد، دسترسی داده نمی‌شود
+    if not user_record or not user_record.get('is_active'):
+        abort(404, "کاربر یافت نشد یا غیرفعال است")
+
+    try:
+        # خواندن فایل قالب
+        template_path = os.path.join(os.path.dirname(__file__), '..', 'bot', 'serverless_config.json')
+        with open(template_path, 'r', encoding='utf-8') as f:
+            config_template_str = f.read()
+
+        # جایگذاری UUID و نام کاربر
+        user_name = user_record.get('name', 'Serverless')
+        user_config_str = config_template_str.replace("{new_uuid}", uuid)
+        
+        # تبدیل رشته به آبجکت JSON برای تغییر نام
+        config_data = json.loads(user_config_str)
+        
+        # تغییر نام (remark) در کانفیگ
+        # این بخش ممکن است بسته به ساختار دقیق فایل شما نیاز به تغییر داشته باشد
+        if 'outbounds' in config_data and len(config_data['outbounds']) > 0:
+             # فرض می‌کنیم اولین outbound همان کانفیگ اصلی است
+            config_data['outbounds'][0]['remark'] = user_name
+
+        final_config_str = json.dumps(config_data, indent=2)
+
+        return Response(
+            final_config_str,
+            mimetype='application/json',
+            headers={'Content-Disposition': f'attachment;filename={user_name}.json'}
+        )
+
+    except FileNotFoundError:
+        logger.error("serverless_config.json template not found.")
+        abort(500, "قالب کانفیگ سرورلس یافت نشد.")
+    except Exception as e:
+        logger.error(f"Error serving serverless config for {uuid}: {e}", exc_info=True)
+        abort(500, "خطا در ساخت کانفیگ.")

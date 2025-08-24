@@ -403,16 +403,12 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             
             usage_parts = []
             
-            # --- ✅ START OF THE FIX ---
-            # Get user access rights from the db_users_map we already fetched
             user_db_record = db_users_map.get(user.get('uuid'))
 
-            # Hiddify (Germany)
             hiddify_usage = daily_dict.get('hiddify', 0.0)
             if hiddify_usage > 0:
                 usage_parts.append(f"🇩🇪 `{escape_markdown(format_daily_usage(hiddify_usage))}`")
 
-            # Marzban (France/Turkey)
             marzban_usage = daily_dict.get('marzban', 0.0)
             if marzban_usage > 0 and user_db_record:
                 flags = []
@@ -424,7 +420,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 if flags:
                     flag_str = "".join(flags)
                     usage_parts.append(f"{flag_str} `{escape_markdown(format_daily_usage(marzban_usage))}`")
-            # --- ✅ END OF THE FIX ---
 
             usage_str = escape_markdown(" | ").join(usage_parts)
             if usage_str:
@@ -450,6 +445,24 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         for user in new_users_today:
             name = escape_markdown(user['name'])
             report_lines.append(f"`•` *{name}*")
+
+    # --- START: NEW WARNINGS REPORT SECTION ---
+    sent_warnings = db_manager.get_sent_warnings_since_midnight()
+    if sent_warnings:
+        report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['bell']} {escape_markdown('هشدارهای ارسال شده امروز')}*")
+        
+        warning_map = {
+            "expiry": "انقضای سرویس",
+            "low_data_hiddify": "اتمام حجم 🇩🇪",
+            "low_data_marzban": "اتمام حجم 🇫🇷",
+            "unusual_daily_usage": "مصرف غیرعادی"
+        }
+
+        for warning in sent_warnings:
+            user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
+            warning_type_fa = escape_markdown(warning_map.get(warning.get('warning_type'), "نامشخص"))
+            report_lines.append(f"`•` *{user_name} :* {warning_type_fa}")
+    # --- END: NEW WARNINGS REPORT SECTION ---
 
     return "\n".join(report_lines)
 

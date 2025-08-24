@@ -79,6 +79,34 @@ def register_admin_handlers(bot, scheduler):
             logger.error(f"Error in test_warnings command: {e}", exc_info=True)
     # --- END: NEW TEST COMMANDS FOR SCHEDULER ---
 
+    # --- START: NEW TEST WARNING COMMANDS ---
+    @bot.message_handler(commands=['test_data_warning'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_data_warning(message: types.Message):
+        """دستور تست برای ارسال نمونه هشدار اتمام حجم."""
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال ارسال نمونه هشدار اتمام حجم...")
+        try:
+            # تابع جدیدی که در scheduler ساخته می‌شود را فراخوانی می‌کنیم
+            scheduler._test_data_warning(target_user_id=admin_id)
+            bot.send_message(admin_id, "✅ نمونه هشدار با موفقیت ارسال شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در ارسال نمونه هشدار: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_data_warning command: {e}", exc_info=True)
+
+    @bot.message_handler(commands=['test_expiry_warning'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_expiry_warning(message: types.Message):
+        """دستور تست برای ارسال نمونه هشدار انقضای سرویس."""
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال ارسال نمونه هشدار انقضای سرویس...")
+        try:
+            # تابع جدیدی که در scheduler ساخته می‌شود را فراخوانی می‌کنیم
+            scheduler._test_expiry_warning(target_user_id=admin_id)
+            bot.send_message(admin_id, "✅ نمونه هشدار با موفقیت ارسال شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در ارسال نمونه هشدار: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_expiry_warning command: {e}", exc_info=True)
+    # --- END: NEW TEST WARNING COMMANDS ---
+
 # ===================================================================
 # Simple Menu Functions
 # ===================================================================
