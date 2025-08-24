@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const mainFilter = document.getElementById('main-filter');
     const paginationContainer = document.getElementById('pagination-container');
     const tableTitle = document.querySelector('.page-header h3');
-    
+
     // --- CSRF Token ---
     const csrfToken = '{{ csrf_token() }}';
 
@@ -199,13 +199,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Modal Functions ---
     const getModal = (id) => document.getElementById(id);
     const showModal = (modal) => { modal.style.display = 'flex'; setTimeout(() => modal.classList.add('active'), 10); };
-    const hideModal = (modal) => { 
+    const hideModal = (modal) => {
         if (!modal) return;
-        modal.classList.remove('active'); 
-        setTimeout(() => { 
-            modal.style.display = 'none'; 
-            modal.innerHTML = ''; 
-        }, 300); 
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            modal.innerHTML = '';
+        }, 300);
     };
 
     function renderTable(users) {
@@ -216,15 +216,53 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         users.forEach(user => {
-            // --- START: FIX for Panel Icons ---
             let panelIcons = '';
             if (user.on_hiddify) panelIcons += '🇩🇪 ';
             if (user.on_marzban) panelIcons += '🇫🇷';
-            // --- END: FIX for Panel Icons ---
-            
+
             const statusEmoji = user.is_active ? '🟢' : '🔴';
 
-            const actions = `
+            const row = document.createElement('tr');
+            row.dataset.uuid = user.uuid;
+
+            // User Cell
+            const userCell = document.createElement('td');
+            const userButton = document.createElement('button');
+            userButton.className = 'text-btn user-details-btn';
+            userButton.textContent = `${statusEmoji} ${user.name || 'ناشناس'}`;
+            userButton.addEventListener('click', () => populateDetailsModal(user));
+            userCell.appendChild(userButton);
+
+            // Panel Cell
+            const panelCell = document.createElement('td');
+            panelCell.textContent = panelIcons.trim();
+
+            // Daily Usage Cell
+            const dailyUsageCell = document.createElement('td');
+            dailyUsageCell.textContent = user.total_daily_usage_formatted || '0 MB';
+
+            // Payment Cell
+            const paymentCell = document.createElement('td');
+            paymentCell.textContent = user.payment_count || 0;
+
+            // Expiry Cell
+            const expiryCell = document.createElement('td');
+            if (user.expire < 0) {
+                expiryCell.innerHTML = "<span style='color: var(--danger-color);'>منقضی شده</span>";
+            } else if (user.expire_shamsi) {
+                expiryCell.innerHTML = `${user.expire_shamsi} <small class='text-secondary'>(${user.expire} روز)</small>`;
+            } else {
+                expiryCell.textContent = 'نامحدود';
+            }
+
+            // Last Online Cell
+            const lastOnlineCell = document.createElement('td');
+            lastOnlineCell.textContent = user.last_online_relative || 'هرگز';
+
+            // Actions Cell
+            const actionsCell = document.createElement('td');
+            actionsCell.className = 'actions-cell';
+            actionsCell.innerHTML = `
                 <button class="action-btn vip-btn ${user.is_vip ? 'active' : ''}" title="تغییر وضعیت VIP"><i class="ri-vip-crown-line"></i></button>
                 <button class="action-btn add-payment-btn" title="ثبت رکورد پرداخت"><i class="ri-money-dollar-circle-line"></i></button>
                 <button class="action-btn edit-btn" title="ویرایش کاربر"><i class="ri-pencil-line"></i></button>
@@ -232,56 +270,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 <a href="/user/${user.uuid}" target="_blank" class="action-btn" title="مشاهده پنل کاربر"><i class="ri-external-link-line"></i></a>
             `;
 
-            let expiryText;
-            if (user.expire < 0) {
-                expiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
-            } else if (user.expire_shamsi) {
-                expiryText = `${user.expire_shamsi} <small class='text-secondary'>(${user.expire} روز)</small>`;
-            } else {
-                expiryText = 'نامحدود';
-            }
+            row.append(userCell, panelCell, dailyUsageCell, paymentCell, expiryCell, lastOnlineCell, actionsCell);
 
-            const row = document.createElement('tr');
-            row.dataset.uuid = user.uuid;
-
-            // --- START: FIX for Daily Usage Display ---
-            row.innerHTML = `
-                <td><button class="text-btn user-details-btn">${statusEmoji} ${user.name || 'ناشناس'}</button></td>
-                <td>${panelIcons.trim()}</td>
-                <td>${user.total_daily_usage_formatted || '0 MB'}</td>
-                <td>${user.payment_count || 0}</td>
-                <td>${expiryText}</td>
-                <td>${user.last_online_relative || 'هرگز'}</td>
-                <td class="actions-cell">${actions}</td>
-            `;
-            // --- END: FIX for Daily Usage Display ---
-
-            row.querySelector('.user-details-btn').addEventListener('click', () => populateDetailsModal(user));
-            row.querySelector('.edit-btn').addEventListener('click', () => openEditModal(user));
-            row.querySelector('.delete-btn').addEventListener('click', () => openDeleteModal(user));
-            row.querySelector('.add-payment-btn').addEventListener('click', () => openAddPaymentModal(user));
-
-            row.querySelector('.vip-btn').addEventListener('click', (e) => {
+            // Add event listeners for action buttons
+            actionsCell.querySelector('.edit-btn').addEventListener('click', () => openEditModal(user));
+            actionsCell.querySelector('.delete-btn').addEventListener('click', () => openDeleteModal(user));
+            actionsCell.querySelector('.add-payment-btn').addEventListener('click', () => openAddPaymentModal(user));
+            actionsCell.querySelector('.vip-btn').addEventListener('click', (e) => {
                 const button = e.currentTarget;
                 button.disabled = true;
                 fetch(`/admin/api/users/toggle_vip/${user.uuid}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': csrfToken }
                 })
-                    .then(res => res.json())
-                    .then(result => {
-                        if (result.success) {
-                            button.classList.toggle('active');
-                            showToast(result.message, true);
-                            user.is_vip = !user.is_vip; 
-                        } else {
-                            showToast(result.message || 'خطا در تغییر وضعیت VIP.', false);
-                        }
-                    }).finally(() => { button.disabled = false; });
+                .then(res => res.json())
+                .then(result => {
+                    if (result.success) {
+                        button.classList.toggle('active');
+                        showToast(result.message, true);
+                        user.is_vip = !user.is_vip;
+                    } else {
+                        showToast(result.message || 'خطا در تغییر وضعیت VIP.', false);
+                    }
+                }).finally(() => { button.disabled = false; });
             });
+
             tableBody.appendChild(row);
         });
     }
+    
+    // The rest of the javascript functions (renderPagination, populateDetailsModal, etc.) remain the same
+    // but I'm including them here for completeness. The logic within them is correct.
 
     function renderPagination(pagination) {
         if (!paginationContainer) return;
@@ -317,13 +336,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         paginationContainer.appendChild(createBtn(current + 1, 'بعدی', current === total));
     }
-    
+
     function populateDetailsModal(user) {
         const modal = getModal('user-details-modal');
         const statusIcon = user.is_active ? '🟢' : '🔴', statusText = user.is_active ? 'فعال' : 'غیرفعال';
         let hiddifyHtml = '', marzbanHtml = '';
 
-        // --- ✅ بخش اصلاح شده ---
         let h = {};
         let m = {};
         let totalDailyUsageRaw = 0;
@@ -340,7 +358,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
-        // --- ✅ پایان بخش اصلاح شده ---
 
         if (user.on_hiddify) {
             hiddifyHtml = `<div class="details-card"><h5><i class="ri-server-line"></i> پنل آلمان 🇩🇪</h5>
@@ -360,9 +377,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>`;
         }
-        
+
         const formattedTotalDaily = totalDailyUsageRaw < 1 ? `${(totalDailyUsageRaw * 1024).toFixed(0)} MB` : `${totalDailyUsageRaw.toFixed(2)} GB`;
-        
+
         let finalExpiryText;
         if (user.expire < 0) {
             finalExpiryText = "<span style='color: var(--danger-color);'>منقضی شده</span>";
@@ -431,7 +448,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function openEditModal(user) {
         const modal = getModal('edit-user-modal');
         
-        // --- ✅ بخش اصلاح شده ---
         let h = {};
         let m = {};
         if (user.breakdown) {
@@ -444,7 +460,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
-        // --- ✅ پایان بخش اصلاح شده ---
 
         let hiddifyTab = user.on_hiddify ? `<button type="button" class="modal-tab-btn active" data-tab="hiddify-edit-tab">پنل آلمان 🇩🇪</button>` : '';
         let marzbanTab = user.on_marzban ? `<button type="button" class="modal-tab-btn ${!user.on_hiddify ? 'active' : ''}" data-tab="marzban-edit-tab">پنل فرانسه 🇫🇷</button>` : '';
@@ -511,7 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         showModal(modal);
     }
-    
+
     function openAddPaymentModal(user) {
         const modal = getModal('add-payment-modal');
         modal.innerHTML = `
@@ -542,12 +557,12 @@ document.addEventListener('DOMContentLoaded', function() {
             tab.addEventListener('click', () => {
                 modal.querySelectorAll('.modal-tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
                 tab.classList.add('active');
-                
-                const activeTabId = tab.dataset.tab; 
+
+                const activeTabId = tab.dataset.tab;
                 const activeContent = modal.querySelector(`#${activeTabId}`);
 
                 if (activeContent) activeContent.classList.add('active');
-                
+
                 modal.querySelectorAll('.tab-content').forEach(content => {
                     const isContentActive = content.classList.contains('active');
                     content.querySelectorAll('input, select').forEach(input => {
@@ -590,7 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
             btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
         }
     }
-    
+
     async function handleUpdateUserSubmit(e, user) {
         e.preventDefault();
         const form = e.target, feedbackEl = form.querySelector('#edit-form-feedback'), submitBtn = form.querySelector('#submit-edit-user-btn');
@@ -617,7 +632,7 @@ document.addEventListener('DOMContentLoaded', function() {
             btnText.style.display = 'inline-block'; btnSpinner.style.display = 'none'; submitBtn.disabled = false;
         }
     }
-    
+
     async function handleAddPaymentSubmit(e) {
         e.preventDefault();
         const form = e.target, uuid = form.dataset.uuid, feedbackEl = form.querySelector('#payment-form-feedback'), submitBtn = form.querySelector('#submit-add-payment-btn');
@@ -652,7 +667,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => toast.remove(), 500);
         }, 3000);
     }
-    
+
     // --- Event Listeners ---
     let searchDebounceTimer;
     if(searchInput) searchInput.addEventListener('input', () => {
@@ -661,14 +676,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     if(panelFilter) panelFilter.addEventListener('change', () => loadUsers(1));
     if (mainFilter) mainFilter.addEventListener('change', () => loadUsers(1));
-    document.addEventListener('click', (e) => { 
+    document.addEventListener('click', (e) => {
         if (e.target.matches('.modal-overlay')) { hideModal(e.target); }
     });
     const addUserBtn = document.getElementById('add-user-btn');
     if(addUserBtn) addUserBtn.addEventListener('click', openAddUserModal);
-    
+
     // --- Initial Load ---
-    loadUsers(); 
+    loadUsers();
 });
 </script>
 {% endblock %}
