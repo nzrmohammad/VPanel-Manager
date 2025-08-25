@@ -75,6 +75,24 @@ def serve_normal_subscription(uuid):
         userinfo_header = f"upload={total_usage_bytes}; download=0; total={data_limit_bytes}; expire={expire_timestamp}"
         response.headers['Subscription-Userinfo'] = userinfo_header
 
+    user_agent_str = request.headers.get('User-Agent')
+    logger.info(f"Base64 subscription link accessed for UUID: {uuid}")
+    logger.info(f"Received User-Agent: {user_agent_str}")
+
+    if user_record and user_agent_str:
+        try:
+            uuid_id = user_record.get('id')
+            if uuid_id:
+                db.record_user_agent(uuid_id, user_agent_str)
+                logger.info(f"Successfully recorded User-Agent for uuid_id: {uuid_id}")
+            else:
+                logger.warning(f"Could not find uuid_id in user_record for UUID {uuid}")
+        except Exception as e:
+            logger.error(f"DATABASE ERROR: Could not log user agent for UUID {uuid}. Error: {e}", exc_info=True)
+    elif not user_agent_str:
+        logger.warning(f"No User-Agent header received for UUID {uuid}.")
+    # --- END: New Logging Section ---
+
     return response
 
 @user_bp.route('/sub/b64/<string:uuid>')
@@ -111,7 +129,25 @@ def serve_base64_subscription(uuid):
 
         userinfo_header = f"upload={total_usage_bytes}; download=0; total={data_limit_bytes}; expire={expire_timestamp}"
         response.headers['Subscription-Userinfo'] = userinfo_header
-        
+
+    user_agent_str = request.headers.get('User-Agent')
+    logger.info(f"Base64 subscription link accessed for UUID: {uuid}")
+    logger.info(f"Received User-Agent: {user_agent_str}")
+
+    if user_record and user_agent_str:
+        try:
+            uuid_id = user_record.get('id')
+            if uuid_id:
+                db.record_user_agent(uuid_id, user_agent_str)
+                logger.info(f"Successfully recorded User-Agent for uuid_id: {uuid_id}")
+            else:
+                logger.warning(f"Could not find uuid_id in user_record for UUID {uuid}")
+        except Exception as e:
+            logger.error(f"DATABASE ERROR: Could not log user agent for UUID {uuid}. Error: {e}", exc_info=True)
+    elif not user_agent_str:
+        logger.warning(f"No User-Agent header received for UUID {uuid}.")
+    # --- END: New Logging Section ---
+
     return response
 
 @user_bp.route('/<string:uuid>/links')

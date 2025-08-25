@@ -5,7 +5,7 @@ from .config import EMOJIS, PAGE_SIZE
 from .database import db
 from .utils import (
     format_daily_usage, escape_markdown,
-    format_relative_time , to_shamsi, days_until_next_birthday, create_progress_bar 
+    format_relative_time , to_shamsi, days_until_next_birthday, create_progress_bar, parse_user_agent
 )
 
 def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
@@ -67,6 +67,35 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                 panel_data=panel_info['data'],
                 panel_type=p_type
             ))
+
+    # --- START OF FIX ---
+    # بخش بهبودیافته نمایش دستگاه‌ها با بررسی مقدار None
+    uuid_str = info.get('uuid')
+    if uuid_str:
+        uuid_id = db.get_uuid_id_by_uuid(uuid_str)
+        if uuid_id:
+            user_agents = db.get_user_agents_for_uuid(uuid_id)
+            if user_agents:
+                report_lines.append(separator)
+                report_lines.append("📱 *دستگاه‌های متصل:*")
+                for agent in user_agents[:5]:
+                    parsed = parse_user_agent(agent['user_agent'])
+                    
+                    # Add a check here to ensure 'parsed' is not None
+                    if parsed:
+                        client_name = esc(parsed.get('client', 'Unknown'))
+                        
+                        details = []
+                        if parsed.get('version'):
+                            details.append(f"v{esc(parsed['version'])}")
+                        if parsed.get('os'):
+                            details.append(esc(parsed['os']))
+                        
+                        details_str = f" \\({', '.join(details)}\\)" if details else ""
+                        last_seen_str = esc(to_shamsi(agent['last_seen'], include_time=True))
+                        
+                        report_lines.append(f"`•` *{client_name}*{details_str}\n` `└─ update : _{last_seen_str}_")
+    # --- END OF FIX ---
 
     # --- بخش فوتر ---
     expire_days = info.get("expire")
@@ -629,3 +658,68 @@ def fmt_card_info_inline() -> tuple[str, str]:
         f"*{escape_markdown(number_label)} \\({bank_name}\\):*\n`{card_number}`"
     )
     return text, "MarkdownV2"
+
+def fmt_connected_devices_list(devices: list, page: int) -> str:
+    """
+    لیست تمام دستگاه‌های متصل را برای نمایش در گزارش ادمین با صفحه‌بندی فرمت‌بندی می‌کند.
+    دستگاه‌ها بر اساس کاربر گروه‌بندی می‌شوند.
+    """
+    title = "📱 *لیست کامل دستگاه‌های متصل*"
+
+    if not devices:
+        return f"{title}\n\n_هیچ دستگاهی برای نمایش یافت نشد_\\."
+
+    users_devices = {}
+    for device in devices:
+        parsed = parse_user_agent(device['user_agent'])
+        # This check is crucial: it skips None results (browsers, TelegramBot)
+        if not parsed:
+            continue
+            
+        user_key = device.get('user_id') or device.get('config_name', 'کاربر ناشناس')
+        if user_key not in users_devices:
+            users_devices[user_key] = {
+                'name': device.get('config_name') or device.get('first_name', 'کاربر ناشناس'),
+                'devices': []
+            }
+        
+        parsed['last_seen'] = device['last_seen']
+        users_devices[user_key]['devices'].append(parsed)
+    
+    for user in users_devices.values():
+        user['devices'].sort(key=lambda x: x['last_seen'], reverse=True)
+
+    user_list = list(users_devices.values())
+
+    header_text = title
+    total_items = len(user_list)
+    if total_items > PAGE_SIZE:
+        total_pages = (total_items + PAGE_SIZE - 1) // PAGE_SIZE
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_items}\\)"
+        header_text += f"\n{pagination_text}"
+
+    lines = [header_text, "`──────────────────`"]
+    paginated_users = user_list[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
+    for user in paginated_users:
+        user_name = escape_markdown(user['name'])
+        lines.append(f"👤 *{user_name}*")
+        
+        if not user['devices']:
+             lines.append("` `└─ ▫️ _دستگاهی یافت نشد_")
+        else:
+            for device in user['devices'][:4]: # Show up to 4 devices per user
+                client_name = escape_markdown(device.get('client', 'Unknown'))
+                details = []
+                if device.get('version'):
+                    details.append(f"v{escape_markdown(device['version'])}")
+                if device.get('os'):
+                    details.append(escape_markdown(device['os']))
+                
+                details_str = f" \\({', '.join(details)}\\)" if details else ""
+                last_seen_str = escape_markdown(to_shamsi(device['last_seen'], include_time=True))
+
+                lines.append(f"` `└─ 📱 *{client_name}*{details_str} \\(_{last_seen_str}_\\)")
+        lines.append("")
+
+    return "\n".join(lines)

@@ -329,6 +329,7 @@ class Menu:
             types.InlineKeyboardButton("💳 پرداخت‌ها", callback_data="admin:list:payments:0"),
             types.InlineKeyboardButton("🤖 لیست کاربران ربات", callback_data="admin:list:bot_users:0")
         )
+        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"))
         kb.add(types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb

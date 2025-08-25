@@ -10,7 +10,7 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
 from ..utils import _safe_edit, escape_markdown
@@ -132,9 +132,9 @@ def handle_paginated_list(call, params):
     elif list_type == "bot_users": 
         users = db.get_all_bot_users()
     elif list_type == "birthdays": 
-        users = db.get_users_with_birthdays()
+        users = list(db.get_users_with_birthdays()) # Convert generator to list
     elif list_type == "payments":
-        users = db.get_all_payments_with_user_info()
+        users = list(db.get_all_payments_with_user_info()) # Convert generator to list
 
     list_configs = {
         "panel_users": {"format": lambda u, pg, p_type: fmt_panel_users_list(u, "Hiddify" if p_type == "hiddify" else "Marzban", pg), "back": "panel_reports"},
@@ -151,8 +151,12 @@ def handle_paginated_list(call, params):
     config = list_configs.get(list_type)
     if not config: return
     
-    try: text = config["format"](users, page, panel_type)
-    except TypeError: text = config["format"](users, page)
+    # --- START OF FIX: Call formatters with correct arguments ---
+    if list_type in ["top_consumers", "bot_users", "birthdays", "payments"]:
+        text = config["format"](users, page)
+    else:
+        text = config["format"](users, page, panel_type)
+    # --- END OF FIX ---
     
     base_cb = f"admin:list:{list_type}" + (f":{panel_type}" if panel_type else "")
     back_cb = ""
@@ -163,7 +167,7 @@ def handle_paginated_list(call, params):
     else:
         back_cb = f"admin:{config['back']}"
 
-    kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb, call.from_user.language_code)
+    kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb)
     _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
 
 def handle_report_by_plan_selection(call, params):
@@ -373,7 +377,6 @@ def handle_test_weekly_report_command(message: types.Message):
         logger.error(f"Error in handle_test_weekly_report_command for user_id {message.text.split()[1] if len(message.text.split()) > 1 else 'N/A'}: {e}", exc_info=True)
         bot.send_message(admin_id, f"❌ خطایی در هنگام ساخت گزارش رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
 
-# nzrmohammad/vpanel-manager/VPanel-Manager-aa3b4f7623a793527cfa3d33f8968c1f80909dbb/bot/admin_handlers/reporting.py
 
 def handle_test_welcome_message_command(message: types.Message):
     """Handles the /test_welcome <user_id> command for admins."""
@@ -426,3 +429,23 @@ def handle_test_welcome_message_command(message: types.Message):
     except Exception as e:
         logger.error(f"Error in handle_test_welcome_message_command for user_id {message.text.split()[1] if len(message.text.split()) > 1 else 'N/A'}: {e}", exc_info=True)
         bot.send_message(admin_id, f"❌ خطایی در هنگام اجرای تست رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
+
+def handle_connected_devices_list(call, params):
+    """Handles the request to show the full list of connected devices with pagination."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    page = int(params[0]) if params else 0
+
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال دریافت لیست کامل دستگاه‌ها..."))
+
+    all_devices = db.get_all_user_agents()
+    
+    text = fmt_connected_devices_list(all_devices, page)
+    
+    kb = menu.create_pagination_menu(
+        base_callback="admin:list_devices",
+        current_page=page,
+        total_items=len(all_devices),
+        back_callback="admin:reports_menu"
+    )
+    
+    _safe_edit(uid, msg_id, text, reply_markup=kb)

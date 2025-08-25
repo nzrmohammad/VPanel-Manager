@@ -6,7 +6,8 @@ from .language import get_string
 from .utils import (
     create_progress_bar,
     format_daily_usage, escape_markdown,
-    to_shamsi, days_until_next_birthday
+    to_shamsi, days_until_next_birthday,
+    parse_user_agent
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,30 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
         panel_type = panel_details.get('type')
         daily_usage = daily_usage_dict.get(panel_type, 0.0) if panel_type else 0.0
         report.extend(format_panel_details(panel_data, daily_usage, panel_type))
+
+    uuid_str = info.get('uuid')
+    if uuid_str:
+        uuid_id = db.get_uuid_id_by_uuid(uuid_str)
+        if uuid_id:
+            user_agents = db.get_user_agents_for_uuid(uuid_id)
+            if user_agents:
+                report.append("📱 *دستگاه‌های شما*")
+                device_lines = []
+                for agent in user_agents[:6]: 
+                    parsed = parse_user_agent(agent['user_agent'])
+                    if parsed:
+                        client_name = escape_markdown(parsed.get('client', 'Unknown'))
+                        details = []
+                        if parsed.get('version'):
+                            details.append(f"v{escape_markdown(parsed['version'])}")
+                        if parsed.get('os'):
+                            details.append(escape_markdown(parsed['os']))
+                        
+                        details_str = f" \\({', '.join(details)}\\)" if details else ""
+                        device_lines.append(f"*{client_name}*{details_str}")
+                
+                report.extend(device_lines)
+                report.append(separator)
 
     expire_days = info.get("expire")
     expire_label = get_string("fmt_expire_unlimited", lang_code)

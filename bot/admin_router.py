@@ -168,6 +168,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "health_check": reporting.handle_health_check,
     "marzban_stats": reporting.handle_marzban_system_stats,
     "list": reporting.handle_paginated_list,
+    "list_devices": reporting.handle_connected_devices_list,
     "report_by_plan_select": reporting.handle_report_by_plan_selection,
     "list_by_plan": reporting.handle_list_users_by_plan,
     "list_no_plan": reporting.handle_list_users_no_plan,

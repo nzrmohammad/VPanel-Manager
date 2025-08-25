@@ -147,6 +147,14 @@ class DatabaseManager:
                     message_id INTEGER NOT NULL,
                     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS client_user_agents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    uuid_id INTEGER NOT NULL,
+                    user_agent TEXT NOT NULL,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(uuid_id) REFERENCES user_uuids(id) ON DELETE CASCADE,
+                    UNIQUE(uuid_id, user_agent)
+                );
                 CREATE TABLE IF NOT EXISTS panels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -452,11 +460,11 @@ class DatabaseManager:
                 yield row['user_id']
         
     def get_all_bot_users(self):
-        """تمام کاربران ربات را به صورت جریانی (generator) برمی‌گرداند."""
+        """تمام کاربران ربات را به صورت لیست برمی‌گرداند."""
         with self._conn() as c:
             cursor = c.execute("SELECT user_id, username, first_name, last_name FROM users ORDER BY user_id")
-            for row in cursor:
-                yield dict(row)
+            # FIX: The generator is converted to a list before being returned.
+            return [dict(r) for r in cursor.fetchall()]
         
     def update_user_birthday(self, user_id: int, birthday_date: datetime.date):
         with self._conn() as c:
@@ -1363,6 +1371,46 @@ class DatabaseManager:
         """
         with self._conn() as c:
             rows = c.execute(query, (today_midnight_utc,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def record_user_agent(self, uuid_id: int, user_agent: str):
+        """Saves or updates the user agent for a given UUID, resetting the last_seen timestamp."""
+        with self._conn() as c:
+            c.execute("""
+                INSERT INTO client_user_agents (uuid_id, user_agent, last_seen)
+                VALUES (?, ?, ?)
+                ON CONFLICT(uuid_id, user_agent) DO UPDATE SET
+                last_seen = excluded.last_seen;
+            """, (uuid_id, user_agent, datetime.now(pytz.utc)))
+
+    def get_user_agents_for_uuid(self, uuid_id: int) -> List[Dict[str, Any]]:
+        """Retrieves all recorded user agents for a specific user UUID, ordered by last seen."""
+        with self._conn() as c:
+            rows = c.execute("""
+                SELECT user_agent, last_seen FROM client_user_agents
+                WHERE uuid_id = ? ORDER BY last_seen DESC
+            """, (uuid_id,)).fetchall()
+            return [dict(r) for r in rows]
+        
+    def get_all_user_agents(self) -> List[Dict[str, Any]]:
+        """
+        تمام دستگاه‌های ثبت‌شده (user-agents) را به همراه اطلاعات کاربر مربوطه
+        برای نمایش در گزارش ادمین برمی‌گرداند.
+        """
+        query = """
+            SELECT
+                ca.user_agent,
+                ca.last_seen,
+                uu.name as config_name,
+                u.first_name,
+                u.user_id
+            FROM client_user_agents ca
+            JOIN user_uuids uu ON ca.uuid_id = uu.id
+            LEFT JOIN users u ON uu.user_id = u.user_id
+            ORDER BY ca.last_seen DESC;
+        """
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
 db = DatabaseManager()
