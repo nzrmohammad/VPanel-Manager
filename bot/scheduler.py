@@ -167,6 +167,18 @@ class SchedulerManager:
                         for admin_id in ADMIN_IDS:
                             self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
                         db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
+
+                # 6. Too Many Devices Alert (for Admins)
+                device_count = db.count_user_agents(uuid_id_in_db)
+                if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168): # Check once a week
+                    alert_message = (f"⚠️ *تعداد دستگاه بالا*\n\n"
+                                     f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
+                                     f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
+                    for admin_id in ADMIN_IDS:
+                        self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
+                    db.log_warning(uuid_id_in_db, 'too_many_devices')
+                # --- END: NEW CHANGE ---
+
             except Exception as e:
                 logger.error(f"SCHEDULER (Warnings): Error processing UUID_ID {u_row.get('id', 'N/A')}: {e}", exc_info=True)
 

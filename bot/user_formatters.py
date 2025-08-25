@@ -72,10 +72,22 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
             user_agents = db.get_user_agents_for_uuid(uuid_id)
             if user_agents:
                 report.append("📱 *دستگاه‌های شما*")
-                device_lines = []
                 for agent in user_agents[:6]: 
                     parsed = parse_user_agent(agent['user_agent'])
                     if parsed:
+                        os_name_lower = (parsed.get('os') or '').lower()
+                        icon = "❓" # Default icon
+                        if 'ios' in os_name_lower or 'macos' in os_name_lower:
+                            icon = "📱"
+                        elif 'android' in os_name_lower:
+                            icon = "🤖"
+                        elif 'windows' in os_name_lower:
+                            icon = "🖥️"
+                        elif 'linux' in os_name_lower:
+                            icon = "🐧"
+                        elif 'browser' in (parsed.get('client') or '').lower():
+                            icon = "🌐"
+
                         client_name = escape_markdown(parsed.get('client', 'Unknown'))
                         details = []
                         if parsed.get('version'):
@@ -84,9 +96,10 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
                             details.append(escape_markdown(parsed['os']))
                         
                         details_str = f" \\({', '.join(details)}\\)" if details else ""
-                        device_lines.append(f"*{client_name}*{details_str}")
-                
-                report.extend(device_lines)
+                        last_seen_str = escape_markdown(to_shamsi(agent['last_seen'], include_time=True))
+
+                        report.append(f"` `└─ {icon} *{client_name}*{details_str} \\(_{last_seen_str}_\\)")
+
                 report.append(separator)
 
     expire_days = info.get("expire")

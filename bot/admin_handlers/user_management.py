@@ -349,6 +349,7 @@ def handle_reset_usage_action(call, params):
         if uuid_id_in_db:
             db.delete_user_snapshots(uuid_id_in_db)
             db.add_usage_snapshot(uuid_id_in_db, 0.0, 0.0)
+            db.delete_user_agents_by_uuid_id(uuid_id_in_db)
 
         new_info = combined_handler.get_combined_user_info(identifier)
         if new_info:

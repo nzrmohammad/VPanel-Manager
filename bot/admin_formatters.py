@@ -68,8 +68,6 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                 panel_type=p_type
             ))
 
-    # --- START OF FIX ---
-    # بخش بهبودیافته نمایش دستگاه‌ها با بررسی مقدار None
     uuid_str = info.get('uuid')
     if uuid_str:
         uuid_id = db.get_uuid_id_by_uuid(uuid_str)
@@ -80,11 +78,21 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                 report_lines.append("📱 *دستگاه‌های متصل:*")
                 for agent in user_agents[:5]:
                     parsed = parse_user_agent(agent['user_agent'])
-                    
-                    # Add a check here to ensure 'parsed' is not None
                     if parsed:
+                        os_name_lower = (parsed.get('os') or '').lower()
+                        icon = "❓"
+                        if 'ios' in os_name_lower or 'macos' in os_name_lower:
+                            icon = "📱"
+                        elif 'android' in os_name_lower:
+                            icon = "🤖"
+                        elif 'windows' in os_name_lower:
+                            icon = "🖥️"
+                        elif 'linux' in os_name_lower:
+                            icon = "🐧"
+                        elif 'browser' in (parsed.get('client') or '').lower():
+                            icon = "🌐"
+
                         client_name = esc(parsed.get('client', 'Unknown'))
-                        
                         details = []
                         if parsed.get('version'):
                             details.append(f"v{esc(parsed['version'])}")
@@ -94,8 +102,8 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                         details_str = f" \\({', '.join(details)}\\)" if details else ""
                         last_seen_str = esc(to_shamsi(agent['last_seen'], include_time=True))
                         
-                        report_lines.append(f"`•` *{client_name}*{details_str}\n` `└─ update : _{last_seen_str}_")
-    # --- END OF FIX ---
+                        report_lines.append(f"` `└─ {icon} *{client_name}*{details_str} \\(_{last_seen_str}_\\)")
+
 
     # --- بخش فوتر ---
     expire_days = info.get("expire")
@@ -475,22 +483,39 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             name = escape_markdown(user['name'])
             report_lines.append(f"`•` *{name}*")
 
-    # --- START: NEW WARNINGS REPORT SECTION ---
     sent_warnings = db_manager.get_sent_warnings_since_midnight()
     if sent_warnings:
-        report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['bell']} {escape_markdown('هشدارهای ارسال شده امروز')}*")
-        
+        user_warnings = []
+        admin_warnings = []
+
         warning_map = {
             "expiry": "انقضای سرویس",
             "low_data_hiddify": "اتمام حجم 🇩🇪",
             "low_data_marzban": "اتمام حجم 🇫🇷",
-            "unusual_daily_usage": "مصرف غیرعادی"
+            "unusual_daily_usage": "مصرف غیرعادی",
+            "too_many_devices": "تعداد دستگاه بالا"
         }
+        
+        admin_only_warnings = ["unusual_daily_usage", "too_many_devices"]
 
         for warning in sent_warnings:
             user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
             warning_type_fa = escape_markdown(warning_map.get(warning.get('warning_type'), "نامشخص"))
-            report_lines.append(f"`•` *{user_name} :* {warning_type_fa}")
+            formatted_line = f"`•` *{user_name} :* {warning_type_fa}"
+
+            if warning.get('warning_type') in admin_only_warnings:
+                admin_warnings.append(formatted_line)
+            else:
+                user_warnings.append(formatted_line)
+
+        if user_warnings:
+            report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['bell']} {escape_markdown('هشدارهای ارسال شده به کاربر')}*")
+            report_lines.extend(user_warnings)
+        
+        if admin_warnings:
+            report_lines.append("\n" + "─" * 15 + f"\n*🚨 {escape_markdown('هشدارهای ارسال شده به ادمین')}*")
+            report_lines.extend(admin_warnings)
+            
     # --- END: NEW WARNINGS REPORT SECTION ---
 
     return "\n".join(report_lines)
@@ -661,18 +686,18 @@ def fmt_card_info_inline() -> tuple[str, str]:
 
 def fmt_connected_devices_list(devices: list, page: int) -> str:
     """
-    لیست تمام دستگاه‌های متصل را برای نمایش در گزارش ادمین با صفحه‌بندی فرمت‌بندی می‌کند.
-    دستگاه‌ها بر اساس کاربر گروه‌بندی می‌شوند.
+    Formats the list of all connected devices for the admin report with pagination.
+    Devices are grouped by user, and an icon specific to the OS is displayed.
     """
     title = "📱 *لیست کامل دستگاه‌های متصل*"
 
     if not devices:
         return f"{title}\n\n_هیچ دستگاهی برای نمایش یافت نشد_\\."
 
+    # --- 1. Group devices by user ---
     users_devices = {}
     for device in devices:
         parsed = parse_user_agent(device['user_agent'])
-        # This check is crucial: it skips None results (browsers, TelegramBot)
         if not parsed:
             continue
             
@@ -691,6 +716,7 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
 
     user_list = list(users_devices.values())
 
+    # --- 2. Pagination Header ---
     header_text = title
     total_items = len(user_list)
     if total_items > PAGE_SIZE:
@@ -698,6 +724,7 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_items}\\)"
         header_text += f"\n{pagination_text}"
 
+    # --- 3. Build the final report string ---
     lines = [header_text, "`──────────────────`"]
     paginated_users = user_list[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
 
@@ -708,7 +735,22 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
         if not user['devices']:
              lines.append("` `└─ ▫️ _دستگاهی یافت نشد_")
         else:
-            for device in user['devices'][:6]: # Show up to 4 devices per user
+            for device in user['devices'][:6]: 
+                # --- START: New Emoji Logic ---
+                os_name_lower = (device.get('os') or '').lower()
+                icon = "❓" # Default icon
+                if 'ios' in os_name_lower or 'macos' in os_name_lower:
+                    icon = "📱"
+                elif 'android' in os_name_lower:
+                    icon = "🤖"
+                elif 'windows' in os_name_lower:
+                    icon = "🖥️"
+                elif 'linux' in os_name_lower:
+                    icon = "🐧"
+                elif 'browser' in (device.get('client') or '').lower():
+                    icon = "🌐"
+                # --- END: New Emoji Logic ---
+
                 client_name = escape_markdown(device.get('client', 'Unknown'))
                 details = []
                 if device.get('version'):
@@ -719,7 +761,7 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
                 details_str = f" \\({', '.join(details)}\\)" if details else ""
                 last_seen_str = escape_markdown(to_shamsi(device['last_seen'], include_time=True))
 
-                lines.append(f"` `└─ 📱 *{client_name}*{details_str} \\(_{last_seen_str}_\\)")
+                lines.append(f"` `└─ {icon} *{client_name}*{details_str} \\(_{last_seen_str}_\\)")
         lines.append("")
 
     return "\n".join(lines)
