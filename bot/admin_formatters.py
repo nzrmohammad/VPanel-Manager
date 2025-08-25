@@ -632,7 +632,7 @@ def fmt_payments_report_list(payments: list, page: int) -> str:
         shamsi_datetime = to_shamsi(payment.get('payment_date'), include_time=True)
         
         # فرمت نمایش هر ردیف اصلاح شد
-        line = f"`{i}.` *{name}*\n` `💳 `تاریخ پرداخت:` `{shamsi_datetime}`"
+        line = f"`{i}.` *{name} *\\(💳 {shamsi_datetime}\\)"
         lines.append(line)
 
     return "\n".join(lines)

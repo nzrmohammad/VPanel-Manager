@@ -136,9 +136,11 @@ def handle_paginated_list(call, params):
     elif list_type == "payments":
         users = list(db.get_all_payments_with_user_info()) # Convert generator to list
 
+    # --- START: FIX ---
+    # Correctly handle formatters with different argument requirements.
     list_configs = {
         "panel_users": {"format": lambda u, pg, p_type: fmt_panel_users_list(u, "Hiddify" if p_type == "hiddify" else "Marzban", pg), "back": "panel_reports"},
-        "online_users": {"format": fmt_online_users_list, "back": "panel_reports"},
+        "online_users": {"format": lambda u, pg, p_type: fmt_online_users_list(u, pg), "back": "panel_reports"}, # Fix is here
         "active_users": {"format": lambda u, pg, p_type: fmt_users_list(u, 'active', pg), "back": "panel_reports"},
         "inactive_users": {"format": lambda u, pg, p_type: fmt_users_list(u, 'inactive', pg), "back": "panel_reports"},
         "never_connected": {"format": lambda u, pg, p_type: fmt_users_list(u, 'never_connected', pg), "back": "panel_reports"},
@@ -147,16 +149,15 @@ def handle_paginated_list(call, params):
         "birthdays": {"format": fmt_birthdays_list, "back": "reports_menu"},
         "payments": {"format": fmt_payments_report_list, "back": "reports_menu"},
     }
+    # --- END: FIX ---
     
     config = list_configs.get(list_type)
     if not config: return
     
-    # --- START OF FIX: Call formatters with correct arguments ---
     if list_type in ["top_consumers", "bot_users", "birthdays", "payments"]:
         text = config["format"](users, page)
     else:
         text = config["format"](users, page, panel_type)
-    # --- END OF FIX ---
     
     base_cb = f"admin:list:{list_type}" + (f":{panel_type}" if panel_type else "")
     back_cb = ""
