@@ -188,73 +188,83 @@ def parse_volume_string(volume_str: str) -> int:
 
 def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
     """
-    Parses a user-agent string to identify the client app, OS, and version.
-    Returns None for irrelevant agents like TelegramBot or standard browsers.
-    Logs unknown agents for future improvements.
+    Parses a user-agent string to identify the client app, OS, and version with improved accuracy.
+    Logs the full user agent string for debugging purposes.
     """
-    if not user_agent or "TelegramBot" in user_agent:
+    if not user_agent:
         return None
 
-    ua_lower = user_agent.lower()
-    
-    # --- START: Enhanced Browser Detection & Logging ---
-    # First, check if it's a known client to avoid misidentifying them as browsers
-    known_client_signatures = ['cfnetwork', 'okhttp', 'dart', 'v2ray', 'nekoray', 'clash', 'hiddify', 'nekobox', 'sagernet', 'matsuri', 'sing-box']
-    is_known_client = any(sig in ua_lower for sig in known_client_signatures)
+    # Log the raw user-agent string for debugging
+    logger.info(f"Processing User-Agent: {user_agent}")
 
-    if not is_known_client and any(browser in ua_lower for browser in ['mozilla', 'chrome', 'safari', 'firefox', 'edge']):
-        logger.info(f"Filtered out a standard browser User-Agent: {user_agent}")
-        return {"client": "Web Browser", "os": "Unknown", "version": None}
-    # --- END: Enhanced Browser Detection & Logging ---
+    # --- T-1: Specific logic for Apple (iOS/macOS) devices ---
+    if "CFNetwork" in user_agent and "Darwin" in user_agent:
+        client_name, client_version = None, None
+        os_name, os_version = "iOS/macOS", None
 
-    patterns = {
-        # iOS / macOS - Ordered by specificity
-        "Shadowrocket": r"Shadowrocket/([\d.]+) CFNetwork",
-        "Stash": r"Stash/([\d.]+) CFNetwork",
-        "Quantumult X": r"Quantumult%20X/([\d.]+) CFNetwork", # Handles HiddifyNextX
-        "Loon": r"Loon/([\d.]+) CFNetwork",
-        "V2Box": r"V2Box/([\d.]+) CFNetwork",
-        "Streisand": r"Streisand/([\d.]+)", # Handles cases with or without CFNetwork
-
-        # Android
-        "V2rayNG": r"v2rayNG/([\d.]+)",
-        "HiddifyNext": r"HiddifyNext/([\d.]+)",
-        "NekoBox": r"NekoBox/([\d.]+)",
-        "SagerNet": r"SagerNet/([\d.]+)",
-        "Matsuri": r"Matsuri/([\d.]+)",
+        # Client detection for Apple
+        client_patterns = {
+            "Shadowrocket": r"Shadowrocket/([\d.]+)", "Stash": r"Stash/([\d.]+)",
+            "Quantumult X": r"Quantumult%20X/([\d.]+)", "Loon": r"Loon/([\d.]+)",
+            "V2Box": r"V2Box/([\d.]+)", "Streisand": r"Streisand/([\d.]+)"
+        }
+        for name, pattern in client_patterns.items():
+            match = re.search(pattern, user_agent)
+            if match:
+                client_name = name
+                client_version = match.group(1)
+                break
         
-        # Windows
-        "Hiddify-Desktop": r"Hiddify-Desktop/([\d.]+)",
-        "NekoRay": r"nekoray/([\d.]+)",
-        "v2rayN": r"v2rayN/([\d.]+)",
-        "Clash.Meta": r"Clash.Meta/([\w.-]+)",
+        # Darwin version to iOS/macOS version mapping
+        darwin_match = re.search(r"Darwin/([\d.]+)", user_agent)
+        if darwin_match:
+            darwin_version = int(darwin_match.group(1).split('.')[0])
+            # This mapping can be expanded over time
+            darwin_to_os = {
+                24: "17", 23: "17", 22: "16", 21: "15", 20: "14", 19: "13"
+            }
+            os_version_major = darwin_to_os.get(darwin_version)
+            if os_version_major:
+                os_version = os_version_major
 
-        # Cross-platform / Generic
-        "Happ": r"Dart/([\d.]+)",
-        "sing-box": r"sing-box/([\d.]+)",
-        "Clash": r"clash/([\d.]+)",
-        "okhttp": r"okhttp/([\d.]+)" # A generic Android library, often a fallback
+        final_os_str = f"{os_name} {os_version}" if os_version else os_name
+        return {"client": client_name or "Unknown Apple Client", "os": final_os_str, "version": client_version}
+
+    # --- T-2: Regex for other clients (Android, Windows, etc.) ---
+    client_patterns = {
+        'HiddifyNextX': r'HiddifyNextX/([\d.]+)\s+\((\w+)\)', 'Happ': r'Happ/([\d.]+)',
+        "V2rayNG": r"v2rayNG/([\d.]+)", "NekoBox": r"NekoBox/([\d.]+)",
+        "Hiddify-Desktop": r"Hiddify-Desktop/([\d.]+)", "NekoRay": r"nekoray/([\d.]+)",
+        "v2rayN": r"v2rayN/([\d.]+)", "Clash.Meta": r"Clash.Meta/([\w.-]+)",
+        "sing-box": r"sing-box/([\d.]+)", "Dart": r"Dart/([\d.]+)", "okhttp": r"okhttp/([\d.]+)"
     }
 
-    os = None
-    if "android" in ua_lower: os = "Android"
-    elif "windows" in ua_lower: os = "Windows"
-    elif "cfnetwork" in ua_lower and "darwin" in ua_lower: os = "iOS/macOS"
-    elif "linux" in ua_lower: os = "Linux"
-    elif "macos" in ua_lower: os = "macOS"
-
-    for client_name, pattern in patterns.items():
+    for client_name, pattern in client_patterns.items():
         match = re.search(pattern, user_agent, re.IGNORECASE)
         if match:
-            version = match.group(1)
-            # Prevent overly long version strings
-            if len(version) > 15: version = version[:15]
-            return {"client": client_name, "os": os, "version": version}
+            client_version = match.group(1)
+            os_name = None
+            if client_name == 'HiddifyNextX':
+                os_name = match.group(2).capitalize()
+            elif 'android' in user_agent.lower():
+                os_name = 'Android'
+            elif 'windows' in user_agent.lower():
+                os_name = 'Windows'
+            return {"client": client_name, "os": os_name, "version": client_version}
 
-    # If no pattern matched, log it for review and return a generic result
-    logger.warning(f"Unmatched User-Agent: {user_agent}")
-    client = user_agent.split('/')[0].split(' ')[0]
-    return {"client": client, "os": os, "version": None}
+    # --- T-3: Browser and Unmatched Logging ---
+    if any(browser in user_agent.lower() for browser in ['mozilla', 'chrome', 'safari', 'firefox', 'edge', 'opr']):
+        os_str = None
+        os_match = re.search(r'Android ([\d.]+)', user_agent)
+        if os_match:
+            os_str = f"Android {os_match.group(1)}"
+        logger.info(f"Filtered out a standard browser User-Agent: {user_agent}")
+        return {"client": "Web Browser", "os": os_str or "Unknown", "version": None}
+
+    logger.warning(f"Unmatched User-Agent (using generic fallback): {user_agent}")
+    generic_client = user_agent.split('/')[0].split(' ')[0]
+    return {"client": generic_client, "os": "Unknown", "version": None}
+
 
 def format_daily_usage(gb: float) -> str:
     if gb < 0: return "0 MB"

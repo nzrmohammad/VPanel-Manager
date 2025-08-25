@@ -708,7 +708,7 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
         if not user['devices']:
              lines.append("` `└─ ▫️ _دستگاهی یافت نشد_")
         else:
-            for device in user['devices'][:4]: # Show up to 4 devices per user
+            for device in user['devices'][:6]: # Show up to 4 devices per user
                 client_name = escape_markdown(device.get('client', 'Unknown'))
                 details = []
                 if device.get('version'):
