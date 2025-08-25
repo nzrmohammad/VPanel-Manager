@@ -194,17 +194,20 @@ class SchedulerManager:
         for user_id in user_ids_to_process:
             try:
                 user_settings = db.get_user_settings(user_id)
+                # Skip non-targeted users if daily reports are off
                 if not user_settings.get('daily_reports', True) and not target_user_id:
                     continue
                 
-                report_message = ""
-                # Admin report part
-                if user_id in ADMIN_IDS:
-                    header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
-                    report_text = fmt_admin_report(all_users_info_from_api, db)
-                    report_message = header + report_text
+                # --- START OF FIX: Separate Admin and User Report Sending ---
                 
-                # User report part
+                # 1. Send Admin-specific comprehensive report if the user is an admin
+                if user_id in ADMIN_IDS:
+                    admin_header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+                    admin_report_text = fmt_admin_report(all_users_info_from_api, db)
+                    admin_full_message = admin_header + admin_report_text
+                    self.bot.send_message(user_id, admin_full_message, parse_mode="MarkdownV2")
+
+                # 2. Send the personal user report for EVERY user (including admins)
                 user_uuids_from_db = db.uuids(user_id)
                 user_infos_for_report = []
                 for u in user_uuids_from_db:
@@ -214,18 +217,16 @@ class SchedulerManager:
                         user_infos_for_report.append(user_data)
                 
                 if user_infos_for_report:
-                    header = f"🌙 *گزارش شبانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+                    user_header = f"🌙 *گزارش شبانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                     lang_code = db.get_user_language(user_id)
-                    report_text = fmt_user_report(user_infos_for_report, lang_code)
-                    if user_id in ADMIN_IDS:
-                        report_message += f"\n\n---\n\n{header + report_text}"
-                    else:
-                        report_message = header + report_text
-                
-                if report_message:
-                    sent_message = self.bot.send_message(user_id, report_message, parse_mode="MarkdownV2")
+                    user_report_text = fmt_user_report(user_infos_for_report, lang_code)
+                    user_full_message = user_header + user_report_text
+                    
+                    sent_message = self.bot.send_message(user_id, user_full_message, parse_mode="MarkdownV2")
                     if sent_message:
                         db.add_sent_report(user_id, sent_message.message_id)
+
+                # --- END OF FIX ---
 
             except apihelper.ApiTelegramException as e:
                 if "bot was blocked by the user" in e.description:
