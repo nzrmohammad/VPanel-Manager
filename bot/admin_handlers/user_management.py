@@ -1,5 +1,5 @@
 import logging
-from telebot import types
+from telebot import types, apihelper
 from typing import Optional, Dict, Any
 from ..database import db
 from ..menu import menu
@@ -417,7 +417,13 @@ def _handle_global_search_response(message: types.Message):
     Searches for users and displays results as a list of buttons if multiple are found.
     """
     uid, query = message.from_user.id, message.text.strip()
-    bot.delete_message(uid, message.message_id)
+    try:
+        bot.delete_message(uid, message.message_id)
+    except apihelper.ApiTelegramException as e:
+        if "message to delete not found" in e.description:
+            logger.warning(f"Message {message.message_id} already deleted, proceeding with search.")
+        else:
+            raise e
     convo_data = admin_conversations.pop(uid, None)
     if not convo_data: return
 
