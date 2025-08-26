@@ -10,10 +10,10 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
-from ..utils import _safe_edit, escape_markdown
+from ..utils import _safe_edit, escape_markdown, load_service_plans, parse_volume_string
 from ..hiddify_api_handler import HiddifyAPIHandler
 from ..marzban_api_handler import MarzbanAPIHandler
 from ..config import WELCOME_MESSAGE_DELAY_HOURS
@@ -196,10 +196,94 @@ def _find_users_matching_plan_specs(all_users, plan_specs_set, invert_match=Fals
     return filtered_users
 
 def handle_list_users_by_plan(call, params):
-    bot.answer_callback_query(call.id, "گزارش بر اساس پلن در حال بازبینی برای سیستم جدید است.")
+    """
+    Finds and lists users whose service specifications match a selected plan.
+    """
+    uid, msg_id = call.from_user.id, call.message.message_id
+    plan_index = int(params[0])
+    page = int(params[1])
+
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال یافتن کاربران منطبق با پلن..."))
+
+    try:
+        all_plans = load_service_plans()
+        if not (0 <= plan_index < len(all_plans)):
+            bot.answer_callback_query(call.id, "❌ پلن نامعتبر است.", show_alert=True)
+            return
+
+        selected_plan = all_plans[plan_index]
+        plan_name = selected_plan.get('name', 'N/A')
+        
+        plan_vol_de = float(parse_volume_string(selected_plan.get('volume_de', '0')))
+        plan_vol_fr = float(parse_volume_string(selected_plan.get('volume_fr', '0')))
+
+        all_users = combined_handler.get_all_users_combined()
+        matching_users = []
+
+        for user in all_users:
+            h_info = next((p.get('data', {}) for p in user.get('breakdown', {}).values() if p.get('type') == 'hiddify'), {})
+            m_info = next((p.get('data', {}) for p in user.get('breakdown', {}).values() if p.get('type') == 'marzban'), {})
+            
+            user_vol_de = h_info.get('usage_limit_GB', -1.0)
+            user_vol_fr = m_info.get('usage_limit_GB', -1.0)
+            
+            if user_vol_de == plan_vol_de and user_vol_fr == plan_vol_fr:
+                matching_users.append(user)
+        
+        text = fmt_users_by_plan_list(matching_users, plan_name, page)
+        
+        base_cb = f"admin:list_by_plan:{plan_index}"
+        back_cb = "admin:user_analysis_menu"
+        
+        kb = menu.create_pagination_menu(base_cb, page, len(matching_users), back_cb)
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"Error in handle_list_users_by_plan: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در پردازش گزارش رخ داد."), reply_markup=menu.admin_reports_menu())
 
 def handle_list_users_no_plan(call, params):
-    bot.answer_callback_query(call.id, "گزارش بر اساس پلن در حال بازبینی برای سیستم جدید است.")
+    """
+    Finds and lists users whose service specifications do not match any defined plan.
+    """
+    uid, msg_id = call.from_user.id, call.message.message_id
+    page = int(params[0]) if params else 0
+
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال یافتن کاربران بدون پلن..."))
+
+    try:
+        all_plans = load_service_plans()
+        plan_specs_set = set()
+        for plan in all_plans:
+            vol_de = float(parse_volume_string(plan.get('volume_de', '0')))
+            vol_fr = float(parse_volume_string(plan.get('volume_fr', '0')))
+            plan_specs_set.add((vol_de, vol_fr))
+
+        all_users = combined_handler.get_all_users_combined()
+        no_plan_users = []
+
+        for user in all_users:
+            h_info = next((p.get('data', {}) for p in user.get('breakdown', {}).values() if p.get('type') == 'hiddify'), {})
+            m_info = next((p.get('data', {}) for p in user.get('breakdown', {}).values() if p.get('type') == 'marzban'), {})
+
+            user_vol_de = h_info.get('usage_limit_GB', -1.0)
+            user_vol_fr = m_info.get('usage_limit_GB', -1.0)
+            
+            if (user_vol_de, user_vol_fr) not in plan_specs_set:
+                no_plan_users.append(user)
+
+        text = fmt_users_by_plan_list(no_plan_users, "کاربران بدون پلن", page)
+        
+        base_cb = "admin:list_no_plan"
+        back_cb = "admin:user_analysis_menu"
+        
+        kb = menu.create_pagination_menu(base_cb, page, len(no_plan_users), back_cb)
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"Error in handle_list_users_no_plan: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در پردازش گزارش رخ داد."), reply_markup=menu.admin_reports_menu())
+
 
 def handle_quick_dashboard(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id

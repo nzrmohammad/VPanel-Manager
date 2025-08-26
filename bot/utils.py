@@ -197,9 +197,6 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
     logger.info(f"Processing User-Agent: {user_agent}")
 
     # --- Tier 1: Specific VPN Client Signatures ---
-    # This tier prioritizes known VPN clients for highest accuracy.
-    
-    # V2Box on iOS has a very unique, non-standard format
     v2box_ios_match = re.search(r"^(V2Box)\s+([\d.]+);(IOS)\s+([\d.]+)", user_agent, re.IGNORECASE)
     if v2box_ios_match:
         return {
@@ -208,10 +205,8 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             "os": f"{v2box_ios_match.group(3).upper()} {v2box_ios_match.group(4)}"
         }
 
-    # Standard Apple clients (Streisand, Shadowrocket, etc.)
     if "CFNetwork" in user_agent and "Darwin" in user_agent:
         client_name, client_version = "Unknown Apple Client", None
-        
         client_patterns = {
             "Shadowrocket": r"Shadowrocket/([\d.]+)", "Stash": r"Stash/([\d.]+)",
             "Quantumult X": r"Quantumult%20X/([\d.]+)", "Loon": r"Loon/([\d.]+)",
@@ -223,7 +218,6 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
                 client_name, client_version = name, match.group(1)
                 break
 
-        # OS and Device Type Detection
         os_name = "macOS" if "Mac" in user_agent else "iOS"
         os_version = None
         darwin_match = re.search(r"Darwin/([\d.]+)", user_agent)
@@ -232,7 +226,6 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             darwin_to_os = { 24: "18", 23: "17", 22: "16", 21: "15", 20: "14", 19: "13" }
             os_version = darwin_to_os.get(darwin_version)
 
-        # Attempt to find specific device model
         device_model_match = re.search(r'\((iPhone|iPad|Mac)[^;]*;', user_agent)
         if device_model_match:
             os_name = device_model_match.group(1).replace("iPhone", "iOS").replace("iPad", "iPadOS")
@@ -240,9 +233,9 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
         final_os_str = f"{os_name} {os_version}" if os_version else os_name
         return {"client": client_name, "os": final_os_str, "version": client_version}
 
-    # Other VPN Clients (Android, Windows, Linux)
+    # --- START: FIX for HiddifyNext on Linux ---
     client_patterns = {
-        'Hiddify': (r'HiddifyNextX/([\d.]+)\s+\((\w+)\)', lambda m: (m.group(1), m.group(2).capitalize())),
+        'Hiddify': (r'HiddifyNextX?/([\d.]+)\s+\((\w+)\)', lambda m: (m.group(1), m.group(2).capitalize())),
         'v2rayNG': (r"v2rayNG/([\d.]+)", lambda m: (m.group(1), 'Android')),
         'v2rayN': (r"v2rayN/([\d.]+)", lambda m: (m.group(1), 'Windows')),
         'NekoRay': (r"nekoray/([\d.]+)", lambda m: (m.group(1), 'Linux')),
@@ -252,14 +245,17 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
         match = re.search(pattern, user_agent, re.IGNORECASE)
         if match:
             client_version, os_name = extractor(match)
-            if not os_name: # Fallback OS detection
+            if not os_name:
                 if 'android' in user_agent.lower(): os_name = 'Android'
                 elif 'windows' in user_agent.lower(): os_name = 'Windows'
                 elif 'linux' in user_agent.lower(): os_name = 'Linux'
-            return {"client": client_name, "os": os_name, "version": client_version}
+            
+            # Correct the client name if it was matched with the optional 'X'
+            final_client_name = 'HiddifyNextX' if client_name == 'HiddifyNext' and 'HiddifyNextX' in match.group(0) else client_name
+            return {"client": final_client_name, "os": os_name, "version": client_version}
+    # --- END: FIX for HiddifyNext on Linux ---
 
     # --- Tier 2: Common Web Browsers ---
-    # This tier identifies browsers, preventing them from being mislabeled as "Unknown".
     browser_patterns = {
         'Chrome': r"Chrome/([\d.]+)",
         'Safari': r"Version/([\d.]+).*Safari/",
@@ -268,30 +264,20 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
     for browser_name, version_pattern in browser_patterns.items():
         version_match = re.search(version_pattern, user_agent)
         if version_match:
-            # Prevent Safari from matching Chrome's User-Agent
             if browser_name == 'Safari' and 'Chrome' in user_agent:
                 continue
 
             version = version_match.group(1)
             os_str = "Unknown OS"
             
-            # Windows OS detection (including 10 vs 11)
             if "Windows" in user_agent:
                 if "Windows NT 10.0" in user_agent:
-                    # Check Client Hints for Windows 11
-                    if 'Win64' in user_agent:
-                         os_str = "Windows 10/11" # Cannot differentiate further without Client Hints
-                    else:
-                         os_str = "Windows 10"
+                    os_str = "Windows 10/11"
                 else:
                     os_str = "Windows"
-            
-            # Android OS detection
             elif "Android" in user_agent:
                 android_match = re.search(r"Android ([\d.]+)", user_agent)
                 os_str = android_match.group(0) if android_match else "Android"
-            
-            # macOS detection
             elif "Macintosh" in user_agent:
                 mac_match = re.search(r"Mac OS X ([\d_]+)", user_agent)
                 os_str = f"macOS {mac_match.group(1).replace('_', '.')}" if mac_match else "macOS"
@@ -300,7 +286,6 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             return {"client": browser_name, "os": os_str, "version": version}
 
     # --- Tier 3: Generic Fallback ---
-    # Catches anything not identified above.
     logger.warning(f"Unmatched User-Agent (using generic fallback): {user_agent}")
     generic_client = user_agent.split('/')[0].split(' ')[0]
     return {"client": generic_client, "os": "Unknown", "version": None}

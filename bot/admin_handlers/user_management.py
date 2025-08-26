@@ -5,7 +5,8 @@ from ..database import db
 from ..menu import menu
 from .. import combined_handler
 from ..admin_formatters import fmt_admin_user_summary, fmt_user_payment_history
-from ..utils import _safe_edit, escape_markdown
+from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans
+
 from ..language import get_string
 
 logger = logging.getLogger(__name__)
@@ -782,3 +783,4 @@ def _confirm_and_purge_user(message: types.Message):
     else:
         error_msg = f"❌ کاربری با شناسه {target_user_id} در جدول اصلی کاربران یافت نشد."
         _safe_edit(admin_id, msg_id, escape_markdown(error_msg), reply_markup=menu.admin_search_menu())
+

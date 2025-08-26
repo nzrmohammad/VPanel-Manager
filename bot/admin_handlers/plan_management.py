@@ -1,7 +1,7 @@
 import logging
 from telebot import types
 from ..menu import menu
-from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans
+from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans, parse_volume_string
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -11,6 +11,13 @@ def initialize_plan_management_handlers(b, conv_dict):
     global bot, admin_conversations
     bot = b
     admin_conversations = conv_dict
+
+def _delete_user_message(msg: types.Message):
+    """پیام کاربر را برای تمیز ماندن چت حذف می‌کند."""
+    try:
+        bot.delete_message(msg.chat.id, msg.message_id)
+    except Exception:
+        pass
 
 def handle_plan_management_menu(call, params):
     """منوی اصلی مدیریت پلن‌ها را نمایش می‌دهد."""
@@ -29,10 +36,6 @@ def handle_plan_management_menu(call, params):
     
     _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
 
-# مسیر فایل: bot/admin_handlers/plan_management.py
-
-# مسیر فایل: bot/admin_handlers/plan_management.py
-
 def handle_plan_details_menu(call, params):
     """جزئیات یک پلن خاص را به همراه دکمه‌های ویرایش و حذف نمایش می‌دهد."""
     plan_index = int(params[0])
@@ -48,7 +51,6 @@ def handle_plan_details_menu(call, params):
     
     details = [f"🔸 *نام پلن:* {escape_markdown(plan.get('name', ''))}"]
 
-    # --- شروع بخش منطق جدید ---
     if plan_type == 'combined':
         details.extend([
             f"🔹 *نوع:* ترکیبی",
@@ -56,7 +58,7 @@ def handle_plan_details_menu(call, params):
             f"🇩🇪 *حجم آلمان:* {escape_markdown(plan.get('volume_de', '0'))}",
             f"🇫🇷 *حجم فرانسه:* {escape_markdown(plan.get('volume_fr', '0'))}"
         ])
-    else: # برای پلن‌های 'germany' و 'france'
+    else: 
         volume = ""
         if plan_type == 'germany' and plan.get('volume_de'):
             volume = f"{escape_markdown(plan.get('volume_de'))} 🇩🇪"
@@ -72,7 +74,6 @@ def handle_plan_details_menu(call, params):
         f"📅 *مدت زمان:* {escape_markdown(plan.get('duration', '0'))}",
         f"💰 *قیمت \\(تومان\\):* `{escape_markdown(str(plan.get('price', 0)))}`"
     ])
-    # --- پایان بخش منطق جدید ---
     
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -90,7 +91,7 @@ def handle_delete_plan_confirm(call, params):
     plans = load_service_plans()
     plan_name = plans[plan_index].get('name', 'این پلن')
 
-    prompt = f"⚠️ *آیا از حذف «{escape_markdown(plan_name)}» اطمینان دارید؟*\n\nاین عمل غیرقابل بازگشت است."
+    prompt = f"⚠️ *آیا از حذف «{escape_markdown(plan_name)}» اطمینان دارید؟*\n\nاین عمل غیرقابل بازگشت است\\."
     
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -114,3 +115,333 @@ def handle_delete_plan_execute(call, params):
             bot.answer_callback_query(call.id, "❌ خطا در ذخیره فایل پلن‌ها.", show_alert=True)
     else:
         bot.answer_callback_query(call.id, "❌ پلن یافت نشد.", show_alert=True)
+
+# --- New Edit Plan Conversation Flow ---
+
+def handle_plan_edit_start(call, params):
+    """مرحله اول ویرایش: شروع مکالمه و پرسیدن نام جدید."""
+    plan_index = int(params[0])
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    admin_conversations[uid] = {
+        'step': 'plan_edit_name',
+        'msg_id': msg_id,
+        'plan_index': plan_index,
+        'new_plan_data': load_service_plans()[plan_index].copy()
+    }
+    
+    prompt = "1️⃣ لطفاً *نام جدید* را برای پلن وارد کنید:"
+    _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=menu.admin_cancel_action(f"admin:plan_details:{plan_index}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_name)
+
+def get_plan_new_name(message: types.Message):
+    """نام جدید را دریافت کرده و به مرحله بعد می‌رود."""
+    uid, new_name = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['name'] = new_name
+    convo['step'] = 'plan_edit_total_volume'
+
+    prompt = f"2️⃣ لطفاً *حجم کل* جدید را وارد کنید (مثال: `۵۰ گیگابایت`):"
+    _safe_edit(uid, convo['msg_id'], escape_markdown(prompt), reply_markup=menu.admin_cancel_action(f"admin:plan_details:{convo['plan_index']}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_total_volume)
+    
+def get_plan_new_total_volume(message: types.Message):
+    """حجم کل جدید را دریافت کرده و به مرحله بعد می‌رود."""
+    uid, new_volume = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['total_volume'] = new_volume
+    convo['step'] = 'plan_edit_duration'
+
+    prompt = f"3️⃣ لطفاً *مدت زمان* جدید را وارد کنید (مثال: `۳۰ روز`):"
+    _safe_edit(uid, convo['msg_id'], escape_markdown(prompt), reply_markup=menu.admin_cancel_action(f"admin:plan_details:{convo['plan_index']}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_duration)
+
+def get_plan_new_duration(message: types.Message):
+    """مدت زمان جدید را دریافت کرده و به مرحله بعد می‌رود."""
+    uid, new_duration = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['duration'] = new_duration
+    convo['step'] = 'plan_edit_price'
+
+    prompt = f"4️⃣ لطفاً *قیمت جدید* را به تومان وارد کنید (فقط عدد):"
+    _safe_edit(uid, convo['msg_id'], escape_markdown(prompt), reply_markup=menu.admin_cancel_action(f"admin:plan_details:{convo['plan_index']}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_price_and_save)
+
+def get_plan_new_price_and_save(message: types.Message):
+    """قیمت جدید را دریافت کرده، پلن را ذخیره و نتیجه را اعلام می‌کند."""
+    uid, new_price_str = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+
+    convo = admin_conversations.pop(uid)
+    msg_id = convo['msg_id']
+    plan_index = convo['plan_index']
+    
+    try:
+        new_price = int(new_price_str)
+        convo['new_plan_data']['price'] = new_price
+
+        all_plans = load_service_plans()
+        all_plans[plan_index] = convo['new_plan_data']
+        
+        if save_service_plans(all_plans):
+            success_msg = "✅ پلن با موفقیت ویرایش و ذخیره شد."
+            _safe_edit(uid, msg_id, escape_markdown(success_msg), reply_markup=menu.admin_cancel_action(f"admin:plan_manage"))
+        else:
+            raise IOError("Failed to save plans file.")
+
+    except (ValueError, TypeError):
+        error_msg = "❌ قیمت وارد شده نامعتبر است. عملیات ویرایش لغو شد."
+        _safe_edit(uid, msg_id, escape_markdown(error_msg), reply_markup=menu.admin_cancel_action(f"admin:plan_details:{plan_index}"))
+    except Exception as e:
+        logger.error(f"Error saving edited plan: {e}", exc_info=True)
+        error_msg = "❌ خطایی در هنگام ذخیره پلن رخ داد. عملیات لغو شد."
+        _safe_edit(uid, msg_id, escape_markdown(error_msg), reply_markup=menu.admin_cancel_action(f"admin:plan_details:{plan_index}"))
+
+# --- Add Plan Conversation Flow ---
+def handle_plan_add_start(call, params):
+    """مرحله اول افزودن: شروع مکالمه و پرسیدن نوع پلن."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    admin_conversations[uid] = {
+        'step': 'plan_add_type',
+        'msg_id': msg_id,
+        'new_plan_data': {}
+    }
+    
+    prompt = "1️⃣ لطفاً *نوع پلن* جدید را انتخاب کنید:"
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("پلن ترکیبی", callback_data="admin:plan_add_type:combined"),
+        types.InlineKeyboardButton("پلن آلمان", callback_data="admin:plan_add_type:germany"),
+        types.InlineKeyboardButton("پلن فرانسه", callback_data="admin:plan_add_type:france"),
+        types.InlineKeyboardButton("پلن ترکیه", callback_data="admin:plan_add_type:turkey")
+    )
+    kb.add(types.InlineKeyboardButton("🔙 لغو", callback_data="admin:plan_manage"))
+    
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+def get_plan_add_type(call, params):
+    """دریافت نوع پلن و پرسیدن نام آن."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    plan_type = params[0]
+    
+    if uid not in admin_conversations: return
+    
+    admin_conversations[uid]['new_plan_data']['type'] = plan_type
+    admin_conversations[uid]['step'] = 'plan_add_name'
+    
+    prompt = f"2️⃣ لطفاً *نام* پلن جدید را وارد کنید:"
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_add_name)
+
+def get_plan_add_name(message: types.Message):
+    """دریافت نام پلن و پرسیدن جزئیات حجم."""
+    uid, new_name = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    plan_type = convo['new_plan_data']['type']
+    convo['new_plan_data']['name'] = new_name
+    convo['step'] = 'plan_add_volume_details'
+
+    if plan_type == 'combined':
+        prompt = f"3️⃣ لطفاً *حجم هر سرور* را وارد کنید (مثال: `۲۰ گیگابایت ۱۰ گیگابایت`):"
+        _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+        bot.register_next_step_handler_by_chat_id(uid, get_plan_add_combined_volumes)
+    else:
+        prompt = f"3️⃣ لطفاً *حجم کل* را وارد کنید (مثال: `۵۰ گیگابایت`):"
+        _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+        bot.register_next_step_handler_by_chat_id(uid, get_plan_add_simple_volume)
+
+def get_plan_add_combined_volumes(message: types.Message):
+    """دریافت حجم‌های پلن ترکیبی."""
+    uid, volumes_text = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+
+    convo = admin_conversations[uid]
+    
+    parts = volumes_text.split()
+    if len(parts) < 2:
+        error_msg = "❌ لطفاً حجم آلمان و فرانسه را با فاصله وارد کنید (مثال: `۲۰ گیگابایت ۱۰ گیگابایت`). عملیات لغو شد."
+        _safe_edit(uid, convo['msg_id'], error_msg, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+        return
+
+    convo['new_plan_data']['volume_de'] = parts[0]
+    convo['new_plan_data']['volume_fr'] = parts[1]
+    
+    total_volume_de = parse_volume_string(parts[0])
+    total_volume_fr = parse_volume_string(parts[1])
+    convo['new_plan_data']['total_volume'] = f"{total_volume_de + total_volume_fr} گیگابایت"
+    
+    convo['step'] = 'plan_add_duration'
+    prompt = f"4️⃣ لطفاً *مدت زمان* را وارد کنید (مثال: `۳۰ روز`):"
+    _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_add_duration)
+
+
+def get_plan_add_simple_volume(message: types.Message):
+    """دریافت حجم پلن ساده."""
+    uid, volume_text = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+
+    convo = admin_conversations[uid]
+    plan_type = convo['new_plan_data']['type']
+    
+    volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr'
+    convo['new_plan_data'][volume_key] = volume_text
+    convo['new_plan_data']['total_volume'] = volume_text
+    
+    convo['step'] = 'plan_add_duration'
+    prompt = f"4️⃣ لطفاً *مدت زمان* را وارد کنید (مثال: `۳۰ روز`):"
+    _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_add_duration)
+
+
+def get_plan_add_duration(message: types.Message):
+    """دریافت مدت زمان و پرسیدن قیمت."""
+    uid, duration_text = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['duration'] = duration_text
+    convo['step'] = 'plan_add_price'
+    
+    prompt = f"5️⃣ لطفاً *قیمت* را به تومان وارد کنید (فقط عدد):"
+    _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_add_price_and_save)
+
+
+def get_plan_add_price_and_save(message: types.Message):
+    """دریافت قیمت، ذخیره پلن جدید و اعلام نتیجه."""
+    uid, new_price_str = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations.pop(uid)
+    msg_id = convo['msg_id']
+    
+    try:
+        new_price = int(new_price_str)
+        convo['new_plan_data']['price'] = new_price
+        
+        all_plans = load_service_plans()
+        all_plans.append(convo['new_plan_data'])
+        
+        if save_service_plans(all_plans):
+            success_msg = "✅ پلن جدید با موفقیت اضافه شد."
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به مدیریت پلن‌ها", callback_data="admin:plan_manage"))
+            _safe_edit(uid, msg_id, success_msg, reply_markup=kb)
+        else:
+            raise IOError("Failed to save plans file.")
+    except (ValueError, TypeError):
+        error_msg = "❌ قیمت وارد شده نامعتبر است. عملیات افزودن پلن لغو شد."
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+    except Exception as e:
+        logger.error(f"Error adding new plan: {e}", exc_info=True)
+        error_msg = "❌ خطایی در هنگام ذخیره پلن رخ داد. عملیات لغو شد."
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_cancel_action("admin:plan_manage"))
+
+# --- Edit Plan Conversation Flow ---
+def handle_plan_edit_start(call, params):
+    """مرحله اول ویرایش: شروع مکالمه و پرسیدن نام جدید."""
+    plan_index = int(params[0])
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    admin_conversations[uid] = {
+        'step': 'plan_edit_name',
+        'msg_id': msg_id,
+        'plan_index': plan_index,
+        'new_plan_data': load_service_plans()[plan_index].copy()
+    }
+    
+    prompt = "1️⃣ لطفاً *نام جدید* را برای پلن وارد کنید:"
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action(f"admin:plan_details:{plan_index}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_name)
+
+def get_plan_new_name(message: types.Message):
+    """نام جدید را دریافت کرده و به مرحله بعد می‌رود."""
+    uid, new_name = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['name'] = new_name
+    convo['step'] = 'plan_edit_total_volume'
+
+    prompt = f"2️⃣ لطفاً *حجم کل* جدید را وارد کنید (مثال: `۵۰ گیگابایت`):"
+    _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action(f"admin:plan_details:{convo['plan_index']}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_total_volume)
+    
+def get_plan_new_total_volume(message: types.Message):
+    """حجم کل جدید را دریافت کرده و به مرحله بعد می‌رود."""
+    uid, new_volume = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['total_volume'] = new_volume
+    convo['step'] = 'plan_edit_duration'
+
+    prompt = f"3️⃣ لطفاً *مدت زمان* جدید را وارد کنید (مثال: `۳۰ روز`):"
+    _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action(f"admin:plan_details:{convo['plan_index']}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_duration)
+
+def get_plan_new_duration(message: types.Message):
+    """مدت زمان جدید را دریافت کرده و به مرحله بعد می‌رود."""
+    uid, new_duration = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations[uid]
+    convo['new_plan_data']['duration'] = new_duration
+    convo['step'] = 'plan_edit_price'
+
+    prompt = f"4️⃣ لطفاً *قیمت جدید* را به تومان وارد کنید (فقط عدد):"
+    _safe_edit(uid, convo['msg_id'], prompt, reply_markup=menu.admin_cancel_action(f"admin:plan_details:{convo['plan_index']}"))
+    bot.register_next_step_handler_by_chat_id(uid, get_plan_new_price_and_save)
+
+def get_plan_new_price_and_save(message: types.Message):
+    """قیمت جدید را دریافت کرده، پلن را ذخیره و نتیجه را اعلام می‌کند."""
+    uid, new_price_str = message.from_user.id, message.text.strip()
+    _delete_user_message(message)
+    if uid not in admin_conversations: return
+
+    convo = admin_conversations.pop(uid)
+    msg_id = convo['msg_id']
+    plan_index = convo['plan_index']
+    
+    try:
+        new_price = int(new_price_str)
+        convo['new_plan_data']['price'] = new_price
+
+        all_plans = load_service_plans()
+        all_plans[plan_index] = convo['new_plan_data']
+        
+        if save_service_plans(all_plans):
+            success_msg = "✅ پلن با موفقیت ویرایش و ذخیره شد."
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به مدیریت پلن‌ها", callback_data="admin:plan_manage"))
+            _safe_edit(uid, msg_id, success_msg, reply_markup=kb)
+        else:
+            raise IOError("Failed to save plans file.")
+
+    except (ValueError, TypeError):
+        error_msg = "❌ قیمت وارد شده نامعتبر است. عملیات ویرایش لغو شد."
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_cancel_action(f"admin:plan_details:{plan_index}"))
+    except Exception as e:
+        logger.error(f"Error saving edited plan: {e}", exc_info=True)
+        error_msg = "❌ خطایی در هنگام ذخیره پلن رخ داد. عملیات لغو شد."
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_cancel_action(f"admin:plan_details:{plan_index}"))

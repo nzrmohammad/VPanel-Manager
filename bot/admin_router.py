@@ -134,7 +134,10 @@ ADMIN_CALLBACK_HANDLERS = {
     "plan_details": plan_management.handle_plan_details_menu,
     "plan_delete_confirm": plan_management.handle_delete_plan_confirm,
     "plan_delete_execute": plan_management.handle_delete_plan_execute,
-
+    "plan_edit_start": plan_management.handle_plan_edit_start,
+    "plan_add_start": plan_management.handle_plan_add_start,
+    "plan_add_type": plan_management.get_plan_add_type,
+    
     # Panel Management
     "panel_manage": panel_management.handle_panel_management_menu,
     "panel_details": panel_management.handle_panel_details,
