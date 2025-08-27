@@ -258,14 +258,16 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
     # --- Tier 2: Common Web Browsers ---
     browser_patterns = {
         'Chrome': r"Chrome/([\d.]+)",
+        'Firefox': r"Firefox/([\d.]+)",
         'Safari': r"Version/([\d.]+).*Safari/",
         'Opera': r"OPR/([\d.]+)",
+        'Mozilla': r"Mozilla/([\d.]+)" # Generic fallback
     }
     for browser_name, version_pattern in browser_patterns.items():
         version_match = re.search(version_pattern, user_agent)
         if version_match:
-            if browser_name == 'Safari' and 'Chrome' in user_agent:
-                continue
+            if browser_name == 'Safari' and 'Chrome' in user_agent: continue
+            if browser_name == 'Mozilla' and ('Chrome' in user_agent or 'Safari' in user_agent or 'Firefox' in user_agent): continue
 
             version = version_match.group(1)
             os_str = "Unknown OS"
@@ -281,6 +283,7 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             elif "Macintosh" in user_agent:
                 mac_match = re.search(r"Mac OS X ([\d_]+)", user_agent)
                 os_str = f"macOS {mac_match.group(1).replace('_', '.')}" if mac_match else "macOS"
+            elif "Linux" in user_agent: os_str = "Linux"
 
             logger.info(f"Identified standard browser: {browser_name} on {os_str}")
             return {"client": browser_name, "os": os_str, "version": version}

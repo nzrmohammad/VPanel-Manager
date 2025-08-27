@@ -32,6 +32,15 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
     # --- بخش تفکیک پنل‌ها ---
     breakdown = info.get('breakdown', {})
     
+    # NEW: Get user record from db if not passed
+    if not db_user and info.get('uuid'):
+        user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+        if user_telegram_id:
+            db_user = db.user(user_telegram_id)
+            
+    # NEW: Get has_access flags from the full user_uuids record
+    user_uuid_record = db.get_user_uuid_record(info.get('uuid', '')) if info.get('uuid') else None
+
     def create_panel_block(panel_display_name: str, panel_data: dict, panel_type: str):
         is_panel_active = panel_data.get('is_active', False)
         status_text_panel = "✅" if is_panel_active else "❌"
@@ -45,10 +54,21 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
             daily_usage_dict = db.get_usage_since_midnight_by_uuid(info['uuid'])
             daily_usage_gb = daily_usage_dict.get(panel_type, 0.0)
 
+        # NEW: Logic for displaying specific marzban flags
+        display_name_with_flags = panel_display_name
+        if panel_type == 'marzban' and user_uuid_record:
+            flags = []
+            if user_uuid_record.get('has_access_fr'):
+                flags.append("🇫🇷")
+            if user_uuid_record.get('has_access_tr'):
+                flags.append("🇹🇷")
+            if flags:
+                display_name_with_flags = "".join(flags)
+
         return [
             separator,
             # خط ۲ (اصلاح شده): کاراکترهای ( و ) با \\ escape شده‌اند
-            f"سرور {panel_display_name} \\({status_text_panel}\\)",
+            f"سرور {display_name_with_flags} \\({status_text_panel}\\)",
             f"🗂 حجم کل : `{limit_gb:.0f} GB`",
             f"🔥 حجم مصرف شده : `{usage_gb:.2f} GB`",
             f"📥 حجم باقیمانده : `{remaining_gb:.2f} GB`",
@@ -56,7 +76,7 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
             f"⏰ آخرین اتصال : `{esc(to_shamsi(panel_data.get('last_online'), include_time=True))}`"
         ]
 
-    panel_order = ['marzban', 'hiddify']
+    panel_order = ['hiddify', 'marzban']
     panel_display_map = {'hiddify': '🇩🇪', 'marzban': '🇫🇷🇹🇷'}
 
     for p_type in panel_order:

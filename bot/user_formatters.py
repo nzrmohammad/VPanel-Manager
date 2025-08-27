@@ -435,7 +435,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if not info:
         return ("❌ اطلاعات کاربر یافت نشد.", None)
 
-    from .utils import escape_markdown, create_progress_bar, format_daily_usage
+    from .utils import escape_markdown, create_progress_bar, format_daily_usage, parse_user_agent
     from .database import db
 
     # --- 1. آماده‌سازی داده‌های اولیه ---
@@ -474,11 +474,9 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
         if user_record:
             if user_record.get('is_vip'):
                 vip_text = " کاربر ویژه : ✅"
-            # دسترسی‌های مرزبان را از دیتابیس می‌خوانیم
             has_access_fr = user_record.get('has_access_fr', False)
             has_access_tr = user_record.get('has_access_tr', False)
     
-    # <<< START OF FIX: هماهنگ‌سازی نمایش پرچم‌ها با داده‌های موجود >>>
     access_flags = []
     if hiddify_info: 
         access_flags.append("🇩🇪")
@@ -488,7 +486,6 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     
     if access_flags:
         access_text = f" سرورها : {''.join(access_flags)}"
-    # <<< END OF FIX >>>
 
     # --- 6. ساخت پیام نهایی ---
     lines = [
@@ -517,7 +514,6 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if marzban_info and marzban_flag_str:
         limit = marzban_info.get('usage_limit_GB', 0)
         lines.append(f"  {marzban_flag_str} {escape_markdown(f'{limit:.2f} GB')}")
-    lines.append("")
 
     # B. مجموع مصرف شده
     lines.append(f"🔥 مجموع مصرف شده: *{escape_markdown(f'{total_usage_gb:.2f}')} GB*")
@@ -527,7 +523,6 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if marzban_info and marzban_flag_str:
         usage = marzban_info.get('current_usage_GB', 0)
         lines.append(f"  {marzban_flag_str} {escape_markdown(f'{usage:.2f} GB')}")
-    lines.append("")
 
     # C. مجموع باقیمانده
     lines.append(f"📥 مجموع باقیمانده: *{escape_markdown(f'{total_remaining_gb:.2f}')} GB*")
@@ -537,20 +532,36 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if marzban_info and marzban_flag_str:
         remaining = marzban_info.get('remaining_GB', 0)
         lines.append(f"  {marzban_flag_str} {escape_markdown(f'{remaining:.2f} GB')}")
-    lines.append("")
 
     # D. مصرف امروز
     lines.append(f"⚡️ مصرف امروز : *{total_daily_usage_str}*")
     if (hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001) or \
        (marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str):
-        lines.append("")
         if hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001:
             daily = daily_usage_dict['hiddify']
             lines.append(f"  🇩🇪 {escape_markdown(format_daily_usage(daily))}")
         if marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str:
             daily = daily_usage_dict['marzban']
             lines.append(f"  {marzban_flag_str} {escape_markdown(format_daily_usage(daily))}")
-    lines.append("")
+    
+        uuid_id = db.get_uuid_id_by_uuid(user_uuid)
+        if uuid_id:
+            user_agents = db.get_user_agents_for_uuid(uuid_id)
+            if user_agents:
+                lines.append("📱 *دستگاه‌های متصل:*")
+                for agent in user_agents[:]: # Show max 6 devices
+                    parsed = parse_user_agent(agent['user_agent'])
+                    if parsed:
+                        client_name = escape_markdown(parsed.get('client', 'Unknown'))
+                        details = []
+                        if parsed.get('version'):
+                            details.append(f"v{escape_markdown(parsed['version'])}")
+                        if parsed.get('os'):
+                            details.append(escape_markdown(parsed['os']))
+                        details_str = f" \\({', '.join(details)}\\)" if details else ""
+                        lines.append(f"` `└─ *{client_name}*{details_str}")
+                lines.append("")
+
 
     # --- 8. بخش پایانی ---
     lines.append(create_progress_bar(usage_percentage))
