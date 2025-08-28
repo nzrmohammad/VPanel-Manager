@@ -122,47 +122,61 @@ def handle_user_callbacks(call: types.CallbackQuery):
 
         try:
             user_uuid = row['uuid']
-            # نام کانفیگ را از دیتابیس خوانده و برای استفاده در URL انکود می‌کنیم
-            config_name_encoded = urllib.parse.quote(row.get('name', 'CloudVibe'))
-            
+            config_name = row.get('name', 'CloudVibe')
             WEBAPP_BASE_URL = "https://panel.cloudvibe.ir" 
             
-            is_base64 = (link_type == 'b64')
+            # ساخت لینک‌های Normal و Base64 با افزودن نام کانفیگ در انتها
+            normal_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/{user_uuid}#{urllib.parse.quote(config_name)}"
+            b64_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/b64/{user_uuid}#{urllib.parse.quote(config_name)}"
             
-            normal_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/{user_uuid}"
-            b64_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/b64/{user_uuid}"
-            
-            final_sub_link = b64_sub_link if is_base64 else normal_sub_link
+            # لینک نهایی برای نمایش و QR Code بر اساس انتخاب کاربر
+            final_sub_link = b64_sub_link if link_type == 'b64' else normal_sub_link
 
+            # ساخت QR Code
             qr_img = qrcode.make(final_sub_link)
             stream = io.BytesIO()
             qr_img.save(stream, 'PNG')
             stream.seek(0)
             
+            # آماده‌سازی متن پیام
             raw_template = get_string("msg_link_ready", lang_code)
             escaped_link = f"`{escape_markdown(final_sub_link)}`"
             message_text = f'*{escape_markdown(raw_template.splitlines()[0].format(link_type=link_type.capitalize()))}*\n\n' + \
                            f'{escape_markdown(raw_template.splitlines()[2])}\n{escaped_link}'
 
+            # ساخت دکمه‌ها
             kb = types.InlineKeyboardMarkup(row_width=2)
             
+            # تابع کمکی برای ساخت دکمه‌های افزودن خودکار
             def create_redirect_button(app_name: str, deep_link: str):
-                redirect_page_url = f"{WEBAPP_BASE_URL}/app/redirect?url={urllib.parse.quote(deep_link)}&app_name={urllib.parse.quote(app_name)}"
+                params = {'url': deep_link, 'app_name': app_name}
+                query_string = urllib.parse.urlencode(params)
+                redirect_page_url = f"{WEBAPP_BASE_URL}/app/redirect?{query_string}"
                 return types.InlineKeyboardButton(f"📲 افزودن به {app_name}", url=redirect_page_url)
 
-            if not is_base64:
-                v2rayng_deep_link = f"v2rayng://install-sub/?url={b64_sub_link}&name={config_name_encoded}"
-                kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link))
-                kb.add(create_redirect_button("HAP", f"happ://add/{normal_sub_link}"))
-                kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{normal_sub_link}"))
-            else:
-                v2rayng_deep_link = f"v2rayng://install-sub/?url={b64_sub_link}&name={config_name_encoded}"
-                kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link))
-                kb.add(create_redirect_button("Streisand", f"streisand://import/{b64_sub_link}"))
-                kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{b64_sub_link}"))
+            # ساخت deep link صحیح برای v2rayng (همیشه با لینک Base64)
+            v2rayng_deep_link = f"v2rayng://install-sub/?url={urllib.parse.quote(b64_sub_link)}"
+            kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link))
 
+            # ساخت deep link برای سایر اپلیکیشن‌ها
+            if link_type == 'b64':
+                streisand_deep_link = f"streisand://import/{b64_sub_link}"
+                kb.add(create_redirect_button("Streisand", streisand_deep_link))
+
+                v2box_deep_link = f"v2box://import/?url={urllib.parse.quote(b64_sub_link)}"
+                kb.add(create_redirect_button("V2Box", v2box_deep_link))
+
+            else: # Normal
+                happ_deep_link = f"happ://add/{normal_sub_link}"
+                kb.add(create_redirect_button("HAPP", happ_deep_link))
+
+            hiddify_deep_link = f"hiddify://import/{normal_sub_link}"
+            kb.add(create_redirect_button("Hiddify", hiddify_deep_link))
+            
+            # دکمه بازگشت
             kb.add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
 
+            # حذف پیام قبلی و ارسال پیام جدید با عکس
             try:
                 bot.delete_message(call.message.chat.id, call.message.message_id)
             except Exception as e:
@@ -174,7 +188,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
             logger.error(f"Failed to generate/send subscription link for UUID {row.get('uuid')}: {e}", exc_info=True)
             bot.answer_callback_query(call.id, escape_markdown(get_string("err_link_generation", lang_code)), show_alert=True)
             _safe_edit(uid, msg_id, escape_markdown(get_string("err_try_again", lang_code)), reply_markup=menu.get_links_menu(uuid_id, lang_code=lang_code))
-    # --- END OF MODIFIED SECTION ---
 
     elif data.startswith("del_"):
         uuid_id = int(data.split("_")[1])
@@ -306,7 +319,7 @@ def handle_user_callbacks(call: types.CallbackQuery):
                 
                 bot.send_message(owner_id, f"✅ تایید شد\. کاربر `{requester_id}` اکنون به اکانت «{config_name_escaped}» دسترسی دارد\.", parse_mode="MarkdownV2")
                 
-                _safe_edit(requester_id, requester_msg_id, "✅ درخواست تایید شد. در حال به‌روزرسانی لیست اکانت‌ها...")
+                _safe_edit(requester_id, requester_msg_id, "✅ درخواست تایید شد. در حال به‌روزرسانی لیست اکانت‌ها...", parse_mode=None)
                 
                 time.sleep(1) 
                 
@@ -366,7 +379,7 @@ def _add_uuid_step(message: types.Message, original_msg_id: int):
         logger.warning(f"Could not delete user's UUID message: {e}")
 
     # پیام اصلی ("لطفاً UUID بفرستید") را به حالت "در حال بررسی" ویرایش می‌کنیم
-    _safe_edit(uid, original_msg_id, "⏳ در حال بررسی...")
+    _safe_edit(uid, original_msg_id, "⏳ در حال بررسی...", parse_mode=None)
 
     if not validate_uuid(uuid_str):
         prompt = get_string("uuid_invalid_cancel", lang_code)
@@ -712,6 +725,23 @@ def _send_tutorial_link(call: types.CallbackQuery, os_type: str, app_name: str):
         logger.error(f"Error sending tutorial link: {e}")
         bot.answer_callback_query(call.id, "خطایی در ارسال لینک رخ داد.", show_alert=True)
 
+def create_redirect_button(app_name: str, deep_link: str, lang_code: str):
+    """
+    یک دکمه برای ریدایرکت به اپلیکیشن می‌سازد و URL را به درستی encode می‌کند.
+    """
+    # ✅ **تغییر اصلی:** آدرس دامنه به صورت مستقیم در اینجا تعریف شده است
+    WEBAPP_BASE_URL = "https://panel.cloudvibe.ir"
+    
+    params = {
+        'url': deep_link,
+        'app_name': app_name
+    }
+    # استفاده از urlencode برای ساخت صحیح query string
+    query_string = urllib.parse.urlencode(params)
+    redirect_page_url = f"{WEBAPP_BASE_URL}/app/redirect?{query_string}"
+    
+    button_text = f"📲 افزودن به {app_name}"
+    return types.InlineKeyboardButton(button_text, url=redirect_page_url)
 
 # =============================================================================
 # Main Registration Function
@@ -753,7 +783,6 @@ def register_user_handlers(b: telebot.TeleBot):
 
         db.add_uuid(uid, uuid_str, info.get("name", get_string('unknown_user', lang_code)))
         _go_back_to_main(message=message, original_msg_id=original_msg_id)
-
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def handle_language_selection(call: types.CallbackQuery):
