@@ -637,4 +637,3 @@ def register_user_handlers(b: telebot.TeleBot):
             
             _safe_edit(uid, call.message.message_id, formatted_text)
             bot.register_next_step_handler_by_chat_id(uid, process_uuid_step_after_lang, original_msg_id=call.message.message_id)
-
