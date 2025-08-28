@@ -13,6 +13,8 @@ from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_
 from .utils import load_service_plans
 from .language import get_string
 import urllib.parse
+import time
+
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -120,11 +122,17 @@ def handle_user_callbacks(call: types.CallbackQuery):
 
         try:
             user_uuid = row['uuid']
+            # نام کانفیگ را از دیتابیس خوانده و برای استفاده در URL انکود می‌کنیم
+            config_name_encoded = urllib.parse.quote(row.get('name', 'CloudVibe'))
+            
             WEBAPP_BASE_URL = "https://panel.cloudvibe.ir" 
             
             is_base64 = (link_type == 'b64')
+            
             normal_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/{user_uuid}"
-            final_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/b64/{user_uuid}" if is_base64 else normal_sub_link
+            b64_sub_link = f"{WEBAPP_BASE_URL.rstrip('/')}/user/sub/b64/{user_uuid}"
+            
+            final_sub_link = b64_sub_link if is_base64 else normal_sub_link
 
             qr_img = qrcode.make(final_sub_link)
             stream = io.BytesIO()
@@ -136,7 +144,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
             message_text = f'*{escape_markdown(raw_template.splitlines()[0].format(link_type=link_type.capitalize()))}*\n\n' + \
                            f'{escape_markdown(raw_template.splitlines()[2])}\n{escaped_link}'
 
-            # --- بخش اصلی تغییرات: ساخت دکمه‌های شیشه‌ای با لینک واسط ---
             kb = types.InlineKeyboardMarkup(row_width=2)
             
             def create_redirect_button(app_name: str, deep_link: str):
@@ -144,28 +151,30 @@ def handle_user_callbacks(call: types.CallbackQuery):
                 return types.InlineKeyboardButton(f"📲 افزودن به {app_name}", url=redirect_page_url)
 
             if not is_base64:
-                # دکمه‌ها برای لینک Normal
-                kb.add(create_redirect_button("V2rayNG", f"v2rayng://install-sub/?url={normal_sub_link}"))
+                v2rayng_deep_link = f"v2rayng://install-sub/?url={b64_sub_link}&name={config_name_encoded}"
+                kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link))
                 kb.add(create_redirect_button("HAP", f"happ://add/{normal_sub_link}"))
                 kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{normal_sub_link}"))
             else:
-                # دکمه‌ها برای لینک Base64
-                kb.add(create_redirect_button("Streisand", f"streisand://import/{final_sub_link}"))
-                kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{normal_sub_link}"))
+                v2rayng_deep_link = f"v2rayng://install-sub/?url={b64_sub_link}&name={config_name_encoded}"
+                kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link))
+                kb.add(create_redirect_button("Streisand", f"streisand://import/{b64_sub_link}"))
+                kb.add(create_redirect_button("HiddifyNext", f"hiddify://import/{b64_sub_link}"))
 
             kb.add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
-            # --- پایان تغییرات ---
+
             try:
                 bot.delete_message(call.message.chat.id, call.message.message_id)
             except Exception as e:
-                logger.warning(f"Could not delete old message {call.message.message.id}: {e}")
-            # --- ✨ پایان اصلاحیه ---
+                logger.warning(f"Could not delete old message {call.message.message_id}: {e}")
+
             bot.send_photo(uid, photo=stream, caption=message_text, reply_markup=kb, parse_mode="MarkdownV2")
 
         except Exception as e:
-            logger.error(f"Failed to generate/send subscription link for UUID {user_uuid}: {e}", exc_info=True)
+            logger.error(f"Failed to generate/send subscription link for UUID {row.get('uuid')}: {e}", exc_info=True)
             bot.answer_callback_query(call.id, escape_markdown(get_string("err_link_generation", lang_code)), show_alert=True)
             _safe_edit(uid, msg_id, escape_markdown(get_string("err_try_again", lang_code)), reply_markup=menu.get_links_menu(uuid_id, lang_code=lang_code))
+    # --- END OF MODIFIED SECTION ---
 
     elif data.startswith("del_"):
         uuid_id = int(data.split("_")[1])
@@ -267,6 +276,73 @@ def handle_user_callbacks(call: types.CallbackQuery):
         return
 
 
+    if data.startswith("share_confirm:"):
+        parts = data.split(":")
+        decision, requester_id_str, uuid_id_str, requester_msg_id_str = parts[1], parts[2], parts[3], parts[4]
+        
+        owner_info = call.from_user
+        owner_id = owner_info.id
+        requester_id = int(requester_id_str)
+        uuid_id = int(uuid_id_str)
+        requester_msg_id = int(requester_msg_id_str)
+        
+        bot.edit_message_reply_markup(chat_id=owner_id, message_id=call.message.message_id, reply_markup=None)
+
+        uuid_record = db.uuid_by_id(owner_id, uuid_id)
+        if not uuid_record:
+            bot.send_message(owner_id, "خطا: اطلاعات اکانت یافت نشد.")
+            return
+
+        uuid_str = uuid_record['uuid']
+        config_name = uuid_record['name']
+        config_name_escaped = escape_markdown(config_name)
+
+        if decision == "yes":
+            try:
+                # --- *** START OF CHANGES *** ---
+                # از تابع جدید و امن برای افزودن اکانت اشتراکی استفاده می‌کنیم
+                db.add_shared_uuid(requester_id, uuid_str, config_name)
+                # --- *** END OF CHANGES *** ---
+                
+                bot.send_message(owner_id, f"✅ تایید شد\. کاربر `{requester_id}` اکنون به اکانت «{config_name_escaped}» دسترسی دارد\.", parse_mode="MarkdownV2")
+                
+                _safe_edit(requester_id, requester_msg_id, "✅ درخواست تایید شد. در حال به‌روزرسانی لیست اکانت‌ها...")
+                
+                time.sleep(1) 
+                
+                success_text = f"اکانت «{config_name}» با موفقیت به لیست شما اضافه شد."
+                _show_manage_menu(call=call, override_text=success_text, target_user_id=requester_id, target_msg_id=requester_msg_id)
+
+            except Exception as e:
+                logger.error(f"Error during account sharing confirmation: {e}")
+                _safe_edit(requester_id, requester_msg_id, "خطایی در ثبت اطلاعات رخ داد. لطفاً با پشتیبانی تماس بگیرید.")
+        
+        else: # decision == "no"
+            # ... (منطق رد کردن درخواست بدون تغییر باقی می‌ماند) ...
+            owner_name_escaped = escape_markdown(owner_info.first_name)
+            bot.send_message(owner_id, "❌ درخواست رد شد\.", parse_mode="MarkdownV2")
+            requester_message = (
+                f"❌ متاسفانه درخواست شما برای اکانت «{config_name_escaped}» توسط کاربر زیر رد شد:\n\n"
+                f"نام: {owner_name_escaped}\n"
+                f"آیدی: `{owner_id}`"
+            )
+            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به مدیریت اکانت", callback_data="manage"))
+            _safe_edit(requester_id, requester_msg_id, requester_message, reply_markup=kb, parse_mode="MarkdownV2")
+
+    elif data.startswith("cancel_share_req:"):
+        parts = data.split(":")
+        owner_id, owner_msg_id = int(parts[1]), int(parts[2])
+        
+        try:
+            bot.edit_message_text("❌ این درخواست توسط کاربر لغو شد.", chat_id=owner_id, message_id=owner_msg_id, reply_markup=None)
+        except Exception as e:
+            logger.warning(f"Could not edit owner's message upon cancellation: {e}")
+            
+        _show_manage_menu(call=call, override_text="✅ درخواست شما با موفقیت لغو شد.")
+
+
+
+
 # =============================================================================
 # Helper Functions (Next Step Handlers & Menu Builders)
 # =============================================================================
@@ -275,30 +351,81 @@ def _build_formatted_prompt(raw_text: str) -> str:
     """Helper to format prompts with backticks for `UUID`."""
     return escape_markdown(raw_text).replace("UUID", "`UUID`")
 
-def _add_uuid_step(message: types.Message):
-    global bot; uid, uuid_str = message.from_user.id, message.text.strip().lower()
+
+def _add_uuid_step(message: types.Message, original_msg_id: int):
+    global bot
+    uid, uuid_str = message.from_user.id, message.text.strip().lower()
     lang_code = db.get_user_language(uid)
 
-    if uuid_str.startswith('/'):
-        bot.clear_step_handler_by_chat_id(uid)
-        bot.send_message(uid, get_string("add_account_cancelled", lang_code))
-        _go_back_to_main(message=message)
-        return
+    bot.clear_step_handler_by_chat_id(uid)
+    
+    # پیام کاربر که حاوی UUID است را حذف می‌کنیم
+    try:
+        bot.delete_message(chat_id=uid, message_id=message.message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete user's UUID message: {e}")
+
+    # پیام اصلی ("لطفاً UUID بفرستید") را به حالت "در حال بررسی" ویرایش می‌کنیم
+    _safe_edit(uid, original_msg_id, "⏳ در حال بررسی...")
 
     if not validate_uuid(uuid_str):
-        prompt = _build_formatted_prompt(get_string("uuid_invalid_cancel", lang_code))
-        m = bot.send_message(uid, prompt, reply_markup=menu.user_cancel_action(lang_code, "manage"), parse_mode="MarkdownV2")
-        if m: bot.register_next_step_handler(m, _add_uuid_step)
+        prompt = get_string("uuid_invalid_cancel", lang_code)
+        # message.message_id را با original_msg_id جایگزین می‌کنیم تا پیام اصلی ویرایش شود
+        _show_manage_menu(message=message, override_text=prompt, target_user_id=uid, target_msg_id=original_msg_id)
         return
 
     if not (info := combined_handler.get_combined_user_info(uuid_str)):
-        prompt = _build_formatted_prompt(get_string("uuid_not_found_panel_cancel", lang_code))
-        m = bot.send_message(uid, prompt, reply_markup=menu.user_cancel_action(lang_code, "manage"), parse_mode="MarkdownV2")
-        if m: bot.register_next_step_handler(m, _add_uuid_step)
+        prompt = get_string("uuid_not_found_panel_cancel", lang_code)
+        _show_manage_menu(message=message, override_text=prompt, target_user_id=uid, target_msg_id=original_msg_id)
         return
     
-    status_key = db.add_uuid(uid, uuid_str, info.get("name", get_string('unknown_user', lang_code)))
-    _show_manage_menu(message=message, override_text=get_string(status_key, lang_code))
+    result = db.add_uuid(uid, uuid_str, info.get("name", get_string('unknown_user', lang_code)))
+    
+    if isinstance(result, dict) and result.get("status") == "confirmation_required":
+        owner_id = result["owner_id"]
+        uuid_id = result["uuid_id"]
+        requester_info = message.from_user
+        
+        config_name_escaped = escape_markdown(info.get('name', ''))
+        requester_name_escaped = escape_markdown(requester_info.first_name)
+        
+        requester_details = [f"نام: {requester_name_escaped}", f"آیدی: `{requester_info.id}`"]
+        if requester_info.username:
+            requester_details.append(f"یوزرنیم: @{escape_markdown(requester_info.username)}")
+        
+        requester_details_str = "\n".join(requester_details)
+
+        owner_text = (
+            f"⚠️ یک کاربر دیگر قصد دارد به اکانت «{config_name_escaped}» شما متصل شود\.\n\n"
+            f"اطلاعات درخواست دهنده:\n{requester_details_str}\n\n"
+            f"آیا اجازه می‌دهید این کاربر به صورت **مشترک** از این اکانت استفاده کند؟"
+        )
+        
+        try:
+            owner_msg = bot.send_message(owner_id, owner_text, parse_mode="MarkdownV2")
+            owner_msg_id = owner_msg.message_id
+
+            wait_message_text = "این اکانت متعلق به کاربر دیگری است. درخواست شما برای استفاده مشترک به ایشان ارسال شد. لطفاً منتظر تایید بمانید..."
+            kb_cancel = types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton("✖️ لغو درخواست", callback_data=f"cancel_share_req:{owner_id}:{owner_msg_id}")
+            )
+            _safe_edit(uid, original_msg_id, wait_message_text, reply_markup=kb_cancel, parse_mode=None)
+
+            kb_owner = types.InlineKeyboardMarkup(row_width=2)
+            yes_callback = f"share_confirm:yes:{uid}:{uuid_id}:{original_msg_id}"
+            no_callback = f"share_confirm:no:{uid}:{uuid_id}:{original_msg_id}"
+            kb_owner.add(
+                types.InlineKeyboardButton("✅ بله", callback_data=yes_callback),
+                types.InlineKeyboardButton("❌ خیر", callback_data=no_callback)
+            )
+            bot.edit_message_reply_markup(chat_id=owner_id, message_id=owner_msg_id, reply_markup=kb_owner)
+
+        except Exception as e:
+            logger.error(f"Failed to send share confirmation message to owner {owner_id}: {e}")
+            _safe_edit(uid, original_msg_id, "خطا در ارسال درخواست به صاحب اکانت. لطفاً بعدا تلاش کنید.")
+        
+    elif isinstance(result, str):
+        _show_manage_menu(message=message, override_text=get_string(result, lang_code), target_user_id=uid, target_msg_id=original_msg_id)
 
 def _get_birthday_step(message: types.Message, original_msg_id: int):
     global bot
@@ -336,23 +463,28 @@ def _handle_add_uuid_request(call: types.CallbackQuery):
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
     
-    # --- تغییر اصلی اینجاست: استفاده صحیح از تابع cancel_action ---
     _safe_edit(uid, call.message.message_id, get_string("prompt_add_uuid", lang_code), 
                reply_markup=menu.user_cancel_action(back_callback="manage", lang_code=lang_code), 
                parse_mode=None)
                
-    bot.register_next_step_handler_by_chat_id(uid, _add_uuid_step)
+    # --- *** START OF CHANGES (TypeError Fix) *** ---
+    # به تابع بعدی، message_id پیام اصلی ("لطفاً UUID بفرستید") را پاس می‌دهیم
+    bot.register_next_step_handler(call.message, _add_uuid_step, original_msg_id=call.message.message_id)
+    # --- *** END OF CHANGES *** ---
 
-def _show_manage_menu(call: types.CallbackQuery = None, message: types.Message = None, override_text: str = None):
-    global bot; uid = call.from_user.id if call else message.from_user.id
-    msg_id = call.message.message_id if call else None
+def _show_manage_menu(call: types.CallbackQuery = None, message: types.Message = None, override_text: str = None, target_user_id: int = None, target_msg_id: int = None):
+    uid = target_user_id or (call.from_user.id if call else message.from_user.id)
+    msg_id = target_msg_id or (call.message.message_id if call else (message.message_id if message else None))
+    
     lang_code = db.get_user_language(uid)
     
     user_uuids = db.uuids(uid)
-    user_accounts_details = [info for row in user_uuids if (info := combined_handler.get_combined_user_info(row["uuid"]))]
-    for i, info in enumerate(user_accounts_details): info['id'] = user_uuids[i]['id']
+    user_accounts_details = []
+    if user_uuids:
+        user_accounts_details = [info for row in user_uuids if (info := combined_handler.get_combined_user_info(row["uuid"]))]
+        if user_accounts_details and len(user_uuids) == len(user_accounts_details):
+             for i, info in enumerate(user_accounts_details): info['id'] = user_uuids[i]['id']
     
-    # Format the title
     if override_text:
         text = escape_markdown(override_text)
     else:
@@ -360,9 +492,9 @@ def _show_manage_menu(call: types.CallbackQuery = None, message: types.Message =
         
     reply_markup = menu.accounts(user_accounts_details, lang_code)
 
-    if call:
+    if msg_id:
         _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
-    else:
+    elif message:
         bot.send_message(uid, text, reply_markup=reply_markup, parse_mode="MarkdownV2")
 
 def _show_quick_stats(call: types.CallbackQuery):

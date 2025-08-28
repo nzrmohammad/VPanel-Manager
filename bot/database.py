@@ -71,7 +71,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
-                    uuid TEXT UNIQUE,
+                    uuid TEXT,
                     name TEXT,
                     is_active INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -83,7 +83,8 @@ class DatabaseManager:
                     has_access_de INTEGER DEFAULT 1,
                     has_access_fr INTEGER DEFAULT 0,
                     has_access_tr INTEGER DEFAULT 0,        
-                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                    UNIQUE(user_id, uuid)
                 );
                 CREATE TABLE IF NOT EXISTS usage_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -402,7 +403,7 @@ class DatabaseManager:
             with self._conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
 
-    def add_uuid(self, user_id: int, uuid_str: str, name: str) -> str:
+    def add_uuid(self, user_id: int, uuid_str: str, name: str) -> any:
         uuid_str = uuid_str.lower()
         with self._conn() as c:
             existing = c.execute("SELECT * FROM user_uuids WHERE uuid = ?", (uuid_str,)).fetchone()
@@ -411,19 +412,46 @@ class DatabaseManager:
                     if existing['user_id'] == user_id:
                         return "db_err_uuid_already_active_self"
                     else:
-                        return "db_err_uuid_already_active_other"
-                else:
+                        # --- *** START OF CHANGES *** ---
+                        # به جای برگرداندن خطا، یک دیکشنری با وضعیت نیاز به تایید برمی‌گردانیم
+                        return {
+                            "status": "confirmation_required",
+                            "owner_id": existing['user_id'],
+                            "uuid_id": existing['id']
+                        }
+                        # --- *** END OF CHANGES *** ---
+                else: # اگر اکانت غیرفعال باشد
                     if existing['user_id'] == user_id:
                         c.execute("UPDATE user_uuids SET is_active = 1, name = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?", (name, uuid_str))
                         return "db_msg_uuid_reactivated"
                     else:
+                        # اگر اکانت غیرفعال متعلق به دیگری است، همان خطای قبلی را برمی‌گردانیم
                         return "db_err_uuid_inactive_other"
-            else:
+            else: # اگر اکانت اصلاً وجود نداشت
                 c.execute(
                     "INSERT INTO user_uuids (user_id, uuid, name) VALUES (?, ?, ?)",
                     (user_id, uuid_str, name)
                 )
                 return "db_msg_uuid_added"
+
+    def add_shared_uuid(self, user_id: int, uuid_str: str, name: str) -> bool:
+        """
+        یک اکانت اشتراکی را برای کاربر ثبت یا فعال‌سازی مجدد می‌کند.
+        این تابع فاقد منطق بررسی مالکیت است و مستقیماً عمل می‌کند.
+        """
+        uuid_str = uuid_str.lower()
+        with self._conn() as c:
+            # بررسی می‌کند آیا کاربر قبلاً این اکانت را داشته و غیرفعال کرده است
+            existing_inactive = c.execute("SELECT * FROM user_uuids WHERE user_id = ? AND uuid = ? AND is_active = 0", (user_id, uuid_str)).fetchone()
+            
+            if existing_inactive:
+                # اگر وجود داشت، آن را دوباره فعال می‌کند
+                c.execute("UPDATE user_uuids SET is_active = 1, name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, existing_inactive['id']))
+            else:
+                # در غیر این صورت، یک رکورد جدید برای کاربر ایجاد می‌کند
+                c.execute("INSERT INTO user_uuids (user_id, uuid, name, is_active) VALUES (?, ?, ?, 1)", (user_id, uuid_str, name))
+            return True
+    # --- *** END OF CHANGES *** ---
 
     def uuids(self, user_id: int) -> List[Dict[str, Any]]:
         with self._conn() as c:

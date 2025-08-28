@@ -60,7 +60,8 @@ def serve_normal_subscription(uuid):
     user_info = combined_handler.get_combined_user_info(uuid)
 
     if user_record and user_info:
-        profile_title = user_record.get('name', 'CloudVibe')
+        profile_title = request.args.get('name', user_record.get('name', 'CloudVibe'))
+        
         response.headers['Profile-Title'] = profile_title.encode('utf-8').decode('latin-1')
         response.headers['Profile-Update-Interval'] = '24'
         
@@ -76,7 +77,7 @@ def serve_normal_subscription(uuid):
         response.headers['Subscription-Userinfo'] = userinfo_header
 
     user_agent_str = request.headers.get('User-Agent')
-    logger.info(f"Base64 subscription link accessed for UUID: {uuid}")
+    logger.info(f"Normal subscription link accessed for UUID: {uuid}")
     logger.info(f"Received User-Agent: {user_agent_str}")
 
     if user_record and user_agent_str:
@@ -91,7 +92,6 @@ def serve_normal_subscription(uuid):
             logger.error(f"DATABASE ERROR: Could not log user agent for UUID {uuid}. Error: {e}", exc_info=True)
     elif not user_agent_str:
         logger.warning(f"No User-Agent header received for UUID {uuid}.")
-    # --- END: New Logging Section ---
 
     return response
 
@@ -115,7 +115,8 @@ def serve_base64_subscription(uuid):
     user_info = combined_handler.get_combined_user_info(uuid)
 
     if user_record and user_info:
-        profile_title = user_record.get('name', 'CloudVibe')
+        profile_title = request.args.get('name', user_record.get('name', 'CloudVibe'))
+
         response.headers['Profile-Title'] = profile_title.encode('utf-8').decode('latin-1')
         response.headers['Profile-Update-Interval'] = '24'
         
@@ -146,7 +147,6 @@ def serve_base64_subscription(uuid):
             logger.error(f"DATABASE ERROR: Could not log user agent for UUID {uuid}. Error: {e}", exc_info=True)
     elif not user_agent_str:
         logger.warning(f"No User-Agent header received for UUID {uuid}.")
-    # --- END: New Logging Section ---
 
     return response
 
