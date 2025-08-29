@@ -404,30 +404,29 @@ class DatabaseManager:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
 
     def add_uuid(self, user_id: int, uuid_str: str, name: str) -> any:
-        uuid_str = uuid_str.lower()
-        with self._conn() as c:
-            existing = c.execute("SELECT * FROM user_uuids WHERE uuid = ?", (uuid_str,)).fetchone()
-            if existing:
-                if existing['is_active']:
-                    if existing['user_id'] == user_id:
+            uuid_str = uuid_str.lower()
+            with self._conn() as c:
+                # بررسی می‌کند آیا این کاربر قبلاً همین UUID را داشته و غیرفعال کرده
+                existing_inactive_for_this_user = c.execute("SELECT * FROM user_uuids WHERE user_id = ? AND uuid = ? AND is_active = 0", (user_id, uuid_str)).fetchone()
+                if existing_inactive_for_this_user:
+                    # اگر כן، آن را دوباره فعال می‌کند
+                    c.execute("UPDATE user_uuids SET is_active = 1, name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, existing_inactive_for_this_user['id']))
+                    return "db_msg_uuid_reactivated"
+
+                # حالا وجود UUID را به طور کلی بررسی می‌کند
+                existing_active = c.execute("SELECT * FROM user_uuids WHERE uuid = ? AND is_active = 1", (uuid_str,)).fetchone()
+                if existing_active:
+                    if existing_active['user_id'] == user_id:
                         return "db_err_uuid_already_active_self"
                     else:
-                        # --- *** START OF CHANGES *** ---
-                        # به جای برگرداندن خطا، یک دیکشنری با وضعیت نیاز به تایید برمی‌گردانیم
+                        # اگر اکانت فعال متعلق به دیگری است، درخواست تایید ارسال می‌شود
                         return {
                             "status": "confirmation_required",
-                            "owner_id": existing['user_id'],
-                            "uuid_id": existing['id']
+                            "owner_id": existing_active['user_id'],
+                            "uuid_id": existing_active['id']
                         }
-                        # --- *** END OF CHANGES *** ---
-                else: # اگر اکانت غیرفعال باشد
-                    if existing['user_id'] == user_id:
-                        c.execute("UPDATE user_uuids SET is_active = 1, name = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?", (name, uuid_str))
-                        return "db_msg_uuid_reactivated"
-                    else:
-                        # اگر اکانت غیرفعال متعلق به دیگری است، همان خطای قبلی را برمی‌گردانیم
-                        return "db_err_uuid_inactive_other"
-            else: # اگر اکانت اصلاً وجود نداشت
+                
+                # اگر اکانت اصلاً وجود نداشت یا غیرفعال و متعلق به دیگری بود، یک رکورد جدید می‌سازد
                 c.execute(
                     "INSERT INTO user_uuids (user_id, uuid, name) VALUES (?, ?, ?)",
                     (user_id, uuid_str, name)

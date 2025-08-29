@@ -186,7 +186,7 @@ class SchedulerManager:
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_gregorian = datetime.now(tehran_tz)
         
-        if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 5:
+        if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6:
             logger.info("SCHEDULER (Nightly): Friday, skipping daily for weekly report.")
             return
 
