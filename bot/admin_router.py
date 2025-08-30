@@ -166,6 +166,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "note": user_management.handle_ask_for_note,
     "search_by_tid": user_management.handle_search_by_telegram_id_convo,
     "purge_user": user_management.handle_purge_user_convo,
+    "del_devs": user_management.handle_delete_devices_action,
     
     # Reporting & Analytics
     "health_check": reporting.handle_health_check,

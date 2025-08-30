@@ -784,3 +784,26 @@ def _confirm_and_purge_user(message: types.Message):
         error_msg = f"❌ کاربری با شناسه {target_user_id} در جدول اصلی کاربران یافت نشد."
         _safe_edit(admin_id, msg_id, escape_markdown(error_msg), reply_markup=menu.admin_search_menu())
 
+
+def handle_delete_devices_action(call, params):
+    """Deletes all recorded devices for a user and confirms."""
+    identifier = params[0]
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    uuid_id_in_db = db.get_uuid_id_by_uuid(info['uuid'])
+    if not uuid_id_in_db:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    deleted_count = db.delete_user_agents_by_uuid_id(uuid_id_in_db)
+
+    if deleted_count > 0:
+        bot.answer_callback_query(call.id, f"✅ {deleted_count} دستگاه با موفقیت حذف شد.", show_alert=True)
+        handle_show_user_summary(call, params) # نمایش مجدد اطلاعات کاربر با لیست خالی دستگاه‌ها
+    else:
+        bot.answer_callback_query(call.id, "ℹ️ دستگاهی برای حذف یافت نشد.", show_alert=True)

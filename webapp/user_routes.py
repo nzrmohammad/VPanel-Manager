@@ -77,8 +77,8 @@ def serve_normal_subscription(uuid):
         response.headers['Subscription-Userinfo'] = userinfo_header
 
     user_agent_str = request.headers.get('User-Agent')
-    logger.info(f"Normal subscription link accessed for UUID: {uuid}")
-    logger.info(f"Received User-Agent: {user_agent_str}")
+    # logger.info(f"Normal subscription link accessed for UUID: {uuid}")
+    # logger.info(f"Received User-Agent: {user_agent_str}")
 
     if user_record and user_agent_str:
         try:
@@ -132,8 +132,8 @@ def serve_base64_subscription(uuid):
         response.headers['Subscription-Userinfo'] = userinfo_header
 
     user_agent_str = request.headers.get('User-Agent')
-    logger.info(f"Base64 subscription link accessed for UUID: {uuid}")
-    logger.info(f"Received User-Agent: {user_agent_str}")
+    # logger.info(f"Base64 subscription link accessed for UUID: {uuid}")
+    # logger.info(f"Received User-Agent: {user_agent_str}")
 
     if user_record and user_agent_str:
         try:

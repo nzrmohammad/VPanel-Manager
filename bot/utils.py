@@ -235,6 +235,8 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
 
     # --- START: FIX for HiddifyNext on Linux ---
     client_patterns = {
+        'NekoBox': (r"NekoBox/([\d.]+)", lambda m: (m.group(1), 'Android')),
+        'Throne': (r'Throne/([\d.]+)\s+\((\w+);\s*(\w+)\)', lambda m: (m.group(1), f"{m.group(2).capitalize()} {m.group(3)}")),
         'Hiddify': (r'HiddifyNextX?/([\d.]+)\s+\((\w+)\)', lambda m: (m.group(1), m.group(2).capitalize())),
         'v2rayNG': (r"v2rayNG/([\d.]+)", lambda m: (m.group(1), 'Android')),
         'v2rayN': (r"v2rayN/([\d.]+)", lambda m: (m.group(1), 'Windows')),

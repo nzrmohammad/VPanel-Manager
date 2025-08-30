@@ -1440,4 +1440,16 @@ class DatabaseManager:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
+    def count_user_agents(self, uuid_id: int) -> int:
+            """Counts the number of recorded user agents for a specific user UUID."""
+            with self._conn() as c:
+                row = c.execute("SELECT COUNT(id) FROM client_user_agents WHERE uuid_id = ?", (uuid_id,)).fetchone()
+            return row[0] if row else 0
+    
+    def delete_user_agents_by_uuid_id(self, uuid_id: int) -> int:
+        """Deletes all user agent records for a given uuid_id."""
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM client_user_agents WHERE uuid_id = ?", (uuid_id,))
+            return cursor.rowcount
+
 db = DatabaseManager()

@@ -739,14 +739,15 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
     # --- 2. Pagination Header ---
     header_text = title
     total_items = len(user_list)
-    if total_items > PAGE_SIZE:
-        total_pages = (total_items + PAGE_SIZE - 1) // PAGE_SIZE
+    ADMIN_DEVICE_LIST_PAGE_SIZE = 20
+    if total_items > ADMIN_DEVICE_LIST_PAGE_SIZE:
+        total_pages = (total_items + ADMIN_DEVICE_LIST_PAGE_SIZE - 1) // ADMIN_DEVICE_LIST_PAGE_SIZE
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_items}\\)"
         header_text += f"\n{pagination_text}"
 
     # --- 3. Build the final report string ---
     lines = [header_text, "`──────────────────`"]
-    paginated_users = user_list[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+    paginated_users = user_list[page * ADMIN_DEVICE_LIST_PAGE_SIZE : (page + 1) * ADMIN_DEVICE_LIST_PAGE_SIZE]
 
     for user in paginated_users:
         user_name = escape_markdown(user['name'])
