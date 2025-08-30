@@ -285,11 +285,11 @@ class Menu:
             types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:del_cfm:{identifier}{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:del_devs:{identifier}{context_suffix}")
-        )
-        kb.add(
             types.InlineKeyboardButton("🔧 ویرایش کاربر", callback_data=f"admin:edt:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:rb:{identifier}{context_suffix}")
+        )
+        kb.add(
+            types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:del_devs:{identifier}{context_suffix}")
         )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"

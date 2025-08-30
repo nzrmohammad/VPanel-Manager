@@ -785,9 +785,52 @@ def _confirm_and_purge_user(message: types.Message):
         _safe_edit(admin_id, msg_id, escape_markdown(error_msg), reply_markup=menu.admin_search_menu())
 
 
+def handle_delete_devices_confirm(call, params):
+    """
+    Asks for confirmation before deleting devices and checks if there are any.
+    """
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 'search' else None
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    uuid_id_in_db = db.get_uuid_id_by_uuid(info['uuid'])
+    if not uuid_id_in_db:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    device_count = db.count_user_agents(uuid_id_in_db)
+    
+    panel_short_for_back = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
+    context_suffix = f":{context}" if context else ""
+    back_callback = f"admin:us:{panel_short_for_back}:{identifier}{context_suffix}"
+
+    if device_count == 0:
+        prompt = "ℹ️ هیچ دستگاهی برای این کاربر ثبت نشده است."
+        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback))
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
+        return
+
+    prompt = f"⚠️ آیا از حذف *{device_count}* دستگاه ثبت شده برای کاربر «{escape_markdown(info.get('name', ''))}» اطمینان دارید؟"
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    confirm_callback = f"admin:del_devs_exec:{identifier}{context_suffix}"
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، حذف کن", callback_data=confirm_callback),
+        types.InlineKeyboardButton("❌ انصراف", callback_data=back_callback)
+    )
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+
 def handle_delete_devices_action(call, params):
     """Deletes all recorded devices for a user and confirms."""
+    # پارامترها به درستی خوانده می‌شوند
     identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 'search' else None
     uid, msg_id = call.from_user.id, call.message.message_id
 
     info = combined_handler.get_combined_user_info(identifier)
@@ -801,9 +844,20 @@ def handle_delete_devices_action(call, params):
         return
 
     deleted_count = db.delete_user_agents_by_uuid_id(uuid_id_in_db)
-
-    if deleted_count > 0:
-        bot.answer_callback_query(call.id, f"✅ {deleted_count} دستگاه با موفقیت حذف شد.", show_alert=True)
-        handle_show_user_summary(call, params) # نمایش مجدد اطلاعات کاربر با لیست خالی دستگاه‌ها
-    else:
-        bot.answer_callback_query(call.id, "ℹ️ دستگاهی برای حذف یافت نشد.", show_alert=True)
+    
+    bot.answer_callback_query(call.id, f"✅ {deleted_count} دستگاه با موفقیت حذف شد.", show_alert=True)
+    
+    # --- ✨ شروع اصلاح اصلی ---
+    # در این بخش، پارامترهای مورد نیاز برای بازگشت صحیح به صفحه کاربر را بازسازی می‌کنیم
+    
+    # 1. نوع پنل کاربر را برای ساخت دکمه‌ها تشخیص می‌دهیم
+    panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
+    
+    # 2. لیست پارامترهای جدید را مطابق با فرمت تابع `handle_show_user_summary` می‌سازیم
+    new_params_for_summary = [panel_short, identifier]
+    if context:
+        new_params_for_summary.append(context)
+        
+    # 3. صفحه اطلاعات کاربر را با پارامترهای صحیح دوباره فراخوانی و به‌روزرسانی می‌کنیم
+    handle_show_user_summary(call, new_params_for_summary)
+    # --- ✨ پایان اصلاح اصلی ---
