@@ -14,6 +14,8 @@ from .utils import load_service_plans
 from .language import get_string
 import urllib.parse
 import time
+from datetime import datetime, timedelta
+import pytz
 from typing import Optional
 from .hiddify_api_handler import HiddifyAPIHandler
 from .marzban_api_handler import MarzbanAPIHandler
@@ -790,20 +792,44 @@ def _start_traffic_transfer(call: types.CallbackQuery):
     global bot
     uid, msg_id = call.from_user.id, call.message.message_id
     uuid_id = int(call.data.split("_")[2])
+    
+    last_transfer_time = db.get_last_transfer_timestamp(uuid_id)
+    cooldown_period = timedelta(days=TRANSFER_COOLDOWN_DAYS)
+    
+    if last_transfer_time:
+            if last_transfer_time.tzinfo is None:
+                last_transfer_time = pytz.utc.localize(last_transfer_time)
 
-    if db.has_transferred_in_last_30_days(uuid_id):
-        bot.answer_callback_query(call.id, f"شما در {TRANSFER_COOLDOWN_DAYS} روز گذشته یک انتقال موفق داشته‌اید. لطفاً بعداً تلاش کنید.", show_alert=True)
-        return
+            time_since_last_transfer = datetime.now(pytz.utc) - last_transfer_time
+            if time_since_last_transfer < cooldown_period:
+                remaining_time = cooldown_period - time_since_last_transfer
+                days, remainder = divmod(remaining_time.total_seconds(), 86400)
+                hours, _ = divmod(remainder, 3600)
+                
+                error_msg = (
+                    f"*{escape_markdown('⏳ محدودیت انتقال ترافیک')}*\n"
+                    f"`──────────────────`\n"
+                    f"{escape_markdown('شما به تازگی یک انتقال ترافیک داشته‌اید. لطفاً تا پایان این محدودیت صبر کنید.')}\n\n"
+                    f"⏱️ {escape_markdown('زمان باقیمانده:')} *{escape_markdown(f'{int(days)} روز و {int(hours)} ساعت')}*"
+                )
+                
+                kb = types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data=f"acc_{uuid_id}")
+                )
+                _safe_edit(uid, msg_id, error_msg, reply_markup=kb)
+                return
 
-    # نمایش منوی انتخاب سرور برای انتقال
     _ask_for_transfer_panel(uid, msg_id, uuid_id)
 
 
 def _ask_for_transfer_panel(uid: int, msg_id: int, uuid_id: int):
     """مرحله دوم: از کاربر می‌پرسد از کدام سرور قصد انتقال دارد."""
-    prompt = "💸 *انتقال ترافیک*\n\nلطفاً انتخاب کنید که می‌خواهید از حجم کدام سرور به دوست خود انتقال دهید:"
+    prompt = (
+        f"*{escape_markdown('💸 انتقال ترافیک به کاربر دیگر')}*\n"
+        f"`──────────────────`\n"
+        f"{escape_markdown('لطفاً انتخاب کنید که می‌خواهید از حجم کدام سرور به دوست خود انتقال دهید:')}"
+    )
     
-    # منو فقط سرورهایی را نشان می‌دهد که کاربر به آن‌ها دسترسی دارد
     user_uuid_record = db.uuid_by_id(uid, uuid_id)
     kb = types.InlineKeyboardMarkup(row_width=1)
     if user_uuid_record.get('has_access_de'):
@@ -811,8 +837,8 @@ def _ask_for_transfer_panel(uid: int, msg_id: int, uuid_id: int):
     if user_uuid_record.get('has_access_fr') or user_uuid_record.get('has_access_tr'):
         kb.add(types.InlineKeyboardButton("از سرور فرانسه/ترکیه 🇫🇷🇹🇷", callback_data=f"transfer_panel_marzban_{uuid_id}"))
     
-    kb.add(types.InlineKeyboardButton("🔙 انصراف", callback_data=f"acc_{uuid_id}"))
-    _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data=f"acc_{uuid_id}"))
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
 
 
 def _ask_for_transfer_amount(call: types.CallbackQuery):
@@ -826,12 +852,14 @@ def _ask_for_transfer_amount(call: types.CallbackQuery):
     
     prompt = (
         f"{escape_markdown('لطفاً مقدار حجمی که می‌خواهید انتقال دهید را به گیگابایت وارد کنید.')}\n\n"
-        f"{escape_markdown('🔸 حداقل:')} *{escape_markdown(str(MIN_TRANSFER_GB))} {escape_markdown('گیگابایت')}*\n"
-        f"{escape_markdown('🔸 حداکثر:')} *{escape_markdown(str(MAX_TRANSFER_GB))} {escape_markdown('گیگابایت')}*"
+        f"🔸 {escape_markdown('حداقل:')} *{escape_markdown(str(MIN_TRANSFER_GB))} {escape_markdown('گیگابایت')}*\n"
+        f"🔸 {escape_markdown('حداکثر:')} *{escape_markdown(str(MAX_TRANSFER_GB))} {escape_markdown('گیگابایت')}*"
     )
               
     kb = menu.user_cancel_action(back_callback=f"acc_{uuid_id}", lang_code=db.get_user_language(uid))
     _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+    
+    bot.register_next_step_handler(call.message, _get_transfer_amount)
 
 
 def _get_transfer_amount(message: types.Message):
@@ -893,7 +921,13 @@ def _get_receiver_uuid(message: types.Message):
     """UUID گیرنده را دریافت، اعتبار‌سنجی کرده و منوی تایید نهایی را نمایش می‌دهد."""
     global bot
     uid, receiver_uuid = message.from_user.id, message.text.strip().lower()
-    bot.delete_message(uid, message.message_id)
+    
+    # --- ✅ مدیریت خطای حذف پیام ---
+    try:
+        bot.delete_message(uid, message.message_id)
+    except Exception:
+        pass # اگر پیام قبلاً حذف شده بود، مشکلی نیست
+
     if uid not in admin_conversations or admin_conversations[uid].get('action') != 'transfer_receiver':
         return
 
@@ -904,32 +938,38 @@ def _get_receiver_uuid(message: types.Message):
     
     sender_uuid_record = db.uuid_by_id(uid, uuid_id)
     if receiver_uuid == sender_uuid_record['uuid']:
-        _safe_edit(uid, msg_id, "شما نمی‌توانید به خودتان ترافیک انتقال دهید. عملیات لغو شد.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
-        admin_conversations.pop(uid, None)
+        prompt = "شما نمی‌توانید به خودتان ترافیک انتقال دهید. لطفاً UUID کاربر دیگری را وارد کنید:"
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        bot.register_next_step_handler(message, _get_receiver_uuid) # دوباره منتظر پاسخ می‌مانیم
         return
 
     receiver_info = combined_handler.get_combined_user_info(receiver_uuid)
     if not receiver_info:
-        _safe_edit(uid, msg_id, "کاربری با این UUID یافت نشد. عملیات لغو شد.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
-        admin_conversations.pop(uid, None)
+        # --- ✅ مدیریت UUID اشتباه ---
+        prompt = "کاربری با این UUID یافت نشد. لطفاً دوباره تلاش کنید یا عملیات را لغو کنید:"
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        bot.register_next_step_handler(message, _get_receiver_uuid) # دوباره منتظر پاسخ می‌مانیم
         return
         
     receiver_has_panel_access = any(p.get('type') == panel_type for p in receiver_info.get('breakdown', {}).values())
 
     if not receiver_has_panel_access:
         server_name = "آلمان" if panel_type == 'hiddify' else "فرانسه/ترکیه"
-        _safe_edit(uid, msg_id, f"کاربر مقصد به سرور {server_name} دسترسی ندارد. انتقال امکان‌پذیر نیست.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
-        admin_conversations.pop(uid, None)
+        _safe_edit(uid, msg_id, f"کاربر مقصد به سرور {server_name} دسترسی ندارد. لطفاً UUID کاربر دیگری را وارد کنید:", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        bot.register_next_step_handler(message, _get_receiver_uuid) # دوباره منتظر پاسخ می‌مانیم
         return
 
     convo['receiver_uuid'] = receiver_uuid
     convo['receiver_name'] = receiver_info.get('name', 'کاربر ناشناس')
     
-    # نمایش منوی تایید نهایی
+    amount_gb = convo['amount_gb']
+    amount_str = str(int(amount_gb)) if amount_gb == int(amount_gb) else str(amount_gb)
+    amount_str_safe = amount_str.replace('.', ',')
+    
     server_name = "آلمان 🇩🇪" if panel_type == 'hiddify' else "فرانسه/ترکیه 🇫🇷🇹🇷"
     confirm_prompt = (
         f"🚨 *{escape_markdown('تایید نهایی انتقال')}*\n\n"
-        f"{escape_markdown('شما در حال انتقال')} *{escape_markdown(str(convo['amount_gb']))} {escape_markdown('گیگابایت')}* {escape_markdown('حجم از سرور')} *{escape_markdown(server_name)}* {escape_markdown('به کاربر زیر هستید:')}\n\n"
+        f"{escape_markdown('شما در حال انتقال')} *{escape_markdown(amount_str_safe)} {escape_markdown('گیگابایت')}* {escape_markdown('حجم از سرور')} *{escape_markdown(server_name)}* {escape_markdown('به کاربر زیر هستید:')}\n\n"
         f"👤 {escape_markdown('نام:')} *{escape_markdown(convo['receiver_name'])}*\n"
         f"🔑 {escape_markdown('شناسه:')} `{escape_markdown(receiver_uuid)}`\n\n"
         f"{escape_markdown('آیا این اطلاعات را تایید می‌کنید؟ این عمل غیرقابل بازگشت است.')}"
@@ -940,11 +980,11 @@ def _get_receiver_uuid(message: types.Message):
         types.InlineKeyboardButton("✅ بله، انتقال بده", callback_data="transfer_confirm_yes"),
         types.InlineKeyboardButton("❌ خیر، لغو کن", callback_data=f"acc_{uuid_id}")
     )
-    _safe_edit(uid, msg_id, escape_markdown(confirm_prompt), reply_markup=kb)
+    _safe_edit(uid, msg_id, confirm_prompt, reply_markup=kb)
 
 
 def _confirm_and_execute_transfer(call: types.CallbackQuery):
-    """انتقال را نهایی کرده و به همه طرفین اطلاع‌رسانی می‌کند."""
+    """انتقال را نهایی کرده، حجم‌ها را به دقت محاسبه و به همه طرفین اطلاع‌رسانی می‌کند."""
     global bot
     uid, msg_id = call.from_user.id, call.message.message_id
     if uid not in admin_conversations: return
@@ -956,9 +996,10 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
     panel_type = convo['panel_type']
     amount_gb = convo['amount_gb']
 
-    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال انجام انتقال..."), reply_markup=None)
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال انجام انتقال... لطفا صبر کنید..."), reply_markup=None)
 
     try:
+        # --- دریافت اطلاعات اولیه ---
         sender_uuid_record = db.uuid_by_id(uid, sender_uuid_id)
         sender_uuid = sender_uuid_record['uuid']
         sender_name = sender_uuid_record.get('name', 'کاربر ناشناس')
@@ -967,33 +1008,67 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
         receiver_uuid_id = receiver_uuid_record['id']
         receiver_user_id = receiver_uuid_record['user_id']
         receiver_name = receiver_uuid_record.get('name', 'کاربر ناشناس')
+
+        # --- دریافت حجم‌های "قبل" از انتقال ---
+        sender_info_before = combined_handler.get_combined_user_info(sender_uuid)
+        receiver_info_before = combined_handler.get_combined_user_info(receiver_uuid)
+
+        sender_panel_data_before = next((p['data'] for p in sender_info_before.get('breakdown', {}).values() if p.get('type') == panel_type), {})
+        receiver_panel_data_before = next((p['data'] for p in receiver_info_before.get('breakdown', {}).values() if p.get('type') == panel_type), {})
         
+        sender_limit_before = sender_panel_data_before.get('usage_limit_GB', 0)
+        receiver_limit_before = receiver_panel_data_before.get('usage_limit_GB', 0)
+
+        # --- اجرای تراکنش ---
         success1 = combined_handler.modify_user_on_all_panels(sender_uuid, add_gb=-amount_gb, target_panel_type=panel_type)
         success2 = combined_handler.modify_user_on_all_panels(receiver_uuid, add_gb=amount_gb, target_panel_type=panel_type)
 
         if success1 and success2:
             db.log_traffic_transfer(sender_uuid_id, receiver_uuid_id, panel_type, amount_gb)
 
-            amount_str = escape_markdown(str(amount_gb))
+            # --- آماده‌سازی متن پیام‌ها ---
+            def format_amount(gb):
+                # تابعی برای نمایش اعداد صحیح بدون اعشار و جایگزینی نقطه با ویرگول
+                val_str = str(int(gb)) if gb == int(gb) else str(gb).replace('.', ',')
+                return escape_markdown(val_str)
+
+            amount_str = format_amount(amount_gb)
             receiver_name_str = escape_markdown(receiver_name)
             sender_name_str = escape_markdown(sender_name)
             
+            sender_limit_before_str = format_amount(sender_limit_before)
+            sender_limit_after_str = format_amount(sender_limit_before - amount_gb)
+            receiver_limit_before_str = format_amount(receiver_limit_before)
+            receiver_limit_after_str = format_amount(receiver_limit_before + amount_gb)
+
             # پیام به فرستنده
-            sender_final_msg = f"✅ انتقال {amount_str} گیگابایت حجم به کاربر {receiver_name_str} با موفقیت انجام شد."
-            _safe_edit(uid, msg_id, escape_markdown(sender_final_msg), reply_markup=menu.user_cancel_action(f"acc_{sender_uuid_id}", db.get_user_language(uid)))
+            sender_final_msg = (
+                f"✅ انتقال *{amount_str}* گیگابایت حجم به کاربر *{receiver_name_str}* با موفقیت انجام شد\\.\n\n"
+                f" موجودی شما از `{sender_limit_before_str}` به `{sender_limit_after_str}` گیگابایت تغییر کرد\\."
+            )
+            kb_back_to_account = types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data=f"acc_{sender_uuid_id}")
+            )
+            _safe_edit(uid, msg_id, sender_final_msg, reply_markup=kb_back_to_account)
             
             # پیام به گیرنده
-            receiver_message = f"🎁 شما {amount_str} گیگابایت حجم هدیه از طرف کاربر *{sender_name_str}* دریافت کردید!"
+            receiver_message = (
+                f"🎁 شما *{amount_str}* گیگابایت حجم هدیه از طرف کاربر *{sender_name_str}* دریافت کردید\\!\n\n"
+                f"موجودی شما از `{receiver_limit_before_str}` به `{receiver_limit_after_str}` گیگابایت افزایش یافت\\."
+            )
             _notify_user(receiver_user_id, receiver_message)
             
             # پیام به ادمین‌ها
             server_name = 'آلمان' if panel_type == 'hiddify' else 'فرانسه/ترکیه'
             admin_message = (
                 f"💸 *اطلاع‌رسانی انتقال ترافیک*\n\n"
-                f"*فرستنده:* {sender_name_str} \\(`{uid}`\\)\n"
-                f"*گیرنده:* {receiver_name_str} \\(`{receiver_user_id}`\\)\n"
-                f"*مقدار:* {amount_str} گیگابایت\n"
-                f"*سرور:* {escape_markdown(server_name)}"
+                f"*{escape_markdown('فرستنده:')}* {sender_name_str} \\(`{uid}`\\)\n"
+                f"*{escape_markdown('گیرنده:')}* {receiver_name_str} \\(`{receiver_user_id}`\\)\n"
+                f"*{escape_markdown('مقدار:')}* {amount_str} {escape_markdown('گیگابایت')}\n"
+                f"*{escape_markdown('سرور:')}* {escape_markdown(server_name)}\n"
+                f"`──────────────────`\n"
+                f"*{escape_markdown('حجم فرستنده:')}* `{sender_limit_before_str}` ⬅️ `{sender_limit_after_str}`\n"
+                f"*{escape_markdown('حجم گیرنده:')}* `{receiver_limit_before_str}` ⬅️ `{receiver_limit_after_str}`"
             )
             for admin_id in ADMIN_IDS:
                 _notify_user(admin_id, admin_message)

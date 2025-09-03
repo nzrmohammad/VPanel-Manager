@@ -1571,58 +1571,60 @@ class DatabaseManager:
             
             return {'total': total_usage, 'night': night_usage}
 
-    def count_recently_active_users(self, minutes: int = 15) -> dict:
+    def count_recently_active_users(self, minutes: int = 65) -> dict:
         """
-        تعداد کاربران یکتایی که در N دقیقه گذشته مصرف داشته‌اند را به تفکیک
-        آلمان (hiddify)، فرانسه (marzban_fr) و ترکیه (marzban_tr) برمی‌گرداند.
+        تعداد کاربران یکتایی که در N دقیقه گذشته مصرف داشته‌اند را با مقایسه دو اسنپ‌شات آخرشان محاسبه می‌کند.
+        بازه زمانی به ۶۵ دقیقه افزایش یافت تا حداقل یک اسنپ‌شات را شامل شود.
         """
         time_limit = datetime.now(pytz.utc) - timedelta(minutes=minutes)
         results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0}
+        active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set()}
 
         with self._conn() as c:
-            # ابتدا تمام اسنپ‌شات‌های اخیر را به همراه اطلاعات دسترسی کاربر واکشی می‌کنیم
+            # دریافت دو اسنپ‌شات آخر برای تمام کاربرانی که حداقل یک اسنپ‌شات در بازه زمانی اخیر دارند
             query = """
+            SELECT
+                uuid_id, hiddify_usage_gb, marzban_usage_gb, has_access_fr, has_access_tr
+            FROM (
                 SELECT
                     s.uuid_id, s.hiddify_usage_gb, s.marzban_usage_gb,
-                    uu.has_access_fr, uu.has_access_tr
+                    uu.has_access_fr, uu.has_access_tr,
+                    ROW_NUMBER() OVER(PARTITION BY s.uuid_id ORDER BY s.taken_at DESC) as rn
                 FROM usage_snapshots s
                 JOIN user_uuids uu ON s.uuid_id = uu.id
-                WHERE s.taken_at >= ?
-                ORDER BY s.uuid_id, s.taken_at ASC
+                WHERE s.uuid_id IN (SELECT DISTINCT uuid_id FROM usage_snapshots WHERE taken_at >= ?)
+            )
+            WHERE rn <= 2
             """
-            recent_snapshots = c.execute(query, (time_limit,)).fetchall()
+            all_snapshots = c.execute(query, (time_limit,)).fetchall()
 
-            last_usages = {} # برای نگهداری آخرین مصرف هر کاربر
-            active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set()}
+            snapshots_by_user = {}
+            for snap in all_snapshots:
+                snapshots_by_user.setdefault(snap['uuid_id'], []).append(dict(snap))
 
-            for snap in recent_snapshots:
-                uuid_id = snap['uuid_id']
-                
-                # دریافت آخرین مصرف ثبت‌شده برای این کاربر
-                last_h = last_usages.get(uuid_id, {}).get('h', 0)
-                last_m = last_usages.get(uuid_id, {}).get('m', 0)
+            for uuid_id, snaps in snapshots_by_user.items():
+                if len(snaps) < 2:
+                    continue
 
-                # محاسبه افزایش مصرف از اسنپ‌شات قبلی
-                h_increase = (snap['hiddify_usage_gb'] or 0) - last_h
-                m_increase = (snap['marzban_usage_gb'] or 0) - last_m
+                latest_snap, previous_snap = snaps[0], snaps[1]
 
-                if h_increase > 0.001: # اگر مصرفی در هیدیفای (آلمان) وجود داشت
+                h_increase = (latest_snap['hiddify_usage_gb'] or 0) - (previous_snap['hiddify_usage_gb'] or 0)
+                m_increase = (latest_snap['marzban_usage_gb'] or 0) - (previous_snap['marzban_usage_gb'] or 0)
+
+                if h_increase > 0.001:
                     active_users['hiddify'].add(uuid_id)
-                
-                if m_increase > 0.001: # اگر مصرفی در مرزبان وجود داشت
-                    if snap['has_access_fr']:
+
+                if m_increase > 0.001:
+                    # به جای OR از دو IF جداگانه استفاده می‌کنیم تا یک کاربر بتواند همزمان در هر دو دسته شمرده شود
+                    if latest_snap['has_access_fr']:
                         active_users['marzban_fr'].add(uuid_id)
-                    if snap['has_access_tr']:
+                    if latest_snap['has_access_tr']:
                         active_users['marzban_tr'].add(uuid_id)
 
-                # به‌روزرسانی آخرین مصرف برای محاسبه در اسنپ‌شات بعدی
-                last_usages[uuid_id] = {'h': snap['hiddify_usage_gb'] or 0, 'm': snap['marzban_usage_gb'] or 0}
-
-            results['hiddify'] = len(active_users['hiddify'])
-            results['marzban_fr'] = len(active_users['marzban_fr'])
-            results['marzban_tr'] = len(active_users['marzban_tr'])
-            
-            return results
+        results['hiddify'] = len(active_users['hiddify'])
+        results['marzban_fr'] = len(active_users['marzban_fr'])
+        results['marzban_tr'] = len(active_users['marzban_tr'])
+        return results
 
 
     def get_or_create_referral_code(self, user_id: int) -> str:
@@ -1662,5 +1664,20 @@ class DatabaseManager:
         """وضعیت پاداش معرفی را برای جلوگیری از اهدای مجدد، ثبت می‌کند."""
         with self._conn() as c:
             c.execute("UPDATE users SET referral_reward_applied = 1 WHERE user_id = ?", (user_id,))
+
+    def get_last_transfer_timestamp(self, sender_uuid_id: int) -> Optional[datetime]:
+        """آخرین زمان انتقال ترافیک توسط یک کاربر را برمی‌گرداند."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT transferred_at FROM traffic_transfers WHERE sender_uuid_id = ? ORDER BY transferred_at DESC LIMIT 1",
+                (sender_uuid_id,)
+            ).fetchone()
+            return row['transferred_at'] if row else None
+
+    def delete_transfer_history(self, sender_uuid_id: int) -> int:
+        """تمام تاریخچه انتقال یک کاربر خاص را برای ریست کردن محدودیت حذف می‌کند."""
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM traffic_transfers WHERE sender_uuid_id = ?", (sender_uuid_id,))
+            return cursor.rowcount
 
 db = DatabaseManager()

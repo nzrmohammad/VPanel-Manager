@@ -930,3 +930,34 @@ def _check_and_apply_referral_reward(user_telegram_id: int):
     except Exception as e:
         logger.error(f"Error applying referral reward for user {user_telegram_id}: {e}", exc_info=True)
 
+
+def handle_reset_transfer_cooldown(call, params):
+    """محدودیت زمانی انتقال ترافیک را برای یک کاربر ریست می‌کند."""
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 'search' else None
+    
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    uuid_id_to_reset = db.get_uuid_id_by_uuid(info['uuid'])
+    if not uuid_id_to_reset:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات برای ریست کردن یافت نشد.", show_alert=True)
+        return
+        
+    deleted_count = db.delete_transfer_history(uuid_id_to_reset)
+    
+    if deleted_count > 0:
+        bot.answer_callback_query(call.id, f"✅ محدودیت انتقال برای کاربر «{info.get('name', '')}» ریست شد.", show_alert=True)
+    else:
+        bot.answer_callback_query(call.id, "ℹ️ این کاربر تاریخچه انتقالی برای ریست کردن نداشت.", show_alert=True)
+
+    # --- ✅ بخش اصلاح شده برای بازگشت صحیح ---
+    # پارامترها را برای فراخوانی صحیح تابع اطلاعات کاربر، بازسازی می‌کنیم
+    panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
+    new_params_for_summary = [panel_short, identifier]
+    if context:
+        new_params_for_summary.append(context)
+        
+    handle_show_user_summary(call, new_params_for_summary)

@@ -254,14 +254,16 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
         
         if panel_type == 'hiddify' and user_info.get('uuid'):
             current_limit = user_panel_data.get('usage_limit_GB', 0)
-            current_days = user_panel_data.get('expire', 0)
+            current_days = user_panel_data.get('expire')
             
             payload = {}
-            if add_gb > 0:
+            if add_gb != 0:
                 payload['usage_limit_GB'] = current_limit + add_gb
+            
             if add_days > 0:
-                base_days = max(0, current_days)
-                payload['package_days'] = base_days + add_days
+                if current_days is not None:
+                    base_days = max(0, current_days)
+                    payload['package_days'] = base_days + add_days
             
             if payload and handler.modify_user(user_info['uuid'], payload):
                 any_success = True

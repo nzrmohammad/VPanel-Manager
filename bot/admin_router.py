@@ -168,6 +168,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "purge_user": user_management.handle_purge_user_convo,
     "del_devs": user_management.handle_delete_devices_confirm,
     "del_devs_exec": user_management.handle_delete_devices_action,
+    "reset_transfer": user_management.handle_reset_transfer_cooldown,
     
     # Reporting & Analytics
     "health_check": reporting.handle_health_check,

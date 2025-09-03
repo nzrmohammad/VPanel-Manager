@@ -295,7 +295,8 @@ class Menu:
             types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:rb:{identifier}{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:del_devs:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:del_devs:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:reset_transfer:{identifier}{context_suffix}")
         )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
