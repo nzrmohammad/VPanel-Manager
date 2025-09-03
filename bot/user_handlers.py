@@ -100,6 +100,10 @@ def handle_user_callbacks(call: types.CallbackQuery):
     elif data.startswith("transfer_confirm_"):
         _confirm_and_execute_transfer(call)
         return
+    
+    elif data.startswith("shop:"):
+        handle_shop_callbacks(call)
+        return
 
     elif data.startswith("toggle_"):
         setting_key = data.replace("toggle_", "")
@@ -550,12 +554,18 @@ def _show_settings(call: types.CallbackQuery):
 
 
 def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None, original_msg_id: int = None):
-
     uid = call.from_user.id if call else message.from_user.id
     msg_id = original_msg_id or (call.message.message_id if call else None)
     
     lang_code = db.get_user_language(uid)
-    text = f'*{escape_markdown(get_string("main_menu_title", lang_code))}*'
+    
+    # --- ✅ بخش جدید برای نمایش امتیاز ---
+    user_db_info = db.user(uid)
+    user_points = user_db_info.get('achievement_points', 0) if user_db_info else 0
+    
+    header_text = f"*{escape_markdown(get_string('main_menu_title', lang_code))}*\n"
+    header_text += f"💰 *امتیاز شما: {user_points}*"
+    # ------------------------------------
 
     loyalty_data = get_loyalty_progress_message(uid)
     if loyalty_data:
@@ -565,14 +575,14 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
             f"*{escape_markdown(f'فقط {loyalty_data['renewals_left']} تمدید دیگر')}* "
             f"{escape_markdown(f'تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!')}"
         )
-        text += f"{separator}{loyalty_message}"
+        header_text += f"{separator}{loyalty_message}"
 
     reply_markup = menu.main(uid in ADMIN_IDS, lang_code=lang_code)
 
     if msg_id:
-        _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
+        _safe_edit(uid, msg_id, header_text, reply_markup=reply_markup)
     else:
-        bot.send_message(uid, text, reply_markup=reply_markup, parse_mode="MarkdownV2")
+        bot.send_message(uid, header_text, reply_markup=reply_markup, parse_mode="MarkdownV2")
 
 
 def _handle_birthday_gift_request(call: types.CallbackQuery):
@@ -866,14 +876,18 @@ def _get_transfer_amount(message: types.Message):
     """مقدار حجم را دریافت، اعتبار‌سنجی کرده و UUID گیرنده را می‌پرسد."""
     global bot
     uid, text = message.from_user.id, message.text.strip()
-    bot.delete_message(uid, message.message_id)
+    try:
+        bot.delete_message(uid, message.message_id)
+    except Exception:
+        pass
+        
     if uid not in admin_conversations or admin_conversations[uid].get('action') != 'transfer_amount':
         return
 
     convo = admin_conversations[uid]
     msg_id = convo['msg_id']
     uuid_id = convo['uuid_id']
-    panel_type_to_transfer_from = convo['panel_type'] # e.g., 'hiddify'
+    panel_type_to_transfer_from = convo['panel_type']
 
     try:
         amount_gb = float(text)
@@ -883,21 +897,17 @@ def _get_transfer_amount(message: types.Message):
         sender_uuid_record = db.uuid_by_id(uid, uuid_id)
         sender_info = combined_handler.get_combined_user_info(sender_uuid_record['uuid'])
         
-        # <<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>
-        # به جای جستجو با نام پنل، در دیکشنری breakdown می‌گردیم تا پنلی با نوع مورد نظر پیدا کنیم
         panel_data = next((p['data'] for p in sender_info.get('breakdown', {}).values() if p.get('type') == panel_type_to_transfer_from), None)
 
         if not panel_data:
-            # این حالت نباید اتفاق بیفتد اگر منوی اولیه درست کار کند
             raise Exception("Panel data not found for the specified type.")
-        # <<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>
             
         sender_remaining_gb = panel_data.get('remaining_GB', 0)
 
         if amount_gb > sender_remaining_gb:
-            error_msg = f"موجودی حجم شما در این سرور ({sender_remaining_gb:.2f} گیگابایت) برای انتقال این مقدار کافی نیست. عملیات لغو شد."
+            error_msg = f"موجودی حجم شما در این سرور ({sender_remaining_gb:.2f} گیگابایت) برای انتقال این مقدار کافی نیست. لطفاً مقدار کمتری وارد کنید:"
             _safe_edit(uid, msg_id, escape_markdown(error_msg), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
-            admin_conversations.pop(uid, None)
+            bot.register_next_step_handler(message, _get_transfer_amount)
             return
 
         convo['amount_gb'] = amount_gb
@@ -910,7 +920,7 @@ def _get_transfer_amount(message: types.Message):
     except (ValueError, TypeError):
         error_msg = f"مقدار وارد شده نامعتبر است. لطفاً عددی بین {MIN_TRANSFER_GB} و {MAX_TRANSFER_GB} وارد کنید."
         _safe_edit(uid, msg_id, escape_markdown(error_msg), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
-        admin_conversations.pop(uid, None)
+        bot.register_next_step_handler(message, _get_transfer_amount)
     except Exception as e:
         logger.error(f"Error in _get_transfer_amount: {e}", exc_info=True)
         _safe_edit(uid, msg_id, "خطایی در پردازش اطلاعات رخ داد. عملیات لغو شد.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
@@ -996,7 +1006,7 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
     panel_type = convo['panel_type']
     amount_gb = convo['amount_gb']
 
-    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال انجام انتقال... لطفا صبر کنید..."), reply_markup=None)
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال انجام انتقال لطفا صبر کنید..."), reply_markup=None)
 
     try:
         # --- دریافت اطلاعات اولیه ---
@@ -1058,8 +1068,7 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
             )
             _notify_user(receiver_user_id, receiver_message)
             
-            # پیام به ادمین‌ها
-            server_name = 'آلمان' if panel_type == 'hiddify' else 'فرانسه/ترکیه'
+            server_name = 'آلمان 🇩🇪' if panel_type == 'hiddify' else 'فرانسه/ترکیه 🇫🇷🇹🇷'
             admin_message = (
                 f"💸 *اطلاع‌رسانی انتقال ترافیک*\n\n"
                 f"*{escape_markdown('فرستنده:')}* {sender_name_str} \\(`{uid}`\\)\n"
@@ -1147,8 +1156,6 @@ def _handle_connection_doctor(call: types.CallbackQuery):
 
     recent_users = db.count_recently_active_users()
     
-    # <<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>
-    # The parentheses are now escaped with \\
     report_lines.extend([
         "`──────────────────`",
         "📈 *تحلیل هوشمند بار سرور \\(۱۵ دقیقه اخیر\\):*",
@@ -1193,6 +1200,48 @@ def _handle_request_service(call: types.CallbackQuery):
             bot.send_message(admin_id, "\n".join(admin_message), parse_mode="MarkdownV2")
         except Exception as e:
             logger.error(f"Failed to send new service request to admin {admin_id}: {e}")
+
+def handle_shop_callbacks(call: types.CallbackQuery):
+    """تمام callback های مربوط به فروشگاه دستاوردها را مدیریت می‌کند."""
+    uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
+    
+    if data == "shop:main":
+        user = db.user(uid)
+        user_points = user.get('achievement_points', 0) if user else 0
+        
+        prompt = (
+            f"🛍️ *{escape_markdown('فروشگاه دستاوردها')}*\n\n"
+            f"{escape_markdown('با امتیازهایی که از کسب دستاوردها به دست آورده‌اید، می‌توانید جوایز زیر را خریداری کنید.')}\n\n"
+            f"💰 *{escape_markdown('موجودی امتیاز شما:')} {user_points}*"
+        )
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=menu.achievement_shop_menu(user_points))
+
+    elif data.startswith("shop:buy:"):
+        item_key = data.split(":")[2]
+        from .config import ACHIEVEMENT_SHOP_ITEMS
+        item = ACHIEVEMENT_SHOP_ITEMS.get(item_key)
+        
+        if not item:
+            bot.answer_callback_query(call.id, "❌ آیتم مورد نظر یافت نشد.", show_alert=True)
+            return
+
+        if db.spend_achievement_points(uid, item['cost']):
+            user_uuids = db.uuids(uid)
+            if user_uuids:
+                # جایزه به اولین اکانت کاربر اضافه می‌شود
+                combined_handler.modify_user_on_all_panels(user_uuids[0]['uuid'], add_gb=item['gb'], add_days=item['days'])
+                db.log_shop_purchase(uid, item_key, item['cost'])
+                bot.answer_callback_query(call.id, f"✅ خرید شما با موفقیت انجام و به اکانتتان اضافه شد.", show_alert=True)
+                
+                # رفرش کردن منوی فروشگاه
+                user = db.user(uid)
+                user_points = user.get('achievement_points', 0) if user else 0
+                _safe_edit(uid, msg_id, escape_markdown(f"🛍️ *فروشگاه دستاوردها*\n\nموجودی امتیاز شما: {user_points}"), reply_markup=menu.achievement_shop_menu(user_points))
+        else:
+            bot.answer_callback_query(call.id, "❌ امتیاز شما برای خرید این آیتم کافی نیست.", show_alert=True)
+
+    elif data == "shop:insufficient_points":
+        bot.answer_callback_query(call.id, "❌ امتیاز شما برای خرید این آیتم کافی نیست.", show_alert=False)
 
 # =============================================================================
 # Main Registration Function

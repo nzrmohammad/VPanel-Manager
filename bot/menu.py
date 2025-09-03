@@ -122,13 +122,30 @@ class Menu:
         btn_turkey = types.InlineKeyboardButton(f"🇹🇷 {get_string('btn_cat_tr', lang_code)}", callback_data="show_plans:turkey")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
         btn_payment_methods = types.InlineKeyboardButton(get_string('btn_payment_methods', lang_code), callback_data="show_payment_options")
+        btn_achievement_shop = types.InlineKeyboardButton("🛍️ فروشگاه دستاوردها", callback_data="shop:main")
+
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
         kb.add(btn_turkey, btn_france, btn_germany)
         kb.add(btn_combined)
-        kb.add(btn_payment_methods)
+        kb.add(btn_achievement_shop, btn_payment_methods)
         kb.add(btn_back)
         return kb
-    
+
+    def achievement_shop_menu(self, user_points: int) -> types.InlineKeyboardMarkup:
+            """منوی فروشگاه دستاوردها را با آیتم‌های قابل خرید نمایش می‌دهد."""
+            from .config import ACHIEVEMENT_SHOP_ITEMS
+            kb = types.InlineKeyboardMarkup(row_width=1)
+            
+            for item_key, item_data in ACHIEVEMENT_SHOP_ITEMS.items():
+                is_affordable = user_points >= item_data['cost']
+                emoji = "✅" if is_affordable else "❌"
+                button_text = f"{emoji} {item_data['name']} ({item_data['cost']} امتیاز)"
+                
+                callback_data = f"shop:buy:{item_key}" if is_affordable else "shop:insufficient_points"
+                kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+
+            kb.add(types.InlineKeyboardButton("🔙 بازگشت به سرویس‌ها", callback_data="view_plans"))
+            return kb
 
     def payment_options_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)

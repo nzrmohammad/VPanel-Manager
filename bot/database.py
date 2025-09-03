@@ -46,6 +46,7 @@ class DatabaseManager:
                 add_column_if_not_exists("users", "referred_by_user_id", "INTEGER")
                 add_column_if_not_exists("users", "referral_reward_applied", "INTEGER DEFAULT 0")
                 # <<<<<<<<<<<<<<<< END OF NEW CODE >>>>>>>>>>>>>>>>
+                add_column_if_not_exists("users", "achievement_points", "INTEGER DEFAULT 0")
 
 
                 logger.info("Database schema migration check complete.")
@@ -74,7 +75,8 @@ class DatabaseManager:
                     auto_delete_reports INTEGER DEFAULT 0,
                     referral_code TEXT UNIQUE,
                     referred_by_user_id INTEGER,
-                    referral_reward_applied INTEGER DEFAULT 0
+                    referral_reward_applied INTEGER DEFAULT 0,
+                    achievement_points INTEGER DEFAULT 0        
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,6 +193,14 @@ class DatabaseManager:
                     awarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
                     UNIQUE(user_id, badge_code)
+                );
+                CREATE TABLE IF NOT EXISTS achievement_shop_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    item_key TEXT NOT NULL,
+                    cost INTEGER NOT NULL,
+                    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
@@ -1679,5 +1689,86 @@ class DatabaseManager:
         with self._conn() as c:
             cursor = c.execute("DELETE FROM traffic_transfers WHERE sender_uuid_id = ?", (sender_uuid_id,))
             return cursor.rowcount
+
+    def get_weekly_top_consumers_report(self) -> dict:
+        """
+        گزارشی از پرمصرف‌ترین کاربران هفته و هر روز هفته را برمی‌گرداند.
+        """
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        today = datetime.now(tehran_tz).date()
+        week_start_day = today - timedelta(days=today.weekday() + 1) # شنبه
+        
+        report = {
+            'top_10_overall': [],
+            'top_daily': {}
+        }
+
+        with self._conn() as c:
+            # محاسبه مصرف هفتگی هر کاربر
+            weekly_usage_query = """
+                SELECT
+                    uu.name,
+                    SUM(MAX(s.hiddify_usage_gb) - MIN(s.hiddify_usage_gb)) + SUM(MAX(s.marzban_usage_gb) - MIN(s.marzban_usage_gb)) as total_usage
+                FROM usage_snapshots s
+                JOIN user_uuids uu ON s.uuid_id = uu.id
+                WHERE DATE(s.taken_at) >= ?
+                GROUP BY uu.id, uu.name
+                ORDER BY total_usage DESC
+                LIMIT 10;
+            """
+            rows = c.execute(weekly_usage_query, (week_start_day,)).fetchall()
+            report['top_10_overall'] = [dict(r) for r in rows]
+
+            # محاسبه پرمصرف‌ترین کاربر هر روز
+            for i in range(7):
+                day = week_start_day + timedelta(days=i)
+                day_str = day.strftime('%Y-%m-%d')
+                
+                daily_top_query = """
+                    SELECT
+                        uu.name,
+                        MAX(s.hiddify_usage_gb) - MIN(s.hiddify_usage_gb) as h_usage,
+                        MAX(s.marzban_usage_gb) - MIN(s.marzban_usage_gb) as m_usage
+                    FROM usage_snapshots s
+                    JOIN user_uuids uu ON s.uuid_id = uu.id
+                    WHERE DATE(s.taken_at) = ?
+                    GROUP BY uu.id, uu.name
+                    ORDER BY (h_usage + m_usage) DESC
+                    LIMIT 1;
+                """
+                top_user = c.execute(daily_top_query, (day_str,)).fetchone()
+                if top_user and (top_user['h_usage'] is not None or top_user['m_usage'] is not None):
+                    total_usage = (top_user['h_usage'] or 0) + (top_user['m_usage'] or 0)
+                    if total_usage > 0.01: # حداقل ۱۰ مگابایت مصرف
+                        report['top_daily'][i] = {'name': top_user['name'], 'usage': total_usage}
+        return report
+
+    def add_achievement_points(self, user_id: int, points: int):
+            """امتیاز به حساب یک کاربر اضافه می‌کند."""
+            with self._conn() as c:
+                c.execute("UPDATE users SET achievement_points = achievement_points + ? WHERE user_id = ?", (points, user_id))
+
+    def spend_achievement_points(self, user_id: int, points: int) -> bool:
+        """امتیاز را از حساب کاربر کم می‌کند و موفقیت عملیات را برمی‌گرداند."""
+        with self._conn() as c:
+            current_points = c.execute("SELECT achievement_points FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if current_points and current_points['achievement_points'] >= points:
+                c.execute("UPDATE users SET achievement_points = achievement_points - ? WHERE user_id = ?", (points, user_id))
+                return True
+            return False
+
+    def log_shop_purchase(self, user_id: int, item_key: str, cost: int):
+        """یک خرید از فروشگاه را در دیتابیس ثبت می‌کند."""
+        with self._conn() as c:
+            c.execute("INSERT INTO achievement_shop_log (user_id, item_key, cost) VALUES (?, ?, ?)", (user_id, item_key, cost))
+
+    def get_achievement_leaderboard(self, limit: int = 10) -> list[dict]:
+        """لیستی از کاربران برتر بر اساس امتیاز دستاوردها را برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT user_id, first_name, achievement_points FROM users WHERE achievement_points > 0 ORDER BY achievement_points DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+            return [dict(r) for r in rows]
 
 db = DatabaseManager()

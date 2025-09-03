@@ -155,6 +155,76 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
 
     return "\n".join(report_lines)
 
+def fmt_weekly_admin_summary(report_data: dict) -> str:
+    """گزارش هفتگی پرمصرف‌ترین‌ها را برای ادمین فرمت‌بندی می‌کند."""
+    
+    lines = ["🏆 *گزارش هفتگی پرمصرف‌ترین کاربران*"]
+    lines.append("`──────────────────`")
+    lines.append("🥇 *۱۰ کاربر برتر این هفته:*")
+
+    if not report_data.get('top_10_overall'):
+        lines.append("_هیچ مصرفی در این هفته ثبت نشده است._")
+    else:
+        for i, user in enumerate(report_data['top_10_overall']):
+            usage_str = format_daily_usage(user['total_usage'])
+            lines.append(f"`{i+1}.` *{escape_markdown(user['name'])}*: {escape_markdown(usage_str)}")
+
+    lines.append("\n`──────────────────`")
+    lines.append("🔥 *قهرمان هر روز هفته:*")
+
+    day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+    if not report_data.get('top_daily'):
+        lines.append("_هنوز داده‌ای برای نمایش قهرمان روزانه وجود ندارد._")
+    else:
+        for i, day_name in enumerate(day_names):
+            top_user = report_data['top_daily'].get(i)
+            if top_user:
+                usage_str = format_daily_usage(top_user['usage'])
+                lines.append(f"*{escape_markdown(day_name)}:* {escape_markdown(top_user['name'])} \\({escape_markdown(usage_str)}\\)")
+            else:
+                lines.append(f"*{escape_markdown(day_name)}:* _مصرفی ثبت نشده_")
+    
+    return "\n".join(lines)
+
+def fmt_achievement_leaderboard(leaderboard_data: list) -> str:
+    """گزارش رتبه‌بندی کاربران بر اساس امتیاز را برای ادمین فرمت‌بندی می‌کند."""
+    lines = ["🎖️ *رتبه‌بندی هفتگی کاربران بر اساس امتیاز*"]
+    lines.append("`──────────────────`")
+    
+    if not leaderboard_data:
+        lines.append("_هنوز هیچ کاربری امتیازی کسب نکرده است._")
+        return "\n".join(lines)
+        
+    for i, user in enumerate(leaderboard_data):
+        name = escape_markdown(user.get('first_name', 'کاربر ناشناس'))
+        points = user.get('achievement_points', 0)
+        
+        emoji = ""
+        if i == 0: emoji = "🥇"
+        elif i == 1: emoji = "🥈"
+        elif i == 2: emoji = "🥉"
+        else: emoji = f"`{i+1}.`"
+        
+        lines.append(f"{emoji} *{name}*: {points} امتیاز")
+        
+    return "\n".join(lines)
+
+def fmt_lottery_participants_list(participants: list) -> str:
+    """لیست شرکت‌کنندگان در قرعه‌کشی را برای ادمین فرمت‌بندی می‌کند."""
+    lines = ["🍀 *لیست هفتگی واجدین شرایط قرعه‌کشی ماهانه*"]
+    lines.append("`──────────────────`")
+    
+    if not participants:
+        lines.append("_در این هفته هیچ کاربری واجد شرایط نشده است._")
+        return "\n".join(lines)
+        
+    for i, user in enumerate(participants):
+        name = escape_markdown(user.get('first_name', 'کاربر ناشناس'))
+        badge_count = user.get('lucky_badge_count', 0)
+        user_id = user.get('user_id', 'N/A')
+        lines.append(f"`{i+1}.` *{name}* \\(`{user_id}`\\) - {badge_count} نشان")
+        
+    return "\n".join(lines)
 
 def fmt_users_list(users: list, list_type: str, page: int) -> str:
     title_map = {

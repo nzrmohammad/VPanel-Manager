@@ -11,7 +11,7 @@ from . import combined_handler
 from .database import db
 from .utils import escape_markdown, format_daily_usage
 from .menu import menu
-from .admin_formatters import fmt_admin_report, fmt_online_users_list
+from .admin_formatters import fmt_admin_report, fmt_online_users_list, fmt_weekly_admin_summary, fmt_achievement_leaderboard, fmt_lottery_participants_list
 from .user_formatters import fmt_user_report, fmt_user_weekly_report
 from .config import (
     DAILY_REPORT_TIME,
@@ -26,7 +26,9 @@ from .config import (
     EMOJIS,
     DAILY_USAGE_ALERT_THRESHOLD_GB,
     WELCOME_MESSAGE_DELAY_HOURS,
-    ACHIEVEMENTS
+    ACHIEVEMENTS,
+    ENABLE_LUCKY_LOTTERY,
+    LUCKY_LOTTERY_BADGE_REQUIREMENT,
 )
 
 logger = logging.getLogger(__name__)
@@ -327,16 +329,31 @@ class SchedulerManager:
             except Exception as e:
                 logger.error(f"SCHEDULER (Weekly): Failure for user {user_id}: {e}", exc_info=True)
 
+    def _send_weekly_admin_summary(self) -> None:
+        """گزارش هفتگی پرمصرف‌ترین کاربران را برای ادمین‌ها ارسال می‌کند."""
+        logger.info("SCHEDULER: Sending weekly admin summary report.")
+        try:
+            report_data = db.get_weekly_top_consumers_report()
+            report_text = fmt_weekly_admin_summary(report_data)
+
+            for admin_id in ADMIN_IDS:
+                try:
+                    self.bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
+                except Exception as e:
+                    logger.error(f"Failed to send weekly admin summary to {admin_id}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to generate weekly admin summary: {e}", exc_info=True)
+
     def _check_achievements(self) -> None:
         """
-        شرایط دریافت دستاوردها را برای تمام کاربران بررسی می‌کند.
+        شرایط دریافت دستاوردها را برای تمام کاربران بررسی کرده و امتیاز اهدا می‌کند.
         """
         logger.info("SCHEDULER: Starting daily achievements check job.")
         all_user_ids = list(db.get_all_user_ids())
 
-        # برای نشان خوش‌شانس، چند کاربر را به صورت تصادفی انتخاب می‌کنیم
         import random
-        lucky_users = random.sample(all_user_ids, k=min(3, len(all_user_ids))) # حداکثر ۳ نفر در روز
+        # حداکثر به ۳ کاربر یا به تعداد کل کاربران (اگر کمتر از ۳ نفر بودند) نشان خوش‌شانس می‌دهد
+        lucky_users = random.sample(all_user_ids, k=min(3, len(all_user_ids)))
 
         for user_id in all_user_ids:
             try:
@@ -365,22 +382,25 @@ class SchedulerManager:
                         self._notify_user_achievement(user_id, 'vip_friend')
 
                 # --- ۴. بررسی نشان‌های مبتنی بر مصرف ---
-                # این کوئری‌ها ممکن است کمی سنگین باشند، بنابراین در آینده می‌توان بهینه‌تر شوند
                 monthly_usage = db.get_total_usage_in_last_n_days(uuid_id, 30)
-                    
-                # نشان "مصرف‌کننده حرفه‌ای"
                 if monthly_usage > 200:
                     if db.add_achievement(user_id, 'pro_consumer'):
                         self._notify_user_achievement(user_id, 'pro_consumer')
                     
-                # نشان "شب‌زنده‌دار"
-                if monthly_usage > 10: # حداقل ۱۰ گیگ مصرف برای بررسی
+                if monthly_usage > 10:
                     night_stats = db.get_night_usage_stats_in_last_n_days(uuid_id, 30)
                     if night_stats['total'] > 0 and (night_stats['night'] / night_stats['total']) > 0.5:
                         if db.add_achievement(user_id, 'night_owl'):
                             self._notify_user_achievement(user_id, 'night_owl')
+                
+                # --- ۵. بررسی دستاورد ترکیبی "اسطوره" ---
+                user_badges = db.get_user_achievements(user_id)
+                required_for_legend = {'veteran', 'loyal_supporter', 'pro_consumer'}
+                if required_for_legend.issubset(set(user_badges)):
+                    if db.add_achievement(user_id, 'legend'):
+                        self._notify_user_achievement(user_id, 'legend')
 
-                # --- ۵. اهدای نشان "خوش‌شانس" ---
+                # --- ۶. اهدای نشان "خوش‌شانس" ---
                 if user_id in lucky_users:
                     if db.add_achievement(user_id, 'lucky_one'):
                         self._notify_user_achievement(user_id, 'lucky_one')
@@ -390,18 +410,110 @@ class SchedulerManager:
 
 
     def _notify_user_achievement(self, user_id: int, badge_code: str):
-        """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید."""
+        """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""
         badge = ACHIEVEMENTS.get(badge_code)
-        if not badge:
-            return
+        if not badge: return
 
+        points = badge.get("points", 0)
+        db.add_achievement_points(user_id, points)
+        
         message = (
             f"{badge['icon']} *شما یک نشان جدید دریافت کردید\\!* {badge['icon']}\n\n"
-            f"تبریک\\! شما موفق به کسب نشان «*{escape_markdown(badge['name'])}*» شدید\\.\n\n"
+            f"تبریک\\! شما موفق به کسب نشان «*{escape_markdown(badge['name'])}*» شدید و *{points} امتیاز* دریافت کردید\\.\n\n"
             f"_{escape_markdown(badge['description'])}_\n\n"
-            f"این نشان به پروفایل شما اضافه شد\\."
+            f"این نشان و امتیاز آن به پروفایل شما اضافه شد\\."
         )
         self._send_warning_message(user_id, message)
+
+    def _send_achievement_leaderboard(self) -> None:
+        """گزارش هفتگی رتبه‌بندی کاربران بر اساس امتیاز دستاوردها را برای ادمین‌ها ارسال می‌کند."""
+        logger.info("SCHEDULER: Sending weekly achievement leaderboard.")
+        try:
+            leaderboard_data = db.get_achievement_leaderboard()
+            report_text = fmt_achievement_leaderboard(leaderboard_data) # این تابع را در گام بعد می‌سازیم
+            
+            for admin_id in ADMIN_IDS:
+                self._notify_user(admin_id, report_text)
+        except Exception as e:
+            logger.error(f"Failed to generate or send achievement leaderboard: {e}", exc_info=True)
+
+    def _run_lucky_lottery(self) -> None:
+        """قرعه‌کشی ماهانه خوش‌شانسی را در اولین جمعه ماه شمسی اجرا می‌کند."""
+        
+        # --- ✅ منطق جدید برای تشخیص اولین جمعه ماه شمسی ---
+        today_jalali = jdatetime.datetime.now(self.tz)
+        
+        # جمعه در jdatetime روز ۶ است (شنبه=۰)
+        if today_jalali.weekday() != 6:
+            return # اگر امروز جمعه نیست، خارج شو
+            
+        # اگر روز ماه بزرگتر از ۷ باشد، قطعاً اولین جمعه نیست
+        if today_jalali.day > 7:
+            return
+        # ----------------------------------------------------
+
+        if not ENABLE_LUCKY_LOTTERY:
+            return
+
+        logger.info("SCHEDULER: Running monthly lucky lottery.")
+        participants = db.get_lucky_lottery_participants(LUCKY_LOTTERY_BADGE_REQUIREMENT)
+        
+        if not participants:
+            logger.info("LUCKY LOTTERY: No eligible participants this month.")
+            # به ادمین‌ها اطلاع می‌دهیم که قرعه‌کشی به دلیل نبود شرکت‌کننده انجام نشد
+            for admin_id in ADMIN_IDS:
+                self._notify_user(admin_id, "ℹ️ قرعه‌کشی ماهانه خوش‌شانسی به دلیل عدم وجود شرکت‌کننده واجد شرایط، این ماه انجام نشد.")
+            return
+
+        import random
+        winner = random.choice(participants)
+        winner_id = winner['user_id']
+        winner_name = escape_markdown(winner['first_name'])
+        
+        badge = ACHIEVEMENTS.get("lucky_one")
+        if badge and badge.get("points"):
+            points_reward = badge.get("points") * 10 
+            db.add_achievement_points(winner_id, points_reward)
+
+            winner_message = (
+                f"🎉 **شما برنده قرعه‌کشی ماهانه خوش‌شانسی شدید!** 🎉\n\n"
+                f"تبریک! به همین مناسبت، *{points_reward} امتیاز* به حساب شما اضافه شد.\n\n"
+                f"می‌توانید از این امتیاز در «فروشگاه دستاوردها» استفاده کنید."
+            )
+            self._send_warning_message(winner_id, winner_message)
+
+            admin_message = (
+                f"🏆 *نتیجه قرعه‌کشی ماهانه خوش‌شانسی*\n\n"
+                f"برنده این ماه: *{winner_name}* \\(`{winner_id}`\\)\n"
+                f"جایزه: *{points_reward} امتیاز* با موفقیت به ایشان اهدا شد."
+            )
+            for admin_id in ADMIN_IDS:
+                self._notify_user(admin_id, admin_message)
+
+    def _send_lucky_badge_summary(self) -> None:
+        """گزارش تعداد نشان خوش‌شانس را برای کاربران و لیست شرکت‌کنندگان را برای ادمین ارسال می‌کند."""
+        if not ENABLE_LUCKY_LOTTERY:
+            return
+
+        logger.info("SCHEDULER: Sending weekly lucky badge summary.")
+        participants = db.get_lucky_lottery_participants(LUCKY_LOTTERY_BADGE_REQUIREMENT)
+
+        # ارسال پیام به کاربران واجد شرایط
+        for user in participants:
+            user_id = user['user_id']
+            badge_count = user['lucky_badge_count']
+            message = (
+                f"🍀 *گزارش هفتگی خوش‌شانسی شما*\n\n"
+                f"شما در این ماه *{badge_count}* بار نشان خوش‌شانس دریافت کرده‌اید و در قرعه‌کشی شرکت داده خواهید شد.\n\n"
+                f"با آرزوی موفقیت!"
+            )
+            self._send_warning_message(user_id, message)
+
+        # ارسال لیست کامل شرکت‌کنندگان به ادمین‌ها
+        admin_report_text = fmt_lottery_participants_list(participants)
+        for admin_id in ADMIN_IDS:
+            self._notify_user(admin_id, admin_report_text)
+
 
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
@@ -426,7 +538,9 @@ class SchedulerManager:
         schedule.every(1).hours.at(":01").do(self._hourly_snapshots)
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
+        schedule.every().sunday.at("22:00", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
+        schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements)

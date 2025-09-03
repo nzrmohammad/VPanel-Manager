@@ -949,15 +949,16 @@ def handle_reset_transfer_cooldown(call, params):
     deleted_count = db.delete_transfer_history(uuid_id_to_reset)
     
     if deleted_count > 0:
-        bot.answer_callback_query(call.id, f"✅ محدودیت انتقال برای کاربر «{info.get('name', '')}» ریست شد.", show_alert=True)
+        feedback_text = f"\n\n*✅ محدودیت انتقال برای این کاربر با موفقیت ریست شد\\.*"
     else:
-        bot.answer_callback_query(call.id, "ℹ️ این کاربر تاریخچه انتقالی برای ریست کردن نداشت.", show_alert=True)
-
-    # --- ✅ بخش اصلاح شده برای بازگشت صحیح ---
-    # پارامترها را برای فراخوانی صحیح تابع اطلاعات کاربر، بازسازی می‌کنیم
+        feedback_text = f"\n\n*ℹ️ این کاربر تاریخچه انتقالی برای ریست کردن نداشت\\.*"
+    
+    db_user = db.get_bot_user_by_uuid(info['uuid'])
+    text_to_show = fmt_admin_user_summary(info, db_user) + feedback_text
+    
     panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
-    new_params_for_summary = [panel_short, identifier]
-    if context:
-        new_params_for_summary.append(context)
-        
-    handle_show_user_summary(call, new_params_for_summary)
+    back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
+    kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel_short, back_callback=back_callback)
+    _safe_edit(call.from_user.id, call.message.message_id, text_to_show, reply_markup=kb)
+    
+    bot.answer_callback_query(call.id, "✅ عملیات انجام شد.")
