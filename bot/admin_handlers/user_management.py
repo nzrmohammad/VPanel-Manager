@@ -7,7 +7,7 @@ from .. import combined_handler
 from ..admin_formatters import fmt_admin_user_summary, fmt_user_payment_history
 from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans
 
-from ..language import get_string
+from ..config import LOYALTY_REWARDS, REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -516,6 +516,9 @@ def handle_log_payment(call, params):
             f"✅ پرداخت شما برای اکانت *{user_name}* با موفقیت ثبت و سرویس شما *{action_text}*\\."
         )
         _notify_user(user_telegram_id, notification_text)
+        if previous_payments_count == 0:
+            _check_and_apply_referral_reward(user_telegram_id)
+
 
         panel_for_menu = 'hiddify' if bool(info.get('breakdown', {}).get('hiddify')) else 'marzban'
         back_callback = "admin:search_menu" if context == "search" else None
@@ -861,3 +864,69 @@ def handle_delete_devices_action(call, params):
     # 3. صفحه اطلاعات کاربر را با پارامترهای صحیح دوباره فراخوانی و به‌روزرسانی می‌کنیم
     handle_show_user_summary(call, new_params_for_summary)
     # --- ✨ پایان اصلاح اصلی ---
+
+def _check_and_apply_loyalty_reward(user_telegram_id: int, uuid_id: int, user_uuid: str, user_name: str):
+    """
+    وضعیت وفاداری کاربر را بررسی کرده و در صورت واجد شرایط بودن، پاداش را اعمال می‌کند.
+    """
+    if not LOYALTY_REWARDS:
+        return
+
+    try:
+        # تعداد کل پرداخت‌های ثبت‌شده برای این اکانت را می‌شماریم
+        payment_count = len(db.get_user_payment_history(uuid_id))
+        
+        # بررسی می‌کنیم آیا شماره تمدید فعلی، در لیست پاداش‌های ما وجود دارد یا نه
+        reward = LOYALTY_REWARDS.get(payment_count)
+
+        if reward:
+            add_gb = reward.get("gb", 0)
+            add_days = reward.get("days", 0)
+
+            # اعمال تغییرات (افزودن حجم و روز) به تمام پنل‌های کاربر
+            if combined_handler.modify_user_on_all_panels(user_uuid, add_gb=add_gb, add_days=add_days):
+                # ساخت پیام تبریک برای ارسال به کاربر
+                notification_text = (
+                    f"🎉 *هدیه وفاداری* 🎉\n\n"
+                    f"از همراهی صمیمانه شما سپاسگزاریم\\! به مناسبت *{payment_count}* امین تمدید سرویس، هدیه زیر برای شما فعال شد:\n\n"
+                    f"🎁 `{add_gb} GB` حجم و `{add_days}` روز اعتبار اضافی\n\n"
+                    f"این هدیه به صورت خودکار به اکانت شما اضافه شد\\. امیدواریم از آن لذت ببرید\\."
+                )
+                _notify_user(user_telegram_id, notification_text)
+                logger.info(f"Applied loyalty reward to user_id {user_telegram_id} for {payment_count} payments.")
+
+    except Exception as e:
+        logger.error(f"Error checking/applying loyalty reward for user_id {user_telegram_id}: {e}", exc_info=True)
+
+
+def _check_and_apply_referral_reward(user_telegram_id: int):
+    """بررسی و اعمال پاداش معرفی پس از اولین پرداخت."""
+    try:
+        referrer_info = db.get_referrer_info(user_telegram_id)
+        # پاداش فقط در صورتی اعمال می‌شود که کاربر معرف داشته باشد و قبلاً پاداش نگرفته باشد
+        if referrer_info and not referrer_info.get('referral_reward_applied'):
+            referrer_id = referrer_info['referred_by_user_id']
+
+            # پیدا کردن UUID های هر دو کاربر
+            new_user_uuid = db.uuids(user_telegram_id)[0]['uuid']
+            referrer_uuid = db.uuids(referrer_id)[0]['uuid']
+
+            # اعمال پاداش به هر دو
+            combined_handler.modify_user_on_all_panels(new_user_uuid, add_gb=REFERRAL_REWARD_GB, add_days=REFERRAL_REWARD_DAYS)
+            combined_handler.modify_user_on_all_panels(referrer_uuid, add_gb=REFERRAL_REWARD_GB, add_days=REFERRAL_REWARD_DAYS)
+
+            # ثبت اعمال پاداش در دیتابیس
+            db.mark_referral_reward_as_applied(user_telegram_id)
+
+            # ارسال پیام تبریک
+            new_user_name = escape_markdown(db.user(user_telegram_id).get('first_name', ''))
+            referrer_name = escape_markdown(db.user(referrer_id).get('first_name', ''))
+
+            _notify_user(user_telegram_id, f"🎁 هدیه اولین خرید شما ({REFERRAL_REWARD_GB}GB) به دلیل معرفی توسط *{referrer_name}* فعال شد\\!")
+            _notify_user(referrer_id, f"🎉 تبریک\\! کاربر *{new_user_name}* اولین خرید خود را انجام داد و هدیه معرفی ({REFERRAL_REWARD_GB}GB) برای شما فعال شد\\.")
+
+            logger.info(f"Referral reward applied for user {user_telegram_id} and referrer {referrer_id}.")
+
+    except Exception as e:
+        logger.error(f"Error applying referral reward for user {user_telegram_id}: {e}", exc_info=True)
+

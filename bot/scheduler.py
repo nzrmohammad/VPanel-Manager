@@ -25,7 +25,8 @@ from .config import (
     ONLINE_REPORT_UPDATE_HOURS,
     EMOJIS,
     DAILY_USAGE_ALERT_THRESHOLD_GB,
-    WELCOME_MESSAGE_DELAY_HOURS
+    WELCOME_MESSAGE_DELAY_HOURS,
+    ACHIEVEMENTS
 )
 
 logger = logging.getLogger(__name__)
@@ -326,6 +327,82 @@ class SchedulerManager:
             except Exception as e:
                 logger.error(f"SCHEDULER (Weekly): Failure for user {user_id}: {e}", exc_info=True)
 
+    def _check_achievements(self) -> None:
+        """
+        شرایط دریافت دستاوردها را برای تمام کاربران بررسی می‌کند.
+        """
+        logger.info("SCHEDULER: Starting daily achievements check job.")
+        all_user_ids = list(db.get_all_user_ids())
+
+        # برای نشان خوش‌شانس، چند کاربر را به صورت تصادفی انتخاب می‌کنیم
+        import random
+        lucky_users = random.sample(all_user_ids, k=min(3, len(all_user_ids))) # حداکثر ۳ نفر در روز
+
+        for user_id in all_user_ids:
+            try:
+                user_uuids = db.uuids(user_id)
+                if not user_uuids:
+                    continue
+
+                uuid_id = user_uuids[0]['id'] # از اولین UUID کاربر استفاده می‌کنیم
+
+                # --- ۱. بررسی نشان "کهنه‌کار" ---
+                first_uuid_creation_date = user_uuids[0]['created_at']
+                if (datetime.now(pytz.utc) - first_uuid_creation_date).days >= 365:
+                    if db.add_achievement(user_id, 'veteran'):
+                        self._notify_user_achievement(user_id, 'veteran')
+                    
+                # --- ۲. بررسی نشان "حامی وفادار" ---
+                payment_count = len(db.get_user_payment_history(uuid_id))
+                if payment_count > 5:
+                    if db.add_achievement(user_id, 'loyal_supporter'):
+                        self._notify_user_achievement(user_id, 'loyal_supporter')
+
+                # --- ۳. بررسی نشان "دوست VIP" ---
+                user_record = db.uuid_by_id(user_id, uuid_id)
+                if user_record and user_record.get('is_vip'):
+                    if db.add_achievement(user_id, 'vip_friend'):
+                        self._notify_user_achievement(user_id, 'vip_friend')
+
+                # --- ۴. بررسی نشان‌های مبتنی بر مصرف ---
+                # این کوئری‌ها ممکن است کمی سنگین باشند، بنابراین در آینده می‌توان بهینه‌تر شوند
+                monthly_usage = db.get_total_usage_in_last_n_days(uuid_id, 30)
+                    
+                # نشان "مصرف‌کننده حرفه‌ای"
+                if monthly_usage > 200:
+                    if db.add_achievement(user_id, 'pro_consumer'):
+                        self._notify_user_achievement(user_id, 'pro_consumer')
+                    
+                # نشان "شب‌زنده‌دار"
+                if monthly_usage > 10: # حداقل ۱۰ گیگ مصرف برای بررسی
+                    night_stats = db.get_night_usage_stats_in_last_n_days(uuid_id, 30)
+                    if night_stats['total'] > 0 and (night_stats['night'] / night_stats['total']) > 0.5:
+                        if db.add_achievement(user_id, 'night_owl'):
+                            self._notify_user_achievement(user_id, 'night_owl')
+
+                # --- ۵. اهدای نشان "خوش‌شانس" ---
+                if user_id in lucky_users:
+                    if db.add_achievement(user_id, 'lucky_one'):
+                        self._notify_user_achievement(user_id, 'lucky_one')
+
+            except Exception as e:
+                logger.error(f"Error checking achievements for user_id {user_id}: {e}")
+
+
+    def _notify_user_achievement(self, user_id: int, badge_code: str):
+        """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید."""
+        badge = ACHIEVEMENTS.get(badge_code)
+        if not badge:
+            return
+
+        message = (
+            f"{badge['icon']} *شما یک نشان جدید دریافت کردید\\!* {badge['icon']}\n\n"
+            f"تبریک\\! شما موفق به کسب نشان «*{escape_markdown(badge['name'])}*» شدید\\.\n\n"
+            f"_{escape_markdown(badge['description'])}_\n\n"
+            f"این نشان به پروفایل شما اضافه شد\\."
+        )
+        self._send_warning_message(user_id, message)
+
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
         if datetime.now(self.tz).day == 1:
@@ -352,6 +429,7 @@ class SchedulerManager:
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
+        schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements)
         schedule.every(8).hours.do(self._cleanup_old_reports)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
         

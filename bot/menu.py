@@ -18,12 +18,15 @@ class Menu:
         btn_settings = types.InlineKeyboardButton(f"{EMOJIS['bell']} {get_string('settings', lang_code)}", callback_data="settings")
         btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
+        btn_doctor = types.InlineKeyboardButton(f"🩺 پزشک اتصال", callback_data="connection_doctor")
         btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
+        btn_achievements = types.InlineKeyboardButton(f"🏆 دستاوردها", callback_data="achievements")
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_settings, btn_services)
         kb.add(btn_birthday, btn_support)
-        kb.add(btn_tutorials)
+        kb.add(btn_doctor, btn_tutorials)
+        kb.add(btn_achievements)
         kb.add(btn_web_login)
 
         if is_admin:
@@ -65,6 +68,9 @@ class Menu:
             types.InlineKeyboardButton(f"🗑 {get_string('btn_delete', lang_code)}", callback_data=f"del_{uuid_id}"),
             types.InlineKeyboardButton(f"📈 {get_string('btn_usage_history', lang_code)}", callback_data=f"usage_history_{uuid_id}")
         )
+        from .config import ENABLE_TRAFFIC_TRANSFER
+        if ENABLE_TRAFFIC_TRANSFER:
+            kb.add(types.InlineKeyboardButton(f"💸 انتقال ترافیک", callback_data=f"transfer_start_{uuid_id}"))
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('btn_back_to_list', lang_code)}", callback_data="manage"))
         return kb
 

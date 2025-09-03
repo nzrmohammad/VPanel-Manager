@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 import pytz
 from bot.database import db
 from bot.combined_handler import get_combined_user_info
-from bot.utils import to_shamsi, days_until_next_birthday, load_service_plans, parse_volume_string
+from bot.utils import to_shamsi, days_until_next_birthday, load_service_plans, parse_volume_string, get_loyalty_progress_message
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,7 @@ class UserService:
             
             uuid_id = uuid_record['id']
             user_basic = db.user(uuid_record.get('user_id')) or {}
+            user_id = user_basic.get('user_id')
             combined_info = get_combined_user_info(uuid) or {}
             
             payment_history = db.get_user_payment_history(uuid_id)
@@ -153,6 +155,9 @@ class UserService:
             
             # فراخوانی تابع اصلاح شده
             recommended_plan, actual_usage = UserService.recommend_plan(current_usage)
+            loyalty_message = get_loyalty_progress_message(user_id) if user_id else None
+            achievements = db.get_user_achievements(user_id) if user_id else []
+
 
             return {
                 "is_active": is_active,
@@ -175,7 +180,9 @@ class UserService:
                 **UserService.get_birthday_info(user_basic),
                 "payment_history": payment_history,
                 "recommended_plan": recommended_plan,
-                "actual_last_30_days_usage": actual_usage
+                "actual_last_30_days_usage": actual_usage,
+                "loyalty_progress_message": loyalty_message,
+                "achievements": achievements
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)

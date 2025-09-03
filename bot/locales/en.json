@@ -183,5 +183,8 @@
   "app_v2rayn": "V2rayN",
   "app_shadowrocket": "Shadowrocket (Paid)",
   "app_streisand": "Streisand (Recommended)",
-  "btn_cat_tr": "Turkey Services"
+  "btn_cat_tr": "Turkey Services",
+  "welcome_new_user": "<b>Welcome!</b> 👋\n\nPlease choose one of the options below to get started:",
+  "btn_have_service": "I have a service (Enter UUID)",
+  "btn_request_service": "Request New Service / Consultation"
 }

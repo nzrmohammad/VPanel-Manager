@@ -40,6 +40,29 @@
         <div class="user-info"><i class="ri-user-line"></i> {{ user.username }}</div>
         <a href="{{ url_for('user.buy_service_page', uuid=uuid) }}" class="btn-renew"><i class="ri-shopping-cart-line"></i> تمدید سرویس</a>
     </div>
+
+    {% if user.loyalty_progress_message %}
+    <div class="info-card" style="margin-top: 15px; background: linear-gradient(135deg, rgba(217, 119, 6, 0.1), rgba(245, 158, 11, 0.05)); border-color: rgba(217, 119, 6, 0.3);">
+        <div class="card-header" style="color: #b45309;"><i class="ri-award-line icon"></i><span>مسیر وفاداری شما</span></div>
+        <div class="card-content" style="font-size: 0.95rem; font-weight: 500; line-height: 1.8; color: #78350f;">
+            {{ user.loyalty_progress_message | safe }}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if user.achievements %}
+    <div class="info-card" style="margin-top: 15px;">
+        <div class="card-header"><i class="ri-medal-line icon"></i><span>نشان‌های افتخار شما</span></div>
+        <div class="card-content" style="display: flex; gap: 1rem; font-size: 2rem;">
+            {% for badge_code in user.achievements %}
+                {% set badge = ACHIEVEMENTS.get(badge_code) %}
+                {% if badge %}
+                    <span title="{{ badge.name }}: {{ badge.description }}">{{ badge.icon }}</span>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     
     {% macro format_date_numeric(shamsi_date_str) -%}
         {% set month_map = {'فروردین': '01', 'اردیبهشت': '02', 'خرداد': '03', 'تیر': '04', 'مرداد': '05', 'شهریور': '06', 'مهر': '07', 'آبان': '08', 'آذر': '09', 'دی': '10', 'بهمن': '11', 'اسفند': '12'} %}

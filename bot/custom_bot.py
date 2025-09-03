@@ -11,11 +11,12 @@ from .bot_instance import bot, admin_conversations
 from .config import LOG_LEVEL, ADMIN_IDS, BOT_TOKEN
 from .database import db
 from .scheduler import SchedulerManager
-from .user_handlers import register_user_handlers
+from .user_handlers import register_user_handlers, initialize_user_handlers # <-- Add initialize_user_handlers
 from .admin_router import register_admin_handlers 
 from .callback_router import register_callback_router
 from .utils import initialize_utils
 from .inline_handlers import register_inline_handlers
+
 
 logger = logging.getLogger(__name__)
 # bot is initialized here but the instance from bot_instance is used for consistency
@@ -78,8 +79,8 @@ class HiddifyBot:
         try:
             logger.info("Registering handlers ...")
             initialize_utils(self.bot)
+            initialize_user_handlers(self.bot, admin_conversations)
             register_user_handlers(self.bot)
-            # ✅ --- FIX: Pass the scheduler instance as an argument ---
             register_admin_handlers(self.bot, self.scheduler)
             # --------------------------------------------------------
             register_callback_router(self.bot)

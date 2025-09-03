@@ -3,12 +3,13 @@ import json
 import logging
 import os
 from datetime import datetime, date, timedelta
-from typing import Union, Optional, Dict
+from typing import Union, Optional, Dict, Any
 import pytz
 import jdatetime
 from .config import PROGRESS_COLORS
 from .database import db
 import urllib.parse
+from .config import LOYALTY_REWARDS
 
 
 logger = logging.getLogger(__name__)
@@ -508,3 +509,43 @@ def save_service_plans(plans: list) -> bool:
     except Exception as e:
         logger.error(f"CRITICAL ERROR: Failed to save 'plans.json'. Error: {e}")
         return False
+
+
+def get_loyalty_progress_message(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    اطلاعات پیشرفت کاربر در برنامه وفاداری را به صورت دیکشنری برمی‌گرداند.
+    """
+    if not LOYALTY_REWARDS:
+        return None
+
+    try:
+        user_uuids = db.uuids(user_id)
+        if not user_uuids:
+            return None
+        
+        uuid_id = user_uuids[0]['id']
+        payment_count = len(db.get_user_payment_history(uuid_id))
+
+        next_reward_tier = 0
+        next_reward_info = None
+        sorted_tiers = sorted(LOYALTY_REWARDS.keys())
+        
+        for tier in sorted_tiers:
+            if payment_count < tier:
+                next_reward_tier = tier
+                next_reward_info = LOYALTY_REWARDS[tier]
+                break
+        
+        if not next_reward_info:
+            return None
+
+        return {
+            "payment_count": payment_count,
+            "renewals_left": next_reward_tier - payment_count,
+            "gb_reward": next_reward_info.get("gb", 0),
+            "days_reward": next_reward_info.get("days", 0)
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating loyalty progress data for user_id {user_id}: {e}")
+        return None

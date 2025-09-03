@@ -228,10 +228,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // User Cell
             const userCell = document.createElement('td');
             const userButton = document.createElement('button');
-            userButton.className = 'text-btn user-details-btn';
-            userButton.textContent = `${statusEmoji} ${user.name || 'ناشناس'}`;
+            // تعیین آیکون وفاداری بر اساس تعداد پرداخت
+            let loyaltyIcon = '';
+            if (user.payment_count >= 10) {
+                loyaltyIcon = '💎';
+            } else if (user.payment_count >= 6) {
+                loyaltyIcon = '🥇';
+            } else if (user.payment_count >= 3) {
+                loyaltyIcon = '⭐';
+            }
+            // نمایش نام، آیکون و تعداد پرداخت
+            userButton.textContent = `${statusEmoji} ${user.name || 'ناشناس'} ${loyaltyIcon} (${user.payment_count || 0} پرداخت)`;
             userButton.addEventListener('click', () => populateDetailsModal(user));
             userCell.appendChild(userButton);
+            // (<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>)
 
             // Panel Cell
             const panelCell = document.createElement('td');

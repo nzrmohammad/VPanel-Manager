@@ -41,6 +41,11 @@ class DatabaseManager:
                 add_column_if_not_exists("users", "weekly_reports", "INTEGER DEFAULT 1")
                 # --- END: New Columns ---
                 add_column_if_not_exists("user_uuids", "renewal_reminder_sent", "INTEGER DEFAULT 0")
+                            # <<<<<<<<<<<<<<<< START OF NEW CODE >>>>>>>>>>>>>>>>
+                add_column_if_not_exists("users", "referral_code", "TEXT UNIQUE")
+                add_column_if_not_exists("users", "referred_by_user_id", "INTEGER")
+                add_column_if_not_exists("users", "referral_reward_applied", "INTEGER DEFAULT 0")
+                # <<<<<<<<<<<<<<<< END OF NEW CODE >>>>>>>>>>>>>>>>
 
 
                 logger.info("Database schema migration check complete.")
@@ -66,7 +71,10 @@ class DatabaseManager:
                     admin_note TEXT,
                     lang_code TEXT DEFAULT 'fa',
                     weekly_reports INTEGER DEFAULT 1,
-                    auto_delete_reports INTEGER DEFAULT 0
+                    auto_delete_reports INTEGER DEFAULT 0,
+                    referral_code TEXT UNIQUE,
+                    referred_by_user_id INTEGER,
+                    referral_reward_applied INTEGER DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +173,24 @@ class DatabaseManager:
                     api_token2 TEXT, -- Marzban Password (NULL for Hiddify)
                     is_active INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS traffic_transfers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sender_uuid_id INTEGER NOT NULL,
+                    receiver_uuid_id INTEGER NOT NULL,
+                    panel_type TEXT NOT NULL,
+                    amount_gb REAL NOT NULL,
+                    transferred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(sender_uuid_id) REFERENCES user_uuids(id) ON DELETE CASCADE,
+                    FOREIGN KEY(receiver_uuid_id) REFERENCES user_uuids(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS user_achievements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    badge_code TEXT NOT NULL, -- e.g., 'veteran', 'pro_consumer'
+                    awarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                    UNIQUE(user_id, badge_code)
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
@@ -1451,5 +1477,190 @@ class DatabaseManager:
         with self._conn() as c:
             cursor = c.execute("DELETE FROM client_user_agents WHERE uuid_id = ?", (uuid_id,))
             return cursor.rowcount
+
+    def log_traffic_transfer(self, sender_uuid_id: int, receiver_uuid_id: int, panel_type: str, amount_gb: float):
+        """یک رکورد جدید برای انتقال ترافیک ثبت می‌کند."""
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO traffic_transfers (sender_uuid_id, receiver_uuid_id, panel_type, amount_gb, transferred_at) VALUES (?, ?, ?, ?, ?)",
+                (sender_uuid_id, receiver_uuid_id, panel_type, amount_gb, datetime.now(pytz.utc))
+            )
+
+    def has_transferred_in_last_30_days(self, sender_uuid_id: int) -> bool:
+        """بررسی می‌کند آیا کاربر در ۳۰ روز گذشته انتقالی داشته است یا خیر."""
+        thirty_days_ago = datetime.now(pytz.utc) - timedelta(days=30)
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT 1 FROM traffic_transfers WHERE sender_uuid_id = ? AND transferred_at >= ?",
+                (sender_uuid_id, thirty_days_ago)
+            ).fetchone()
+            return row is not None
+
+    def add_achievement(self, user_id: int, badge_code: str) -> bool:
+        """یک دستاورد جدید برای کاربر ثبت می‌کند و در صورت موفقیت True برمی‌گرداند."""
+        with self._conn() as c:
+            try:
+                c.execute(
+                    "INSERT INTO user_achievements (user_id, badge_code) VALUES (?, ?)",
+                    (user_id, badge_code)
+                )
+                return True
+            except sqlite3.IntegrityError:
+                # کاربر از قبل این نشان را داشته است
+                return False
+
+    def get_user_achievements(self, user_id: int) -> List[str]:
+        """لیست کدهای تمام نشان‌های یک کاربر را برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute("SELECT badge_code FROM user_achievements WHERE user_id = ?", (user_id,)).fetchall()
+            return [row['badge_code'] for row in rows]
+
+    def get_total_usage_in_last_n_days(self, uuid_id: int, days: int) -> float:
+        """مجموع کل مصرف یک کاربر در N روز گذشته را محاسبه می‌کند."""
+        time_limit = datetime.now(pytz.utc) - timedelta(days=days)
+        with self._conn() as c:
+            query = """
+                SELECT
+                    MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_usage,
+                    MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_usage
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at >= ?
+            """
+            row = c.execute(query, (uuid_id, time_limit)).fetchone()
+            if not row:
+                return 0.0
+            
+            h_usage = max(0, row['h_usage'] or 0)
+            m_usage = max(0, row['m_usage'] or 0)
+            return h_usage + m_usage
+
+    def get_night_usage_stats_in_last_n_days(self, uuid_id: int, days: int) -> dict:
+        """آمار مصرف شبانه (۰۰:۰۰ تا ۰۶:۰۰) را در N روز گذشته محاسبه می‌کند."""
+        time_limit = datetime.now(pytz.utc) - timedelta(days=days)
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        
+        with self._conn() as c:
+            query = """
+                SELECT hiddify_usage_gb, marzban_usage_gb, taken_at
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at >= ?
+                ORDER BY taken_at ASC
+            """
+            snapshots = c.execute(query, (uuid_id, time_limit)).fetchall()
+            
+            total_usage = 0
+            night_usage = 0
+            last_h, last_m = 0, 0
+            
+            # مقدار اولیه را از آخرین اسنپ‌شات قبل از دوره می‌گیریم
+            prev_snap = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, time_limit)).fetchone()
+            if prev_snap:
+                last_h, last_m = prev_snap['hiddify_usage_gb'], prev_snap['marzban_usage_gb']
+
+            for snap in snapshots:
+                h_diff = max(0, (snap['hiddify_usage_gb'] or 0) - (last_h or 0))
+                m_diff = max(0, (snap['marzban_usage_gb'] or 0) - (last_m or 0))
+                diff = h_diff + m_diff
+                total_usage += diff
+                
+                snap_time_tehran = snap['taken_at'].astimezone(tehran_tz)
+                if 0 <= snap_time_tehran.hour < 6:
+                    night_usage += diff
+                
+                last_h, last_m = snap['hiddify_usage_gb'], snap['marzban_usage_gb']
+            
+            return {'total': total_usage, 'night': night_usage}
+
+    def count_recently_active_users(self, minutes: int = 15) -> dict:
+        """
+        تعداد کاربران یکتایی که در N دقیقه گذشته مصرف داشته‌اند را به تفکیک
+        آلمان (hiddify)، فرانسه (marzban_fr) و ترکیه (marzban_tr) برمی‌گرداند.
+        """
+        time_limit = datetime.now(pytz.utc) - timedelta(minutes=minutes)
+        results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0}
+
+        with self._conn() as c:
+            # ابتدا تمام اسنپ‌شات‌های اخیر را به همراه اطلاعات دسترسی کاربر واکشی می‌کنیم
+            query = """
+                SELECT
+                    s.uuid_id, s.hiddify_usage_gb, s.marzban_usage_gb,
+                    uu.has_access_fr, uu.has_access_tr
+                FROM usage_snapshots s
+                JOIN user_uuids uu ON s.uuid_id = uu.id
+                WHERE s.taken_at >= ?
+                ORDER BY s.uuid_id, s.taken_at ASC
+            """
+            recent_snapshots = c.execute(query, (time_limit,)).fetchall()
+
+            last_usages = {} # برای نگهداری آخرین مصرف هر کاربر
+            active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set()}
+
+            for snap in recent_snapshots:
+                uuid_id = snap['uuid_id']
+                
+                # دریافت آخرین مصرف ثبت‌شده برای این کاربر
+                last_h = last_usages.get(uuid_id, {}).get('h', 0)
+                last_m = last_usages.get(uuid_id, {}).get('m', 0)
+
+                # محاسبه افزایش مصرف از اسنپ‌شات قبلی
+                h_increase = (snap['hiddify_usage_gb'] or 0) - last_h
+                m_increase = (snap['marzban_usage_gb'] or 0) - last_m
+
+                if h_increase > 0.001: # اگر مصرفی در هیدیفای (آلمان) وجود داشت
+                    active_users['hiddify'].add(uuid_id)
+                
+                if m_increase > 0.001: # اگر مصرفی در مرزبان وجود داشت
+                    if snap['has_access_fr']:
+                        active_users['marzban_fr'].add(uuid_id)
+                    if snap['has_access_tr']:
+                        active_users['marzban_tr'].add(uuid_id)
+
+                # به‌روزرسانی آخرین مصرف برای محاسبه در اسنپ‌شات بعدی
+                last_usages[uuid_id] = {'h': snap['hiddify_usage_gb'] or 0, 'm': snap['marzban_usage_gb'] or 0}
+
+            results['hiddify'] = len(active_users['hiddify'])
+            results['marzban_fr'] = len(active_users['marzban_fr'])
+            results['marzban_tr'] = len(active_users['marzban_tr'])
+            
+            return results
+
+
+    def get_or_create_referral_code(self, user_id: int) -> str:
+        """کد معرف کاربر را برمی‌گرداند یا اگر وجود نداشته باشد، یکی برای او می‌سازد."""
+        with self._conn() as c:
+            row = c.execute("SELECT referral_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if row and row['referral_code']:
+                return row['referral_code']
+            else:
+                while True:
+                    # یک کد ۶ حرفی تصادفی و خوانا ایجاد می‌کند
+                    new_code = "REF-" + secrets.token_urlsafe(4).upper().replace("_", "").replace("-", "")
+                    if not c.execute("SELECT 1 FROM users WHERE referral_code = ?", (new_code,)).fetchone():
+                        c.execute("UPDATE users SET referral_code = ? WHERE user_id = ?", (new_code, user_id))
+                        return new_code
+
+    def set_referrer(self, user_id: int, referrer_code: str):
+        """کاربر معرف را برای یک کاربر جدید ثبت می‌کند."""
+        with self._conn() as c:
+            referrer = c.execute("SELECT user_id FROM users WHERE referral_code = ?", (referrer_code,)).fetchone()
+            if referrer:
+                c.execute("UPDATE users SET referred_by_user_id = ? WHERE user_id = ?", (referrer['user_id'], user_id))
+                logger.info(f"User {user_id} was referred by user {referrer['user_id']} (code: {referrer_code}).")
+
+    def get_referrer_info(self, user_id: int) -> Optional[dict]:
+        """اطلاعات کاربر معرف را (در صورت وجود) برمی‌گرداند."""
+        with self._conn() as c:
+            row = c.execute("""
+                SELECT u.referred_by_user_id, u.referral_reward_applied, r.first_name as referrer_name
+                FROM users u
+                JOIN users r ON u.referred_by_user_id = r.user_id
+                WHERE u.user_id = ?
+            """, (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def mark_referral_reward_as_applied(self, user_id: int):
+        """وضعیت پاداش معرفی را برای جلوگیری از اهدای مجدد، ثبت می‌کند."""
+        with self._conn() as c:
+            c.execute("UPDATE users SET referral_reward_applied = 1 WHERE user_id = ?", (user_id,))
 
 db = DatabaseManager()

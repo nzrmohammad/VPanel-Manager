@@ -4,26 +4,33 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import io
 import qrcode
 import jdatetime
-from .config import ADMIN_IDS, EMOJIS, ADMIN_SUPPORT_CONTACT, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT, TUTORIAL_LINKS
+from .config import ADMIN_IDS, ADMIN_SUPPORT_CONTACT, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT, TUTORIAL_LINKS, MIN_TRANSFER_GB, MAX_TRANSFER_GB, TRANSFER_COOLDOWN_DAYS, ACHIEVEMENTS 
 from .database import db
 from . import combined_handler
 from .menu import menu
-from .utils import validate_uuid, escape_markdown, _safe_edit
+from .utils import validate_uuid, escape_markdown, _safe_edit, get_loyalty_progress_message
 from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history
 from .utils import load_service_plans
 from .language import get_string
 import urllib.parse
 import time
+from typing import Optional
+from .hiddify_api_handler import HiddifyAPIHandler
+from .marzban_api_handler import MarzbanAPIHandler
 
 
 logger = logging.getLogger(__name__)
 bot = None
+admin_conversations = {}
 
 # ======================================================================================
 #  اصل کلی: تمام قالب‌بندی‌ها (*, `, _, \) در این فایل انجام می‌شود.
 #  فایل‌های JSON فقط حاوی متن خام و بدون قالب‌بندی هستند.
 # ======================================================================================
-
+def initialize_user_handlers(b_instance, conversations_dict):
+    global bot, admin_conversations
+    bot = b_instance
+    admin_conversations = conversations_dict
 
 def language_selection_menu() -> types.InlineKeyboardMarkup:
     """Creates the language selection keyboard."""
@@ -58,7 +65,10 @@ def handle_user_callbacks(call: types.CallbackQuery):
         "change_language": _handle_change_language_request,
         "show_payment_options": _show_payment_options_menu,
         "coming_soon": _handle_coming_soon,
-        "web_login": _handle_web_login_request
+        "web_login": _handle_web_login_request,
+        "achievements": _show_achievements_page,
+        "request_service": _handle_request_service,
+        "connection_doctor": _handle_connection_doctor
     }
     
     handler = USER_CALLBACK_MAP.get(data)
@@ -76,7 +86,19 @@ def handle_user_callbacks(call: types.CallbackQuery):
             # fmt_one is already refactored to handle its own formatting
             text = fmt_one(info, daily_usage_data, lang_code=lang_code)
             _safe_edit(uid, msg_id, text, reply_markup=menu.account_menu(uuid_id, lang_code=lang_code))
-            
+
+    elif data.startswith("transfer_start_"):
+        _start_traffic_transfer(call)
+        return
+        
+    elif data.startswith("transfer_panel_"):
+        _ask_for_transfer_amount(call)
+        return
+
+    elif data.startswith("transfer_confirm_"):
+        _confirm_and_execute_transfer(call)
+        return
+
     elif data.startswith("toggle_"):
         setting_key = data.replace("toggle_", "")
         current_settings = db.get_user_settings(uid)
@@ -532,6 +554,17 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
     
     lang_code = db.get_user_language(uid)
     text = f'*{escape_markdown(get_string("main_menu_title", lang_code))}*'
+
+    loyalty_data = get_loyalty_progress_message(uid)
+    if loyalty_data:
+        separator = '\n`-----------------`\n'
+        loyalty_message = (
+            f"{escape_markdown(f'💎 شما تاکنون {loyalty_data['payment_count']} بار سرویس خود را تمدید کرده‌اید.')}\n"
+            f"*{escape_markdown(f'فقط {loyalty_data['renewals_left']} تمدید دیگر')}* "
+            f"{escape_markdown(f'تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!')}"
+        )
+        text += f"{separator}{loyalty_message}"
+
     reply_markup = menu.main(uid in ADMIN_IDS, lang_code=lang_code)
 
     if msg_id:
@@ -743,6 +776,349 @@ def create_redirect_button(app_name: str, deep_link: str, lang_code: str):
     button_text = f"📲 افزودن به {app_name}"
     return types.InlineKeyboardButton(button_text, url=redirect_page_url)
 
+def _notify_user(user_id: Optional[int], message: str):
+    if not user_id:
+        return
+    try:
+        bot.send_message(user_id, message, parse_mode="MarkdownV2")
+        logger.info(f"Sent notification to user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to send notification to user {user_id}: {e}")
+
+def _start_traffic_transfer(call: types.CallbackQuery):
+    """مرحله اول: شروع فرآیند و بررسی محدودیت زمانی."""
+    global bot
+    uid, msg_id = call.from_user.id, call.message.message_id
+    uuid_id = int(call.data.split("_")[2])
+
+    if db.has_transferred_in_last_30_days(uuid_id):
+        bot.answer_callback_query(call.id, f"شما در {TRANSFER_COOLDOWN_DAYS} روز گذشته یک انتقال موفق داشته‌اید. لطفاً بعداً تلاش کنید.", show_alert=True)
+        return
+
+    # نمایش منوی انتخاب سرور برای انتقال
+    _ask_for_transfer_panel(uid, msg_id, uuid_id)
+
+
+def _ask_for_transfer_panel(uid: int, msg_id: int, uuid_id: int):
+    """مرحله دوم: از کاربر می‌پرسد از کدام سرور قصد انتقال دارد."""
+    prompt = "💸 *انتقال ترافیک*\n\nلطفاً انتخاب کنید که می‌خواهید از حجم کدام سرور به دوست خود انتقال دهید:"
+    
+    # منو فقط سرورهایی را نشان می‌دهد که کاربر به آن‌ها دسترسی دارد
+    user_uuid_record = db.uuid_by_id(uid, uuid_id)
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    if user_uuid_record.get('has_access_de'):
+        kb.add(types.InlineKeyboardButton("از سرور آلمان 🇩🇪", callback_data=f"transfer_panel_hiddify_{uuid_id}"))
+    if user_uuid_record.get('has_access_fr') or user_uuid_record.get('has_access_tr'):
+        kb.add(types.InlineKeyboardButton("از سرور فرانسه/ترکیه 🇫🇷🇹🇷", callback_data=f"transfer_panel_marzban_{uuid_id}"))
+    
+    kb.add(types.InlineKeyboardButton("🔙 انصراف", callback_data=f"acc_{uuid_id}"))
+    _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
+
+
+def _ask_for_transfer_amount(call: types.CallbackQuery):
+    """مرحله سوم: پرسیدن مقدار حجم برای انتقال."""
+    global bot
+    uid, msg_id = call.from_user.id, call.message.message_id
+    parts = call.data.split("_")
+    panel_type, uuid_id = parts[2], int(parts[3])
+
+    admin_conversations[uid] = {'action': 'transfer_amount', 'msg_id': msg_id, 'uuid_id': uuid_id, 'panel_type': panel_type}
+    
+    prompt = (
+        f"{escape_markdown('لطفاً مقدار حجمی که می‌خواهید انتقال دهید را به گیگابایت وارد کنید.')}\n\n"
+        f"{escape_markdown('🔸 حداقل:')} *{escape_markdown(str(MIN_TRANSFER_GB))} {escape_markdown('گیگابایت')}*\n"
+        f"{escape_markdown('🔸 حداکثر:')} *{escape_markdown(str(MAX_TRANSFER_GB))} {escape_markdown('گیگابایت')}*"
+    )
+              
+    kb = menu.user_cancel_action(back_callback=f"acc_{uuid_id}", lang_code=db.get_user_language(uid))
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+
+def _get_transfer_amount(message: types.Message):
+    """مقدار حجم را دریافت، اعتبار‌سنجی کرده و UUID گیرنده را می‌پرسد."""
+    global bot
+    uid, text = message.from_user.id, message.text.strip()
+    bot.delete_message(uid, message.message_id)
+    if uid not in admin_conversations or admin_conversations[uid].get('action') != 'transfer_amount':
+        return
+
+    convo = admin_conversations[uid]
+    msg_id = convo['msg_id']
+    uuid_id = convo['uuid_id']
+    panel_type_to_transfer_from = convo['panel_type'] # e.g., 'hiddify'
+
+    try:
+        amount_gb = float(text)
+        if not (MIN_TRANSFER_GB <= amount_gb <= MAX_TRANSFER_GB):
+            raise ValueError("Amount out of range")
+
+        sender_uuid_record = db.uuid_by_id(uid, uuid_id)
+        sender_info = combined_handler.get_combined_user_info(sender_uuid_record['uuid'])
+        
+        # <<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>
+        # به جای جستجو با نام پنل، در دیکشنری breakdown می‌گردیم تا پنلی با نوع مورد نظر پیدا کنیم
+        panel_data = next((p['data'] for p in sender_info.get('breakdown', {}).values() if p.get('type') == panel_type_to_transfer_from), None)
+
+        if not panel_data:
+            # این حالت نباید اتفاق بیفتد اگر منوی اولیه درست کار کند
+            raise Exception("Panel data not found for the specified type.")
+        # <<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>
+            
+        sender_remaining_gb = panel_data.get('remaining_GB', 0)
+
+        if amount_gb > sender_remaining_gb:
+            error_msg = f"موجودی حجم شما در این سرور ({sender_remaining_gb:.2f} گیگابایت) برای انتقال این مقدار کافی نیست. عملیات لغو شد."
+            _safe_edit(uid, msg_id, escape_markdown(error_msg), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+            admin_conversations.pop(uid, None)
+            return
+
+        convo['amount_gb'] = amount_gb
+        convo['action'] = 'transfer_receiver'
+        
+        prompt = "اکنون لطفاً UUID کاربر گیرنده را ارسال کنید:"
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        bot.register_next_step_handler(message, _get_receiver_uuid)
+
+    except (ValueError, TypeError):
+        error_msg = f"مقدار وارد شده نامعتبر است. لطفاً عددی بین {MIN_TRANSFER_GB} و {MAX_TRANSFER_GB} وارد کنید."
+        _safe_edit(uid, msg_id, escape_markdown(error_msg), reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        admin_conversations.pop(uid, None)
+    except Exception as e:
+        logger.error(f"Error in _get_transfer_amount: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, "خطایی در پردازش اطلاعات رخ داد. عملیات لغو شد.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        admin_conversations.pop(uid, None)
+
+
+def _get_receiver_uuid(message: types.Message):
+    """UUID گیرنده را دریافت، اعتبار‌سنجی کرده و منوی تایید نهایی را نمایش می‌دهد."""
+    global bot
+    uid, receiver_uuid = message.from_user.id, message.text.strip().lower()
+    bot.delete_message(uid, message.message_id)
+    if uid not in admin_conversations or admin_conversations[uid].get('action') != 'transfer_receiver':
+        return
+
+    convo = admin_conversations[uid]
+    msg_id = convo['msg_id']
+    uuid_id = convo['uuid_id']
+    panel_type = convo['panel_type']
+    
+    sender_uuid_record = db.uuid_by_id(uid, uuid_id)
+    if receiver_uuid == sender_uuid_record['uuid']:
+        _safe_edit(uid, msg_id, "شما نمی‌توانید به خودتان ترافیک انتقال دهید. عملیات لغو شد.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        admin_conversations.pop(uid, None)
+        return
+
+    receiver_info = combined_handler.get_combined_user_info(receiver_uuid)
+    if not receiver_info:
+        _safe_edit(uid, msg_id, "کاربری با این UUID یافت نشد. عملیات لغو شد.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        admin_conversations.pop(uid, None)
+        return
+        
+    receiver_has_panel_access = any(p.get('type') == panel_type for p in receiver_info.get('breakdown', {}).values())
+
+    if not receiver_has_panel_access:
+        server_name = "آلمان" if panel_type == 'hiddify' else "فرانسه/ترکیه"
+        _safe_edit(uid, msg_id, f"کاربر مقصد به سرور {server_name} دسترسی ندارد. انتقال امکان‌پذیر نیست.", reply_markup=menu.user_cancel_action(f"acc_{uuid_id}", db.get_user_language(uid)))
+        admin_conversations.pop(uid, None)
+        return
+
+    convo['receiver_uuid'] = receiver_uuid
+    convo['receiver_name'] = receiver_info.get('name', 'کاربر ناشناس')
+    
+    # نمایش منوی تایید نهایی
+    server_name = "آلمان 🇩🇪" if panel_type == 'hiddify' else "فرانسه/ترکیه 🇫🇷🇹🇷"
+    confirm_prompt = (
+        f"🚨 *{escape_markdown('تایید نهایی انتقال')}*\n\n"
+        f"{escape_markdown('شما در حال انتقال')} *{escape_markdown(str(convo['amount_gb']))} {escape_markdown('گیگابایت')}* {escape_markdown('حجم از سرور')} *{escape_markdown(server_name)}* {escape_markdown('به کاربر زیر هستید:')}\n\n"
+        f"👤 {escape_markdown('نام:')} *{escape_markdown(convo['receiver_name'])}*\n"
+        f"🔑 {escape_markdown('شناسه:')} `{escape_markdown(receiver_uuid)}`\n\n"
+        f"{escape_markdown('آیا این اطلاعات را تایید می‌کنید؟ این عمل غیرقابل بازگشت است.')}"
+    )
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، انتقال بده", callback_data="transfer_confirm_yes"),
+        types.InlineKeyboardButton("❌ خیر، لغو کن", callback_data=f"acc_{uuid_id}")
+    )
+    _safe_edit(uid, msg_id, escape_markdown(confirm_prompt), reply_markup=kb)
+
+
+def _confirm_and_execute_transfer(call: types.CallbackQuery):
+    """انتقال را نهایی کرده و به همه طرفین اطلاع‌رسانی می‌کند."""
+    global bot
+    uid, msg_id = call.from_user.id, call.message.message_id
+    if uid not in admin_conversations: return
+    
+    convo = admin_conversations.pop(uid)
+    
+    sender_uuid_id = convo['uuid_id']
+    receiver_uuid = convo['receiver_uuid']
+    panel_type = convo['panel_type']
+    amount_gb = convo['amount_gb']
+
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال انجام انتقال..."), reply_markup=None)
+
+    try:
+        sender_uuid_record = db.uuid_by_id(uid, sender_uuid_id)
+        sender_uuid = sender_uuid_record['uuid']
+        sender_name = sender_uuid_record.get('name', 'کاربر ناشناس')
+        
+        receiver_uuid_record = db.get_user_uuid_record(receiver_uuid)
+        receiver_uuid_id = receiver_uuid_record['id']
+        receiver_user_id = receiver_uuid_record['user_id']
+        receiver_name = receiver_uuid_record.get('name', 'کاربر ناشناس')
+        
+        success1 = combined_handler.modify_user_on_all_panels(sender_uuid, add_gb=-amount_gb, target_panel_type=panel_type)
+        success2 = combined_handler.modify_user_on_all_panels(receiver_uuid, add_gb=amount_gb, target_panel_type=panel_type)
+
+        if success1 and success2:
+            db.log_traffic_transfer(sender_uuid_id, receiver_uuid_id, panel_type, amount_gb)
+
+            amount_str = escape_markdown(str(amount_gb))
+            receiver_name_str = escape_markdown(receiver_name)
+            sender_name_str = escape_markdown(sender_name)
+            
+            # پیام به فرستنده
+            sender_final_msg = f"✅ انتقال {amount_str} گیگابایت حجم به کاربر {receiver_name_str} با موفقیت انجام شد."
+            _safe_edit(uid, msg_id, escape_markdown(sender_final_msg), reply_markup=menu.user_cancel_action(f"acc_{sender_uuid_id}", db.get_user_language(uid)))
+            
+            # پیام به گیرنده
+            receiver_message = f"🎁 شما {amount_str} گیگابایت حجم هدیه از طرف کاربر *{sender_name_str}* دریافت کردید!"
+            _notify_user(receiver_user_id, receiver_message)
+            
+            # پیام به ادمین‌ها
+            server_name = 'آلمان' if panel_type == 'hiddify' else 'فرانسه/ترکیه'
+            admin_message = (
+                f"💸 *اطلاع‌رسانی انتقال ترافیک*\n\n"
+                f"*فرستنده:* {sender_name_str} \\(`{uid}`\\)\n"
+                f"*گیرنده:* {receiver_name_str} \\(`{receiver_user_id}`\\)\n"
+                f"*مقدار:* {amount_str} گیگابایت\n"
+                f"*سرور:* {escape_markdown(server_name)}"
+            )
+            for admin_id in ADMIN_IDS:
+                _notify_user(admin_id, admin_message)
+                
+        else:
+            # بازگرداندن حجم در صورت خطا
+            if success1 and not success2:
+                combined_handler.modify_user_on_all_panels(sender_uuid, add_gb=amount_gb, target_panel_type=panel_type)
+            raise Exception("Transaction failed at panel level.")
+
+    except Exception as e:
+        logger.error(f"Error during traffic transfer execution: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در هنگام انتقال رخ داد. لطفاً با پشتیبانی تماس بگیرید."), reply_markup=menu.user_cancel_action(f"acc_{sender_uuid_id}", db.get_user_language(uid)))
+
+
+def _show_achievements_page(call: types.CallbackQuery):
+    """صفحه دستاوردها را به صورت حرفه‌ای برای کاربر نمایش می‌دهد."""
+    uid = call.from_user.id
+    msg_id = call.message.message_id
+    lang_code = db.get_user_language(uid)
+    
+    user_badges = db.get_user_achievements(uid)
+    
+    unlocked_lines = []
+    
+    for code in user_badges:
+        badge_data = ACHIEVEMENTS.get(code)
+        if badge_data:
+            unlocked_lines.append(f"{badge_data['icon']} *{escape_markdown(badge_data['name'])}*\n_{escape_markdown(badge_data['description'])}_")
+
+    title = "🏆 *دستاوردها و نشان‌های افتخار*"
+    
+    if not unlocked_lines:
+        intro_text = "در این بخش نشان‌هایی که با فعالیت در سرویس کسب می‌کنید، نمایش داده می‌شوند. برخی از این نشان‌ها مخفی هستند و پس از کسب کردن، برای شما آشکار خواهند شد. به فعالیت خود ادامه دهید و همه آن‌ها را کشف کنید!"
+        final_text = f"{title}\n\n{escape_markdown(intro_text)}"
+    else:
+        unlocked_section = "✅ *نشان‌های کسب‌شده:*\n" + "\n\n".join(unlocked_lines)
+        final_text = f"{title}\n\n{unlocked_section}"
+    
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
+    
+    _safe_edit(uid, msg_id, final_text, reply_markup=kb)
+
+
+def _handle_connection_doctor(call: types.CallbackQuery):
+    """
+    وضعیت سرویس کاربر و سرورها را بررسی کرده و یک گزارش کامل ارائه می‌دهد.
+    """
+    uid = call.from_user.id
+    msg_id = call.message.message_id
+    
+    _safe_edit(uid, msg_id, escape_markdown("🩺 در حال بررسی وضعیت سرویس و سرورها، لطفاً چند لحظه صبر کنید..."), reply_markup=None)
+
+    report_lines = ["🩺 *گزارش پزشک اتصال:*", "`──────────────────`"]
+    
+    user_uuids = db.uuids(uid)
+    if not user_uuids:
+        _safe_edit(uid, msg_id, "شما هنوز اکانتی ثبت نکرده‌اید!", reply_markup=menu.main(uid in ADMIN_IDS, db.get_user_language(uid)))
+        return
+        
+    user_info = combined_handler.get_combined_user_info(user_uuids[0]['uuid'])
+    if user_info and user_info.get('is_active') and (user_info.get('expire') is None or user_info.get('expire') >= 0):
+        report_lines.append("✅ وضعیت اکانت شما: *فعال*")
+    else:
+        report_lines.append("❌ وضعیت اکانت شما: *غیرفعال یا منقضی شده*")
+
+    active_panels = db.get_active_panels()
+    for panel in active_panels:
+        panel_name = escape_markdown(panel.get('name', 'پنل ناشناس'))
+        handler = HiddifyAPIHandler(panel) if panel['panel_type'] == 'hiddify' else MarzbanAPIHandler(panel)
+        if handler.check_connection():
+            report_lines.append(f"✅ وضعیت سرور «{panel_name}»: *آنلاین و پایدار*")
+        else:
+            report_lines.append(f"🚨 وضعیت سرور «{panel_name}»: *آفلاین یا دارای اختلال*")
+
+    recent_users = db.count_recently_active_users()
+    
+    # <<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>
+    # The parentheses are now escaped with \\
+    report_lines.extend([
+        "`──────────────────`",
+        "📈 *تحلیل هوشمند بار سرور \\(۱۵ دقیقه اخیر\\):*",
+        f" `•` *{recent_users.get('hiddify', 0)}* کاربر از سرور آلمان 🇩🇪",
+        f" `•` *{recent_users.get('marzban_fr', 0)}* کاربر از سرور فرانسه 🇫🇷",
+        f" `•` *{recent_users.get('marzban_tr', 0)}* کاربر از سرور ترکیه 🇹🇷"
+    ])
+    # <<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>
+    
+    suggestion_text = "اگر اکانت و سرورها فعال هستند اما همچنان با کندی مواجه‌اید، لطفاً یک بار اتصال خود را قطع و وصل کرده و به سرور دیگری متصل شوید. در صورت ادامه مشکل، با پشتیبانی تماس بگیرید."
+    report_lines.extend([
+        "`──────────────────`",
+        f"💡 *پیشنهاد:*\n{escape_markdown(suggestion_text)}"
+    ])
+    
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به منوی اصلی", callback_data="back"))
+    _safe_edit(uid, msg_id, "\n".join(report_lines), reply_markup=kb)
+
+def _handle_request_service(call: types.CallbackQuery):
+    """درخواست کاربر جدید را به ادمین‌ها اطلاع می‌دهد."""
+    user_info = call.from_user
+    uid = user_info.id
+    msg_id = call.message.message_id
+
+    # اطلاع‌رسانی به کاربر
+    _safe_edit(uid, msg_id, "✅ درخواست شما برای مدیران ارسال شد. لطفاً منتظر بمانید تا با شما تماس بگیرند.", reply_markup=None)
+
+    # ساخت پیام برای ادمین‌ها
+    user_name = escape_markdown(user_info.first_name)
+    admin_message = [f"👤 *درخواست سرویس جدید*\n\n*کاربر:* {user_name} \\(`{uid}`\\)"]
+
+    # بررسی اینکه آیا کاربر معرف داشته یا نه
+    referrer_info = db.get_referrer_info(uid)
+    if referrer_info:
+        referrer_name = escape_markdown(referrer_info['referrer_name'])
+        admin_message.append(f"*معرف:* {referrer_name} \\(`{referrer_info['referred_by_user_id']}`\\)")
+
+    # ارسال پیام به تمام ادمین‌ها
+    for admin_id in ADMIN_IDS:
+        try:
+            bot.send_message(admin_id, "\n".join(admin_message), parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.error(f"Failed to send new service request to admin {admin_id}: {e}")
+
 # =============================================================================
 # Main Registration Function
 # =============================================================================
@@ -754,10 +1130,28 @@ def register_user_handlers(b: telebot.TeleBot):
     def cmd_start(message: types.Message):
         uid = message.from_user.id
         db.add_or_update_user(uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name)
+        
+        # بررسی وجود کد معرف در دستور استارت
+        parts = message.text.split()
+        if len(parts) > 1:
+            referral_code = parts[1]
+            # فقط در صورتی کد معرف را ثبت کن که کاربر از قبل معرف نداشته باشد
+            if not db.user(uid).get('referred_by_user_id'):
+                db.set_referrer(uid, referral_code)
+
         if db.uuids(uid):
+            # اگر کاربر از قبل اکانت دارد، مستقیم به منوی اصلی برود
             _go_back_to_main(message=message)
         else:
-            bot.send_message(uid, "Please select your language:\n\nلطفا زبان خود را انتخاب کنید:", reply_markup=language_selection_menu())
+            # اگر کاربر جدید است، منوی انتخاب را نمایش بده
+            lang_code = db.get_user_language(uid)
+            welcome_text = get_string("welcome_new_user", lang_code) # یک کلید جدید در فایل زبان
+            kb = types.InlineKeyboardMarkup(row_width=1)
+            kb.add(
+                types.InlineKeyboardButton(f"💳 {get_string('btn_have_service', lang_code)}", callback_data="add"),
+                types.InlineKeyboardButton(f"🚀 {get_string('btn_request_service', lang_code)}", callback_data="request_service")
+            )
+            bot.send_message(uid, welcome_text, reply_markup=kb, parse_mode="HTML") # استفاده از HTML برای خوانایی بهتر
 
     def process_uuid_step_after_lang(message: types.Message, original_msg_id: int):
         uid, uuid_str = message.chat.id, message.text.strip().lower()

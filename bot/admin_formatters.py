@@ -22,9 +22,27 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
     name = esc(info.get("name", "کاربر ناشناس"))
     is_active_overall = info.get('is_active', False)
     status_text_overall = "✅ فعال" if is_active_overall else "❌ غیرفعال"
-    
+
+    # شمارش تعداد پرداخت‌ها
+    payment_count = 0
+    uuid_str = info.get('uuid')
+    if uuid_str:
+        uuid_id = db.get_uuid_id_by_uuid(uuid_str)
+        if uuid_id:
+            payment_count = len(db.get_user_payment_history(uuid_id))
+
+    # تعیین آیکون وفاداری
+    loyalty_icon = ""
+    if payment_count >= 10:
+        loyalty_icon = "💎"
+    elif payment_count >= 6:
+        loyalty_icon = "🥇"
+    elif payment_count >= 3:
+        loyalty_icon = "⭐"
+
     # خط ۱ (اصلاح شده): کاراکترهای ( و ) با \\ escape شده‌اند
-    header = f"👤 نام : {name} \\({status_text_overall}\\)"
+    header = f"👤 نام : {name} {loyalty_icon} \\({status_text_overall} \\| {payment_count} پرداخت\\)"
+
     
     report_lines = [header]
     separator = "`──────────────────`"
@@ -639,7 +657,7 @@ def fmt_payments_report_list(payments: list, page: int) -> str:
     header_text = f"*{escape_markdown(title)}*"
     if len(payments) > PAGE_SIZE:
         total_pages = (len(payments) + PAGE_SIZE - 1) // PAGE_SIZE
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {len(payments)})"
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(payments)}\\)"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
