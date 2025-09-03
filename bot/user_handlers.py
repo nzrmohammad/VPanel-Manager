@@ -9,7 +9,7 @@ from .database import db
 from . import combined_handler
 from .menu import menu
 from .utils import validate_uuid, escape_markdown, _safe_edit, get_loyalty_progress_message
-from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history
+from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history, fmt_referral_page
 from .utils import load_service_plans
 from .language import get_string
 import urllib.parse
@@ -103,6 +103,10 @@ def handle_user_callbacks(call: types.CallbackQuery):
     
     elif data.startswith("shop:"):
         handle_shop_callbacks(call)
+        return
+    
+    elif data.startswith("referral:"):
+        handle_referral_callbacks(call)
         return
 
     elif data.startswith("toggle_"):
@@ -559,30 +563,31 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
     
     lang_code = db.get_user_language(uid)
     
-    # --- ✅ بخش جدید برای نمایش امتیاز ---
     user_db_info = db.user(uid)
     user_points = user_db_info.get('achievement_points', 0) if user_db_info else 0
     
-    header_text = f"*{escape_markdown(get_string('main_menu_title', lang_code))}*\n"
-    header_text += f"💰 *امتیاز شما: {user_points}*"
-    # ------------------------------------
-
+    text_lines = [
+        f"*{escape_markdown(get_string('main_menu_title', lang_code))}*",
+        "`-----------------`",
+        f"💰 {escape_markdown('امتیاز شما :')} *{user_points}*"
+    ]
+    
     loyalty_data = get_loyalty_progress_message(uid)
     if loyalty_data:
-        separator = '\n`-----------------`\n'
         loyalty_message = (
             f"{escape_markdown(f'💎 شما تاکنون {loyalty_data['payment_count']} بار سرویس خود را تمدید کرده‌اید.')}\n"
-            f"*{escape_markdown(f'فقط {loyalty_data['renewals_left']} تمدید دیگر')}* "
-            f"{escape_markdown(f'تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!')}"
+            f"{escape_markdown('فقط')} *{escape_markdown(str(loyalty_data['renewals_left']))} {escape_markdown('تمدید دیگر')}* {escape_markdown(f'تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!')}"
         )
-        header_text += f"{separator}{loyalty_message}"
+        text_lines.append(loyalty_message)
+    
+    text = "\n".join(text_lines)
 
     reply_markup = menu.main(uid in ADMIN_IDS, lang_code=lang_code)
 
     if msg_id:
-        _safe_edit(uid, msg_id, header_text, reply_markup=reply_markup)
+        _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
     else:
-        bot.send_message(uid, header_text, reply_markup=reply_markup, parse_mode="MarkdownV2")
+        bot.send_message(uid, text, reply_markup=reply_markup, parse_mode="MarkdownV2")
 
 
 def _handle_birthday_gift_request(call: types.CallbackQuery):
@@ -1214,7 +1219,7 @@ def handle_shop_callbacks(call: types.CallbackQuery):
             f"{escape_markdown('با امتیازهایی که از کسب دستاوردها به دست آورده‌اید، می‌توانید جوایز زیر را خریداری کنید.')}\n\n"
             f"💰 *{escape_markdown('موجودی امتیاز شما:')} {user_points}*"
         )
-        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=menu.achievement_shop_menu(user_points))
+        _safe_edit(uid, msg_id, prompt, reply_markup=menu.achievement_shop_menu(user_points))
 
     elif data.startswith("shop:buy:"):
         item_key = data.split(":")[2]
@@ -1242,6 +1247,19 @@ def handle_shop_callbacks(call: types.CallbackQuery):
 
     elif data == "shop:insufficient_points":
         bot.answer_callback_query(call.id, "❌ امتیاز شما برای خرید این آیتم کافی نیست.", show_alert=False)
+
+def handle_referral_callbacks(call: types.CallbackQuery):
+    """تمام callback های مربوط به سیستم معرفی کاربران را مدیریت می‌کند."""
+    uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
+
+    if data == "referral:info":
+        bot_username = bot.get_me().username
+        text = fmt_referral_page(uid, bot_username)
+
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data="back"))
+
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
 
 # =============================================================================
 # Main Registration Function

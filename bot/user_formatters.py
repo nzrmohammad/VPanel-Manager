@@ -596,3 +596,39 @@ def fmt_smart_list_inline_result(users: list, title: str) -> tuple[str, str]:
         lines.append(f"`•` *{name}* \\({escape_markdown(' | '.join(details))}\\)")
     
     return "\n".join(lines), "MarkdownV2"
+
+def fmt_referral_page(user_id: int, bot_username: str) -> str:
+    """صفحه اطلاعات سیستم معرفی کاربران را فرمت‌بندی می‌کند."""
+    from .config import REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS
+    
+    referral_code = db.get_or_create_referral_code(user_id)
+    referral_link = f"https://t.me/{bot_username}?start={referral_code}"
+    
+    referred_users = db.get_referred_users(user_id)
+    successful_referrals = [u for u in referred_users if u['referral_reward_applied']]
+    pending_referrals = [u for u in referred_users if not u['referral_reward_applied']]
+
+    lines = [
+        f"👥 *{escape_markdown('سیستم دعوت از دوستان')}*",
+        "`──────────────────`",
+        escape_markdown(f"با معرفی دوستان خود به ربات، پس از اولین خرید آن‌ها، هر دوی شما {REFERRAL_REWARD_GB} گیگابایت حجم و {REFERRAL_REWARD_DAYS} روز اعتبار هدیه خواهید گرفت."),
+        "\n",
+        f"🔗 *{escape_markdown('لینک دعوت شما:')}*",
+        f"`{escape_markdown(referral_link)}`",
+        "\n",
+        f"🏆 *{escape_markdown('وضعیت دعوت‌های شما:')}*",
+        f" `•` *{escape_markdown('معرفی‌های موفق:')}* {len(successful_referrals)} نفر",
+        f" `•` *{escape_markdown('در انتظار خرید:')}* {len(pending_referrals)} نفر"
+    ]
+
+    if successful_referrals:
+        lines.append(f"\n✅ *{escape_markdown('لیست معرفی‌های موفق:')}*")
+        for user in successful_referrals:
+            lines.append(f" `•` {escape_markdown(user['first_name'])}")
+            
+    if pending_referrals:
+        lines.append(f"\n⏳ *{escape_markdown('لیست کاربران در انتظار خرید:')}*")
+        for user in pending_referrals:
+            lines.append(f" `•` {escape_markdown(user['first_name'])}")
+
+    return "\n".join(lines)

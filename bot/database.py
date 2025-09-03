@@ -42,9 +42,11 @@ class DatabaseManager:
                 # --- END: New Columns ---
                 add_column_if_not_exists("user_uuids", "renewal_reminder_sent", "INTEGER DEFAULT 0")
                             # <<<<<<<<<<<<<<<< START OF NEW CODE >>>>>>>>>>>>>>>>
+                # --- ✅ این سه خط جدید را اضافه کنید ---
                 add_column_if_not_exists("users", "referral_code", "TEXT UNIQUE")
                 add_column_if_not_exists("users", "referred_by_user_id", "INTEGER")
                 add_column_if_not_exists("users", "referral_reward_applied", "INTEGER DEFAULT 0")
+                # --- پایان بخش جدید ---
                 # <<<<<<<<<<<<<<<< END OF NEW CODE >>>>>>>>>>>>>>>>
                 add_column_if_not_exists("users", "achievement_points", "INTEGER DEFAULT 0")
 
@@ -1770,5 +1772,14 @@ class DatabaseManager:
                 (limit,)
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def get_referred_users(self, referrer_user_id: int) -> list[dict]:
+            """لیست کاربرانی که توسط یک کاربر خاص معرفی شده‌اند را برمی‌گرداند."""
+            with self._conn() as c:
+                rows = c.execute(
+                    "SELECT user_id, first_name, referral_reward_applied FROM users WHERE referred_by_user_id = ?",
+                    (referrer_user_id,)
+                ).fetchall()
+                return [dict(r) for r in rows]
 
 db = DatabaseManager()

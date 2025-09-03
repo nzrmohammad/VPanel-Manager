@@ -20,13 +20,14 @@ class Menu:
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
         btn_doctor = types.InlineKeyboardButton(f"🩺 پزشک اتصال", callback_data="connection_doctor")
         btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
+        btn_referral = types.InlineKeyboardButton("👥 دعوت از دوستان", callback_data="referral:info")
         btn_achievements = types.InlineKeyboardButton(f"🏆 دستاوردها", callback_data="achievements")
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_settings, btn_services)
         kb.add(btn_birthday, btn_support)
+        kb.add(btn_referral, btn_achievements)
         kb.add(btn_doctor, btn_tutorials)
-        kb.add(btn_achievements)
         kb.add(btn_web_login)
 
         if is_admin:
@@ -125,8 +126,8 @@ class Menu:
         btn_achievement_shop = types.InlineKeyboardButton("🛍️ فروشگاه دستاوردها", callback_data="shop:main")
 
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
-        kb.add(btn_turkey, btn_france, btn_germany)
-        kb.add(btn_combined)
+        kb.add(btn_turkey, btn_france)
+        kb.add(btn_combined, btn_germany)
         kb.add(btn_achievement_shop, btn_payment_methods)
         kb.add(btn_back)
         return kb
