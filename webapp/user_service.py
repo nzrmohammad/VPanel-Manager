@@ -153,11 +153,20 @@ class UserService:
             created_at_shamsi = to_shamsi(uuid_record.get('created_at'))
             expire_shamsi = to_shamsi(datetime.now() + timedelta(days=expire_days)) if expire_days is not None else "نامحدود"
             
-            # فراخوانی تابع اصلاح شده
             recommended_plan, actual_usage = UserService.recommend_plan(current_usage)
-            loyalty_message = get_loyalty_progress_message(user_id) if user_id else None
-            achievements = db.get_user_achievements(user_id) if user_id else []
+            
+            # --- START: FIX FOR LOYALTY MESSAGE ---
+            loyalty_data = get_loyalty_progress_message(user_id) if user_id else None
+            loyalty_message = None
+            if loyalty_data:
+                loyalty_message = (
+                    f"💎 شما تاکنون {loyalty_data['payment_count']} بار سرویس خود را تمدید کرده‌اید.<br>"
+                    f"فقط <b>{loyalty_data['renewals_left']} تمدید دیگر</b> "
+                    f"تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!"
+                )
+            # --- END: FIX FOR LOYALTY MESSAGE ---
 
+            achievements = db.get_user_achievements(user_id) if user_id else []
 
             return {
                 "is_active": is_active,
@@ -181,7 +190,7 @@ class UserService:
                 "payment_history": payment_history,
                 "recommended_plan": recommended_plan,
                 "actual_last_30_days_usage": actual_usage,
-                "loyalty_progress_message": loyalty_message,
+                "loyalty_progress_message": loyalty_message, # This is now a formatted string
                 "achievements": achievements
             }
         except Exception as e:

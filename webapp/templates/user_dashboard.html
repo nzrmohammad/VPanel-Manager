@@ -42,12 +42,21 @@
     </div>
 
     {% if user.loyalty_progress_message %}
-    <div class="info-card" style="margin-top: 15px; background: linear-gradient(135deg, rgba(217, 119, 6, 0.1), rgba(245, 158, 11, 0.05)); border-color: rgba(217, 119, 6, 0.3);">
-        <div class="card-header" style="color: #b45309;"><i class="ri-award-line icon"></i><span>مسیر وفاداری شما</span></div>
-        <div class="card-content" style="font-size: 0.95rem; font-weight: 500; line-height: 1.8; color: #78350f;">
-            {{ user.loyalty_progress_message | safe }}
+    {# --- START: کد نهایی و اصلاح شده برای کارت وفاداری --- #}
+    <div class="user-card" style="margin-top: 15px;">
+        
+        <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: right;">
+            <div class="user-info" style="font-size: 1.05rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                <i class="ri-award-line"></i>
+                <span>مسیر وفاداری شما</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.7;">
+                {{ user.loyalty_progress_message | safe }}
+            </div>
         </div>
+
     </div>
+    {# --- END: کد نهایی --- #}
     {% endif %}
 
     {% if user.achievements %}
