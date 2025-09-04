@@ -889,7 +889,7 @@ class DatabaseManager:
                     SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
                     FROM (
                         SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
-                               ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn
+                            ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn
                         FROM usage_snapshots
                         WHERE taken_at < ?
                     )
@@ -901,8 +901,8 @@ class DatabaseManager:
                 # 3. اولین و آخرین مصرف ثبت‌شده هر کاربر *در طول* این روز را پیدا می‌کنیم
                 daily_snapshots_query = """
                     SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
-                           ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at ASC) as rn_asc,
-                           ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn_desc
+                        ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at ASC) as rn_asc,
+                        ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn_desc
                     FROM usage_snapshots
                     WHERE taken_at >= ? AND taken_at < ?
                 """
