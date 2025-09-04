@@ -104,9 +104,8 @@ TRANSFER_COOLDOWN_DAYS = 10     # هر کاربر هر چند روز یکبار 
 ENABLE_REFERRAL_SYSTEM = True
 REFERRAL_REWARD_GB = 10          # حجم هدیه برای هر معرفی موفق (به گیگابایت)
 REFERRAL_REWARD_DAYS = 5        # روز هدیه برای هر معرفی موفق
-AMBASSADOR_BADGE_THRESHOLD = 3  # تعداد معرفی لازم برای دریافت نشان سفیر
+AMBASSADOR_BADGE_THRESHOLD = 5  # تعداد معرفی لازم برای دریافت نشان سفیر
 
-# --- Achievements & Badges ---
 ACHIEVEMENTS = {
     "veteran": {
         "name": "کهنه‌کار", "icon": "🎖️", "points": 200,
@@ -123,6 +122,10 @@ ACHIEVEMENTS = {
     "loyal_supporter": {
         "name": "حامی وفادار", "icon": "💖", "points": 50,
         "description": "به کاربرانی که بیش از ۵ بار سرویس خود را تمدید کرده باشند، اهدا می‌شود."
+    },
+    "ambassador": {
+        "name": "سفیر", "icon": "🤝", "points": 150,
+        "description": f"به کاربرانی که بیش از {AMBASSADOR_BADGE_THRESHOLD} نفر را با موفقیت به سرویس دعوت کرده باشند."
     },
     "vip_friend": {
         "name": "دوست VIP", "icon": "👑", "points": 250,

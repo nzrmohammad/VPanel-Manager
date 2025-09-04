@@ -88,12 +88,10 @@ def handle_marzban_system_stats(call, params):
         logger.error(f"Error in handle_marzban_system_stats: {e}", exc_info=True)
         _safe_edit(uid, msg_id, escape_markdown("خطایی در هنگام دریافت آمار رخ داد."), reply_markup=back_to_status_menu)
 
-# In bot/admin_handlers/reporting.py
-
 def handle_paginated_list(call, params):
     """
     (نسخه نهایی و کامل) گزارش‌های صفحه‌بندی شده را برای ادمین مدیریت می‌کند.
-    این نسخه شامل صفحه‌بندی برای تمام لیست‌ها، از جمله کاربران ربات و تولدها است.
+    این نسخه شامل صفحه‌بندی برای تمام لیست‌ها و اصلاح منطق کاربران آنلاین است.
     """
     list_type, page = params[0], int(params[-1])
     # پنل ممکن است در برخی callback ها وجود نداشته باشد
@@ -103,47 +101,63 @@ def handle_paginated_list(call, params):
 
     all_users_combined = combined_handler.get_all_users_combined()
     
-    # اگر گزارش مخصوص یک پنل بود، کاربران را فیلتر می‌کنیم
     users_to_process = []
-    if panel_type:
-        all_panels_map = {p['name']: p['panel_type'] for p in db.get_all_panels()}
-        for user in all_users_combined:
-            for panel_name in user.get('breakdown', {}).keys():
-                if all_panels_map.get(panel_name) == panel_type:
-                    users_to_process.append(user)
-                    break 
-    else:
-        users_to_process = all_users_combined
-
-    users = []
     now_utc = datetime.now(pytz.utc)
+    users = []
 
     # --- منطق کامل برای جمع‌آوری لیست‌ها بر اساس نوع گزارش ---
-    if list_type == "panel_users": 
-        users = users_to_process
-    elif list_type == "online_users":
+    if list_type == "online_users":
         deadline = now_utc - timedelta(minutes=3)
-        online_users = [u for u in users_to_process if u.get('is_active') and u.get('last_online') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
-        for user in online_users:
+        online_users_hiddify, online_users_marzban = [], []
+        
+        online_users_raw = [u for u in all_users_combined if u.get('is_active') and u.get('last_online') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
+
+        for user in online_users_raw:
             if user.get('uuid'):
                 user['daily_usage_GB'] = sum(db.get_usage_since_midnight_by_uuid(user['uuid']).values())
-        users = online_users
-    elif list_type == "active_users":
-        deadline = now_utc - timedelta(days=1)
-        users = [u for u in users_to_process if u.get('last_online') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
-    elif list_type == "inactive_users":
-        users = [u for u in users_to_process if u.get('last_online') and isinstance(u.get('last_online'), datetime) and 1 <= (now_utc - u['last_online'].astimezone(pytz.utc)).days < 7]
-    elif list_type == "never_connected": 
-        users = [u for u in users_to_process if not u.get('last_online')]
-    elif list_type == "top_consumers":
-        sorted_users = sorted(users_to_process, key=lambda u: u.get('current_usage_GB', 0), reverse=True)
-        users = sorted_users[:100]
-    elif list_type == "bot_users": 
-        users = db.get_all_bot_users()
-    elif list_type == "birthdays": 
-        users = list(db.get_users_with_birthdays())
-    elif list_type == "payments":
-        users = list(db.get_all_payments_with_user_info())
+
+            breakdown = user.get('breakdown', {})
+            h_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+            m_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'marzban'), None)
+            
+            # منطق اصلی: کاربر به پنلی که آخرین فعالیت را در آن داشته، اختصاص می‌یابد
+            if h_online and (not m_online or h_online >= m_online):
+                online_users_hiddify.append(user)
+            elif m_online:
+                online_users_marzban.append(user)
+        
+        users = online_users_hiddify if panel_type == 'hiddify' else online_users_marzban
+
+    else:
+        # فیلتر کردن کاربران برای گزارش‌های مخصوص یک پنل
+        if panel_type:
+            all_panels_map = {p['name']: p['panel_type'] for p in db.get_all_panels()}
+            for user in all_users_combined:
+                for panel_name in user.get('breakdown', {}).keys():
+                    if all_panels_map.get(panel_name) == panel_type:
+                        users_to_process.append(user)
+                        break 
+        else:
+            users_to_process = all_users_combined
+
+        if list_type == "panel_users": 
+            users = users_to_process
+        elif list_type == "active_users":
+            deadline = now_utc - timedelta(days=1)
+            users = [u for u in users_to_process if u.get('last_online') and isinstance(u.get('last_online'), datetime) and u['last_online'].astimezone(pytz.utc) >= deadline]
+        elif list_type == "inactive_users":
+            users = [u for u in users_to_process if u.get('last_online') and isinstance(u.get('last_online'), datetime) and 1 <= (now_utc - u['last_online'].astimezone(pytz.utc)).days < 7]
+        elif list_type == "never_connected": 
+            users = [u for u in users_to_process if not u.get('last_online')]
+        elif list_type == "top_consumers":
+            sorted_users = sorted(users_to_process, key=lambda u: u.get('current_usage_GB', 0), reverse=True)
+            users = sorted_users[:100]
+        elif list_type == "bot_users": 
+            users = db.get_all_bot_users()
+        elif list_type == "birthdays": 
+            users = list(db.get_users_with_birthdays())
+        elif list_type == "payments":
+            users = list(db.get_all_payments_with_user_info())
 
     list_configs = {
         "panel_users": {"format": lambda u, pg, p_type: fmt_panel_users_list(u, "Hiddify" if p_type == "hiddify" else "Marzban", pg), "back": "panel_reports"},

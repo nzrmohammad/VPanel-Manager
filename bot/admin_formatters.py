@@ -228,19 +228,21 @@ def fmt_lottery_participants_list(participants: list) -> str:
 
 def fmt_users_list(users: list, list_type: str, page: int) -> str:
     title_map = {
-        'active': "✅ Active Users \\(last 24h\\)",
-        'inactive': "⏳ Inactive Users \\(1\\-7 days\\)",
-        'never_connected': "🚫 Never Connected Users"
+        'active': "✅ کاربران فعال (۲۴ ساعت اخیر)",
+        'inactive': "⏳ کاربران غیرفعال (۱ تا ۷ روز)",
+        'never_connected': "🚫 کاربران هرگز متصل نشده"
     }
-    title = title_map.get(list_type, "Users List")
+    # ✨ تغییر اصلی: تمام متن‌ها escape می‌شوند
+    title = escape_markdown(title_map.get(list_type, "لیست کاربران"))
 
     if not users:
-        return f"*{title}*\n\nNo users found in this category."
+        # ✨ تغییر اصلی: متن مربوط به خالی بودن لیست نیز escape می‌شود
+        return f"*{title}*\n\n{escape_markdown('هیچ کاربری در این دسته یافت نشد.')}"
 
     header_text = f"*{title}*"
     if len(users) > PAGE_SIZE:
         total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
-        pagination_text = f"\\(Page {page + 1} of {total_pages} \\| Total: {len(users)}\\)"
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
@@ -251,7 +253,7 @@ def fmt_users_list(users: list, list_type: str, page: int) -> str:
 
     for user in paginated_users:
         name = escape_markdown(user.get('name', 'N/A'))
-        line = f"• *{name}*"
+        line = f"`•` *{name}*"
 
         if list_type == 'active':
             last_online_str = to_shamsi(user.get('last_online')).split(' ')[0]
@@ -261,7 +263,7 @@ def fmt_users_list(users: list, list_type: str, page: int) -> str:
 
         elif list_type == 'inactive':
             last_online_str = format_relative_time(user.get('last_online'))
-            status = "expired" if user.get('expire', 0) < 0 else "active"
+            status = "منقضی" if user.get('expire', 0) < 0 else "فعال"
             line += f"{separator}{escape_markdown(last_online_str)}{separator}{status}"
 
         elif list_type == 'never_connected':
@@ -269,9 +271,9 @@ def fmt_users_list(users: list, list_type: str, page: int) -> str:
             limit_gb_str = f"{limit_gb:g}"
             
             expire_days = user.get("expire")
-            expire_text = "unlimited"
+            expire_text = "نامحدود"
             if expire_days is not None:
-                expire_text = f"{expire_days} days" if expire_days >= 0 else "expired"
+                expire_text = f"{expire_days} روز" if expire_days >= 0 else "منقضی"
             
             line += f"{separator}{limit_gb_str} GB{separator}{escape_markdown(expire_text)}"
 

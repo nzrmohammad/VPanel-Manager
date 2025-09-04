@@ -358,16 +358,15 @@ class Menu:
             types.InlineKeyboardButton("🇩🇪", callback_data="admin:panel_reports:hiddify"),
             types.InlineKeyboardButton("🇫🇷", callback_data="admin:panel_reports:marzban")
         )
-        kb.add(types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
         kb.add(
             types.InlineKeyboardButton("💳 پرداخت‌ها", callback_data="admin:list:payments:0"),
-            types.InlineKeyboardButton("🤖 لیست کاربران ربات", callback_data="admin:list:bot_users:0")
-        )
-        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"))
-        kb.add(types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
+            types.InlineKeyboardButton("🤖 لیست کاربران ربات", callback_data="admin:list:bot_users:0"))
+        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"),
+               types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
+        kb.add(types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
-        
+
     def admin_panel_specific_reports_menu(self, panel: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(

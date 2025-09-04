@@ -9,7 +9,7 @@ from telebot import apihelper, TeleBot, types
 
 from . import combined_handler
 from .database import db
-from .utils import escape_markdown, format_daily_usage
+from .utils import escape_markdown, format_daily_usage, load_json_file
 from .menu import menu
 from .admin_formatters import fmt_admin_report, fmt_online_users_list, fmt_weekly_admin_summary, fmt_achievement_leaderboard, fmt_lottery_participants_list
 from .user_formatters import fmt_user_report, fmt_user_weekly_report
@@ -432,13 +432,20 @@ class SchedulerManager:
                     if db.add_achievement(user_id, 'loyal_supporter'):
                         self._notify_user_achievement(user_id, 'loyal_supporter')
 
-                # --- ۳. بررسی نشان "دوست VIP" ---
-                user_record = db.uuid_by_id(user_id, uuid_id)
+                # --- ۳. بررسی نشان "سفیر" (جدید) ---
+                from .config import AMBASSADOR_BADGE_THRESHOLD
+                successful_referrals = [u for u in db.get_referred_users(user_id) if u['referral_reward_applied']]
+                if len(successful_referrals) >= AMBASSADOR_BADGE_THRESHOLD:
+                    if db.add_achievement(user_id, 'ambassador'):
+                        self._notify_user_achievement(user_id, 'ambassador')
+
+                # --- ۴. بررسی نشان "دوست VIP" ---
+                user_record = db.uuid_by_id(user_id, uuid_id) # uuid_by_id should accept user_id and uuid_id
                 if user_record and user_record.get('is_vip'):
                     if db.add_achievement(user_id, 'vip_friend'):
                         self._notify_user_achievement(user_id, 'vip_friend')
 
-                # --- ۴. بررسی نشان‌های مبتنی بر مصرف ---
+                # --- ۵. بررسی نشان‌های مبتنی بر مصرف ---
                 monthly_usage = db.get_total_usage_in_last_n_days(uuid_id, 30)
                 if monthly_usage > 200:
                     if db.add_achievement(user_id, 'pro_consumer'):
@@ -450,14 +457,14 @@ class SchedulerManager:
                         if db.add_achievement(user_id, 'night_owl'):
                             self._notify_user_achievement(user_id, 'night_owl')
                 
-                # --- ۵. بررسی دستاورد ترکیبی "اسطوره" ---
+                # --- ۶. بررسی دستاورد ترکیبی "اسطوره" ---
                 user_badges = db.get_user_achievements(user_id)
                 required_for_legend = {'veteran', 'loyal_supporter', 'pro_consumer'}
                 if required_for_legend.issubset(set(user_badges)):
                     if db.add_achievement(user_id, 'legend'):
                         self._notify_user_achievement(user_id, 'legend')
 
-                # --- ۶. اهدای نشان "خوش‌شانس" ---
+                # --- ۷. اهدای نشان "خوش‌شانس" ---
                 if user_id in lucky_users:
                     if db.add_achievement(user_id, 'lucky_one'):
                         self._notify_user_achievement(user_id, 'lucky_one')
@@ -602,6 +609,53 @@ class SchedulerManager:
             finally:
                 logger.info("SCHEDULER: User synchronization finished.")
 
+    def _check_for_special_occasions(self):
+        """هر روز اجرا شده و تاریخ شمسی را با مناسبت‌ها چک می‌کند."""
+        try:
+            events = load_json_file('events.json')
+            today_jalali = jdatetime.datetime.now(self.tz)
+            today_str = today_jalali.strftime('%m-%d')
+
+            for event in events:
+                if event.get('date') == today_str:
+                    logger.info(f"Today is {event['name']}. Preparing to send gifts.")
+                    self._distribute_special_occasion_gifts(event)
+
+        except Exception as e:
+            logger.error(f"Error checking for special occasions: {e}", exc_info=True)
+
+    def _distribute_special_occasion_gifts(self, event_details: dict):
+        """هدیه تعریف شده را به تمام کاربران فعال اعمال می‌کند."""
+        all_active_uuids = list(db.all_active_uuids())
+        if not all_active_uuids:
+            logger.info(f"No active users to send {event_details['name']} gift to.")
+            return
+
+        gift_gb = event_details.get('gift', {}).get('gb', 0)
+        gift_days = event_details.get('gift', {}).get('days', 0)
+        message_template = event_details.get('message', "شما یک هدیه دریافت کردید!")
+
+        if gift_gb == 0 and gift_days == 0:
+            logger.warning(f"Gift for {event_details['name']} has no value. Skipping.")
+            return
+
+        successful_gifts = 0
+        for user_row in all_active_uuids:
+            try:
+                success = combined_handler.modify_user_on_all_panels(
+                    identifier=user_row['uuid'],
+                    add_gb=gift_gb,
+                    add_days=gift_days
+                )
+                if success:
+                    self._send_warning_message(user_row['user_id'], escape_markdown(message_template))
+                    successful_gifts += 1
+                    time.sleep(0.2)
+            except Exception as e:
+                logger.error(f"Failed to give {event_details['name']} gift to user {user_row['user_id']}: {e}")
+        
+        logger.info(f"Successfully sent {event_details['name']} gift to {successful_gifts} users.")
+
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
         if datetime.now(self.tz).day == 1:
@@ -631,6 +685,7 @@ class SchedulerManager:
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements)
+        schedule.every().day.at("00:15", self.tz_str).do(self._check_for_special_occasions)
         schedule.every(12).hours.do(self._sync_users_with_panels)
         schedule.every(8).hours.do(self._cleanup_old_reports)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
