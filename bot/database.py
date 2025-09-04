@@ -5,8 +5,10 @@ import logging
 import pytz
 import jdatetime
 import secrets
+import threading
 
 logger = logging.getLogger(__name__)
+db_lock = threading.RLock()
 
 class DatabaseManager:
     def __init__(self, path: str = "bot_data.db"):
@@ -25,7 +27,7 @@ class DatabaseManager:
         print("DEBUG: _init_db function has been called.")
         logger.critical("CRITICAL_DEBUG: _init_db function has been called.")
         # END OF DEBUGGING CODE
-        with self._conn() as c:
+        with self.write_conn() as c:
             try:
                 # START OF DEBUGGING CODE
                 logger.critical("CRITICAL_DEBUG: Inside the 'try' block of _init_db.")
@@ -231,8 +233,33 @@ class DatabaseManager:
             """)
         logger.info("SQLite schema is fresh and ready.")
 
+    def write_conn(self):
+        """A context manager for safe write access to the database."""
+        class WriteConnection:
+            def __init__(self, db_manager_instance):
+                self.db_manager = db_manager_instance
+
+            def __enter__(self):
+                db_lock.acquire()
+                # از این به بعد از مسیر فایل دیتابیس که به آن داده شده استفاده می‌کند
+                self.conn = sqlite3.connect(self.db_manager.path, detect_types=sqlite3.PARSE_DECLTYPES)
+                self.conn.execute("PRAGMA journal_mode=WAL")
+                self.conn.execute("PRAGMA foreign_keys = ON;")
+                self.conn.row_factory = sqlite3.Row
+                return self.conn
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if self.conn:
+                    if exc_type is None:
+                        self.conn.commit()
+                    self.conn.close()
+                db_lock.release()
+
+        # در اینجا نمونه کلاس اصلی را به کلاس داخلی پاس می‌دهیم
+        return WriteConnection(self)
+
     def add_usage_snapshot(self, uuid_id: int, hiddify_usage: float, marzban_usage: float) -> None:
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute(
                 "INSERT INTO usage_snapshots (uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at) VALUES (?, ?, ?, ?)",
                 (uuid_id, hiddify_usage, marzban_usage, datetime.now(pytz.utc))
@@ -247,7 +274,7 @@ class DatabaseManager:
         today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
         today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
-        with self._conn() as c:
+        with self.write_conn() as c:
             # تمام اسنپ‌شات‌های امروز را به ترتیب زمان می‌گیریم
             today_snapshots = c.execute(
                 "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC",
@@ -275,11 +302,15 @@ class DatabaseManager:
                 current_h = snap['hiddify_usage_gb'] or 0.0
                 current_m = snap['marzban_usage_gb'] or 0.0
                 
+                # برای Hiddify (مصرف تجمعی)
                 if current_h > last_h:
                     total_h_usage += current_h - last_h
                 
-                if current_m > last_m:
-                    total_m_usage += current_m - last_m
+                # برای Marzban (مصرف با قابلیت ریست شدن)
+                if current_m < last_m: # اگر مصرف فعلی کمتر از قبلی بود، یعنی ریست شده
+                    total_m_usage += current_m
+                else:
+                    total_m_usage += (current_m - last_m)
                     
                 last_h, last_m = current_h, current_m
 
@@ -298,7 +329,7 @@ class DatabaseManager:
         days_since_saturday = (today_jalali.weekday() + 1) % 7
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
-        with self._conn() as c:
+        with self.write_conn() as c:
             week_snapshots = c.execute(
                 "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC",
                 (uuid_id, week_start_utc)
@@ -337,7 +368,7 @@ class DatabaseManager:
         now_utc = datetime.now(pytz.utc)
         intervals = {3: 0.0, 6: 0.0, 12: 0.0, 24: 0.0}
         
-        with self._conn() as c:
+        with self.write_conn() as c:
             for hours in intervals.keys():
                 time_ago = now_utc - timedelta(hours=hours)
                 
@@ -355,7 +386,7 @@ class DatabaseManager:
         return intervals
         
     def log_warning(self, uuid_id: int, warning_type: str):
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute(
                 "INSERT INTO warning_log (uuid_id, warning_type, sent_at) VALUES (?, ?, ?) "
                 "ON CONFLICT(uuid_id, warning_type) DO UPDATE SET sent_at=excluded.sent_at",
@@ -364,7 +395,7 @@ class DatabaseManager:
 
     def has_recent_warning(self, uuid_id: int, warning_type: str, hours: int = 24) -> bool:
         time_ago = datetime.now(pytz.utc) - timedelta(hours=hours)
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(
                 "SELECT 1 FROM warning_log WHERE uuid_id = ? AND warning_type = ? AND sent_at >= ?",
                 (uuid_id, warning_type, time_ago)
@@ -375,12 +406,12 @@ class DatabaseManager:
         if not uuids: return []
         placeholders = ','.join('?' for _ in uuids)
         query = f"SELECT DISTINCT user_id FROM user_uuids WHERE uuid IN ({placeholders})"
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, uuids).fetchall()
             return [row['user_id'] for row in rows]
         
     def get_uuid_id_by_uuid(self, uuid_str: str) -> Optional[int]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT id FROM user_uuids WHERE uuid = ?", (uuid_str,)).fetchone()
             return row['id'] if row else None
 
@@ -393,7 +424,7 @@ class DatabaseManager:
 
 
     def add_or_update_scheduled_message(self, job_type: str, chat_id: int, message_id: int):
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute(
                 "INSERT INTO scheduled_messages(job_type, chat_id, message_id) VALUES(?,?,?) "
                 "ON CONFLICT(job_type, chat_id) DO UPDATE SET message_id=excluded.message_id, created_at=CURRENT_TIMESTAMP",
@@ -401,21 +432,21 @@ class DatabaseManager:
             )
 
     def get_scheduled_messages(self, job_type: str) -> List[Dict[str, Any]]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT * FROM scheduled_messages WHERE job_type=?", (job_type,)).fetchall()
             return [dict(r) for r in rows]
 
     def delete_scheduled_message(self, job_id: int):
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("DELETE FROM scheduled_messages WHERE id=?", (job_id,))
             
     def user(self, user_id: int) -> Optional[Dict[str, Any]]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
             return dict(row) if row else None
 
     def add_or_update_user(self, user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> None:
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute(
                 "INSERT INTO users(user_id, username, first_name, last_name) VALUES(?,?,?,?) "
                 "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name, last_name=excluded.last_name",
@@ -423,7 +454,7 @@ class DatabaseManager:
             )
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config, auto_delete_reports FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 return {
@@ -443,12 +474,12 @@ class DatabaseManager:
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
             if setting not in ['daily_reports', 'weekly_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban', 'show_info_config', 'auto_delete_reports']: return
-            with self._conn() as c:
+            with self.write_conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
 
     def add_uuid(self, user_id: int, uuid_str: str, name: str) -> any:
             uuid_str = uuid_str.lower()
-            with self._conn() as c:
+            with self.write_conn() as c:
                 # بررسی می‌کند آیا این کاربر قبلاً همین UUID را داشته و غیرفعال کرده
                 existing_inactive_for_this_user = c.execute("SELECT * FROM user_uuids WHERE user_id = ? AND uuid = ? AND is_active = 0", (user_id, uuid_str)).fetchone()
                 if existing_inactive_for_this_user:
@@ -482,7 +513,7 @@ class DatabaseManager:
         این تابع فاقد منطق بررسی مالکیت است و مستقیماً عمل می‌کند.
         """
         uuid_str = uuid_str.lower()
-        with self._conn() as c:
+        with self.write_conn() as c:
             # بررسی می‌کند آیا کاربر قبلاً این اکانت را داشته و غیرفعال کرده است
             existing_inactive = c.execute("SELECT * FROM user_uuids WHERE user_id = ? AND uuid = ? AND is_active = 0", (user_id, uuid_str)).fetchone()
             
@@ -496,27 +527,27 @@ class DatabaseManager:
     # --- *** END OF CHANGES *** ---
 
     def uuids(self, user_id: int) -> List[Dict[str, Any]]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT * FROM user_uuids WHERE user_id=? AND is_active=1 ORDER BY created_at", (user_id,)).fetchall()
             return [dict(r) for r in rows]
 
     def uuid_by_id(self, user_id: int, uuid_id: int) -> Optional[Dict[str, Any]]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT * FROM user_uuids WHERE user_id=? AND id=? AND is_active=1", (user_id, uuid_id)).fetchone()
             return dict(row) if row else None
 
     def deactivate_uuid(self, uuid_id: int) -> bool:
-        with self._conn() as c:
+        with self.write_conn() as c:
             res = c.execute("UPDATE user_uuids SET is_active = 0 WHERE id = ?", (uuid_id,))
             return res.rowcount > 0
 
     def delete_user_by_uuid(self, uuid: str) -> None:
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("DELETE FROM user_uuids WHERE uuid=?", (uuid,))
 
     def all_active_uuids(self):
         """Yields all active UUIDs along with their reminder status."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             # Added renewal_reminder_sent to the selected columns
             cursor = c.execute("SELECT id, user_id, uuid, created_at, first_connection_time, welcome_message_sent, renewal_reminder_sent FROM user_uuids WHERE is_active=1")
             for row in cursor:
@@ -524,25 +555,25 @@ class DatabaseManager:
             
     def get_all_user_ids(self):
         """تمام شناسه‌های کاربری را به صورت جریانی (generator) برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("SELECT user_id FROM users")
             for row in cursor:
                 yield row['user_id']
         
     def get_all_bot_users(self):
         """تمام کاربران ربات را به صورت لیست برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("SELECT user_id, username, first_name, last_name FROM users ORDER BY user_id")
             # FIX: The generator is converted to a list before being returned.
             return [dict(r) for r in cursor.fetchall()]
         
     def update_user_birthday(self, user_id: int, birthday_date: datetime.date):
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE users SET birthday = ? WHERE user_id = ?", (birthday_date, user_id))
 
     def get_users_with_birthdays(self):
         """کاربران دارای تاریخ تولد را به صورت جریانی (generator) برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("""
                 SELECT user_id, first_name, username, birthday FROM users
                 WHERE birthday IS NOT NULL
@@ -552,23 +583,23 @@ class DatabaseManager:
                 yield dict(row)
         
     def get_user_id_by_uuid(self, uuid: str) -> Optional[int]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT user_id FROM user_uuids WHERE uuid = ?", (uuid,)).fetchone()
             return row['user_id'] if row else None
 
     def reset_user_birthday(self, user_id: int) -> None:
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE users SET birthday = NULL WHERE user_id = ?", (user_id,))
 
     def delete_user_snapshots(self, uuid_id: int) -> int:
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE uuid_id = ?", (uuid_id,))
             return cursor.rowcount
     
     def get_todays_birthdays(self) -> list:
         today = datetime.now(pytz.utc)
         today_month_day = f"{today.month:02d}-{today.day:02d}"
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(
                 "SELECT user_id FROM users WHERE strftime('%m-%d', birthday) = ?",
                 (today_month_day,)
@@ -576,7 +607,7 @@ class DatabaseManager:
             return [row['user_id'] for row in rows]
 
     def vacuum_db(self) -> None:
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("VACUUM")
 
     def get_bot_user_by_uuid(self, uuid: str) -> Optional[Dict[str, Any]]:
@@ -586,12 +617,12 @@ class DatabaseManager:
             JOIN user_uuids uu ON u.user_id = uu.user_id
             WHERE uu.uuid = ?
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(query, (uuid,)).fetchone()
             return dict(row) if row else None
 
     def get_uuid_to_user_id_map(self) -> Dict[str, int]:
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT uuid, user_id FROM user_uuids WHERE is_active=1").fetchall()
             return {row['uuid']: row['user_id'] for row in rows}
         
@@ -603,7 +634,7 @@ class DatabaseManager:
             WHERE uu.is_active = 1
         """
         result_map = {}
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             for row in rows:
                 if row['uuid'] not in result_map:
@@ -613,40 +644,40 @@ class DatabaseManager:
     def delete_daily_snapshots(self, uuid_id: int) -> None:
         """Deletes all usage snapshots for a given uuid_id that were taken today (UTC)."""
         today_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("DELETE FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ?", (uuid_id, today_start_utc))
             logger.info(f"Deleted daily snapshots for uuid_id {uuid_id}.")
 
     def set_first_connection_time(self, uuid_id: int, time: datetime):
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE user_uuids SET first_connection_time = ? WHERE id = ?", (time, uuid_id))
 
     def mark_welcome_message_as_sent(self, uuid_id: int):
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE user_uuids SET welcome_message_sent = 1 WHERE id = ?", (uuid_id,))
 
     def reset_welcome_message_sent(self, uuid_id: int):
         """
         Resets the welcome message sent flag for a specific UUID. Used for testing purposes.
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE user_uuids SET welcome_message_sent = 0 WHERE id = ?", (uuid_id,))
 
     def add_payment_record(self, uuid_id: int) -> bool:
         """یک رکورد پرداخت برای کاربر با تاریخ فعلی ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("INSERT INTO payments (uuid_id, payment_date) VALUES (?, ?)",
                       (uuid_id, datetime.now(pytz.utc)))
             return True
 
     def set_renewal_reminder_sent(self, uuid_id: int):
         """Sets the renewal reminder flag to 1 (sent)."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE user_uuids SET renewal_reminder_sent = 1 WHERE id = ?", (uuid_id,))
 
     def reset_renewal_reminder_sent(self, uuid_id: int):
         """Resets the renewal reminder flag to 0 (not sent)."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE user_uuids SET renewal_reminder_sent = 0 WHERE id = ?", (uuid_id,))
 
     def get_payment_counts(self) -> Dict[str, int]:
@@ -658,7 +689,7 @@ class DatabaseManager:
                 WHERE uu.is_active = 1
                 GROUP BY uu.name
             """
-            with self._conn() as c:
+            with self.write_conn() as c:
                 results = c.execute(query).fetchall()
                 return {row['name']: row['payment_count'] for row in results if row['name']}
 
@@ -677,13 +708,13 @@ class DatabaseManager:
             ) AND uu.is_active = 1
             ORDER BY p.payment_date DESC;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
         
     def get_user_payment_history(self, uuid_id: int) -> List[Dict[str, Any]]:
             """تمام رکوردهای پرداخت برای یک کاربر خاص را برمی‌گرداند."""
-            with self._conn() as c:
+            with self.write_conn() as c:
                 rows = c.execute("SELECT payment_date FROM payments WHERE uuid_id = ? ORDER BY payment_date DESC", (uuid_id,)).fetchall()
                 return [dict(r) for r in rows]
 
@@ -705,14 +736,14 @@ class DatabaseManager:
             LEFT JOIN users u ON uu.user_id = u.user_id
             ORDER BY p.payment_date DESC;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute(query)
             for row in cursor:
                 yield dict(row)
 
     def update_user_note(self, user_id: int, note: Optional[str]) -> None:
         """Updates or removes the admin note for a given user."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE users SET admin_note = ? WHERE user_id = ?", (note, user_id))
 
     def add_batch_templates(self, templates: list[str]) -> int:
@@ -724,7 +755,7 @@ class DatabaseManager:
         if not templates:
             return 0
         
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.cursor()
             # استفاده از INSERT ساده برای افزودن تمام موارد
             cursor.executemany(
@@ -749,29 +780,29 @@ class DatabaseManager:
 
     def get_all_config_templates(self) -> list[dict]:
         """تمام الگوهای کانفیگ تعریف شده توسط ادمین را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT * FROM config_templates ORDER BY id DESC").fetchall()
             return [dict(r) for r in rows]
 
     def get_active_config_templates(self) -> list[dict]:
         """فقط الگوهای کانفیگ فعال را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT * FROM config_templates WHERE is_active = 1").fetchall()
             return [dict(r) for r in rows]
 
     def toggle_template_status(self, template_id: int) -> None:
         """وضعیت فعال/غیرفعال یک الگو را تغییر می‌دهد."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE config_templates SET is_active = 1 - is_active WHERE id = ?", (template_id,))
 
     def delete_template(self, template_id: int) -> None:
         """یک الگو و تمام کانفیگ‌های تولید شده از آن را حذف می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("DELETE FROM config_templates WHERE id = ?", (template_id,))
 
     def get_user_config(self, user_uuid_id: int, template_id: int) -> dict | None:
         """کانفیگ تولید شده برای یک کاربر و یک الگوی خاص را بازیابی می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(
                 "SELECT * FROM user_generated_configs WHERE user_uuid_id = ? AND template_id = ?",
                 (user_uuid_id, template_id)
@@ -780,7 +811,7 @@ class DatabaseManager:
 
     def add_user_config(self, user_uuid_id: int, template_id: int, generated_uuid: str) -> None:
         """یک رکورد جدید برای UUID تولید شده ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute(
                 "INSERT INTO user_generated_configs (user_uuid_id, template_id, generated_uuid) VALUES (?, ?, ?)",
                 (user_uuid_id, template_id, generated_uuid)
@@ -788,7 +819,7 @@ class DatabaseManager:
 
     def get_user_uuid_record(self, uuid_str: str) -> dict | None:
         """اطلاعات کامل یک رکورد UUID را بر اساس رشته آن برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT * FROM user_uuids WHERE uuid = ? AND is_active = 1", (uuid_str,)).fetchone()
             return dict(row) if row else None
         
@@ -797,7 +828,7 @@ class DatabaseManager:
         تمام رکوردهای UUID را از دیتابیس برمی‌گرداند.
         این تابع برای پنل ادمین جهت نمایش همه کاربران استفاده می‌شود.
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             # ✅ **تغییر اصلی:** ستون‌های is_vip, has_access_de, has_access_fr به کوئری اضافه شدند
             query = """
                 SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr
@@ -810,7 +841,7 @@ class DatabaseManager:
     def check_connection(self) -> bool:
         """بررسی می‌کند که آیا اتصال به دیتابیس برقرار است یا نه."""
         try:
-            with self._conn() as c:
+            with self.write_conn() as c:
                 c.execute("SELECT 1")
             logger.info("Database connection check successful.")
             return True
@@ -863,7 +894,7 @@ class DatabaseManager:
         """
         
         usage_map = {}
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (today_midnight_utc, today_midnight_utc, today_midnight_utc)).fetchall()
             for row in rows:
                 h_start, m_start = (row['h_start'] or 0.0), (row['m_start'] or 0.0)
@@ -884,7 +915,7 @@ class DatabaseManager:
         now_in_tehran = datetime.now(tehran_tz)
         summary = []
         
-        with self._conn() as c:
+        with self.write_conn() as c:
             for i in range(days - 1, -1, -1):
                 # 1. محدوده زمانی روز مورد نظر را مشخص می‌کنیم
                 target_date = now_in_tehran.date() - timedelta(days=i)
@@ -959,7 +990,7 @@ class DatabaseManager:
             # جلوگیری از ثبت نام‌های خالی یا بسیار کوتاه
             return False
         
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute(
                 "UPDATE user_uuids SET name = ? WHERE id = ?",
                 (new_name, uuid_id)
@@ -978,7 +1009,7 @@ class DatabaseManager:
             GROUP BY date
             ORDER BY date ASC;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
 
@@ -994,7 +1025,7 @@ class DatabaseManager:
             ORDER BY month DESC
             LIMIT {months};
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             # Reverse the result to have it in ascending order for the chart
             return [dict(r) for r in reversed(rows)]
@@ -1012,7 +1043,7 @@ class DatabaseManager:
             ORDER BY month DESC
             LIMIT {months};
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in reversed(rows)]
 
@@ -1028,7 +1059,7 @@ class DatabaseManager:
             GROUP BY date
             ORDER BY date ASC;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
 
@@ -1047,13 +1078,13 @@ class DatabaseManager:
             ORDER BY (h_usage + m_usage) DESC
             LIMIT {limit};
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
 
     def get_total_payments_in_range(self, start_date: datetime, end_date: datetime) -> int:
         """تعداد کل پرداخت‌ها در یک بازه زمانی مشخص را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(
                 "SELECT COUNT(payment_id) as count FROM payments WHERE payment_date >= ? AND payment_date < ?",
                 (start_date, end_date)
@@ -1062,7 +1093,7 @@ class DatabaseManager:
 
     def get_new_users_in_range(self, start_date: datetime, end_date: datetime) -> int:
         """تعداد کاربران جدید در یک بازه زمانی را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(
                 "SELECT COUNT(id) as count FROM user_uuids WHERE created_at >= ? AND created_at < ?",
                 (start_date, end_date)
@@ -1095,7 +1126,7 @@ class DatabaseManager:
                     GROUP BY uuid_id
                 )
             """
-            with self._conn() as c:
+            with self.write_conn() as c:
                 row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
                 summary.append({
                     'date': target_date.strftime('%Y-%m-%d'),
@@ -1120,7 +1151,7 @@ class DatabaseManager:
             WHERE taken_at >= ?
             GROUP BY day_of_week, hour_of_day
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (time_limit,)).fetchall()
             return [dict(r) for r in rows]
 
@@ -1137,30 +1168,30 @@ class DatabaseManager:
             GROUP BY date
             ORDER BY date ASC;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
         
     def toggle_user_vip(self, uuid: str) -> None:
         """وضعیت VIP یک کاربر را بر اساس UUID تغییر می‌دهد."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE user_uuids SET is_vip = 1 - is_vip WHERE uuid = ?", (uuid,))
 
     def toggle_template_special(self, template_id: int) -> None:
         """وضعیت "ویژه" بودن یک قالب کانفیگ را تغییر می‌دهد."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE config_templates SET is_special = 1 - is_special WHERE id = ?", (template_id,))
 
     def set_template_server_type(self, template_id: int, server_type: str) -> None:
         """نوع سرور یک قالب کانفیگ را تنظیم می‌کند."""
         if server_type not in ['de', 'fr', 'tr', 'none']:
             return
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE config_templates SET server_type = ? WHERE id = ?", (server_type, template_id))
 
     def reset_templates_table(self) -> None:
         """تمام رکوردها را از جدول config_templates حذف کرده و شمارنده ID را ریست می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("DELETE FROM config_templates;")
             # این دستور شمارنده auto-increment را برای جدول ریست می‌کند
             c.execute("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'config_templates';")
@@ -1168,19 +1199,19 @@ class DatabaseManager:
 
     def set_user_language(self, user_id: int, lang_code: str):
         """زبان انتخابی کاربر را در دیتابیس ذخیره می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE users SET lang_code = ? WHERE user_id = ?", (lang_code, user_id))
 
     def get_user_language(self, user_id: int) -> str:
         """کد زبان کاربر را از دیتابیس می‌خواند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT lang_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
             # اگر زبانی ثبت نشده بود، فارسی را به عنوان پیش‌فرض برمی‌گرداند
             return row['lang_code'] if row and row['lang_code'] else 'fa'
 
     def add_marzban_mapping(self, hiddify_uuid: str, marzban_username: str) -> bool:
         """یک ارتباط جدید بین UUID هیدیفای و یوزرنیم مرزبان اضافه یا جایگزین می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             try:
                 c.execute("INSERT OR REPLACE INTO marzban_mapping (hiddify_uuid, marzban_username) VALUES (?, ?)", (hiddify_uuid.lower(), marzban_username))
                 return True
@@ -1190,25 +1221,25 @@ class DatabaseManager:
 
     def get_marzban_username_by_uuid(self, hiddify_uuid: str) -> Optional[str]:
         """یوزرنیم مرزبان را بر اساس UUID هیدیفای از دیتابیس دریافت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT marzban_username FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),)).fetchone()
             return row['marzban_username'] if row else None
 
     def get_uuid_by_marzban_username(self, marzban_username: str) -> Optional[str]:
         """UUID هیدیفای را بر اساس یوزرنیم مرزبان از دیتابیس دریافت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT hiddify_uuid FROM marzban_mapping WHERE marzban_username = ?", (marzban_username,)).fetchone()
             return row['hiddify_uuid'] if row else None
             
     def get_all_marzban_mappings(self) -> List[Dict[str, str]]:
         """تمام ارتباط‌های مرزبان را برای نمایش در پنل وب برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT hiddify_uuid, marzban_username FROM marzban_mapping ORDER BY marzban_username").fetchall()
             return [dict(r) for r in rows]
 
     def delete_marzban_mapping(self, hiddify_uuid: str) -> bool:
         """یک ارتباط را بر اساس UUID هیدیفای حذف می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             res = c.execute("DELETE FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),))
             return res.rowcount > 0
         
@@ -1217,7 +1248,7 @@ class DatabaseManager:
         یک کاربر را به طور کامل از جدول users بر اساس شناسه تلگرام حذف می‌کند.
         به دلیل وجود ON DELETE CASCADE، تمام رکوردهای مرتبط نیز حذف خواهند شد.
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
             return cursor.rowcount > 0
 
@@ -1225,7 +1256,7 @@ class DatabaseManager:
         """تاریخچه مصرف روزانه یک کاربر را برای تعداد روز مشخص شده برمی‌گرداند."""
         tehran_tz = pytz.timezone("Asia/Tehran")
         history = []
-        with self._conn() as c:
+        with self.write_conn() as c:
             for i in range(days):
                 target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
@@ -1252,14 +1283,14 @@ class DatabaseManager:
     def create_login_token(self, user_uuid: str) -> str:
         """یک توکن یکبار مصرف برای ورود به پنل وب ایجاد می‌کند."""
         token = secrets.token_urlsafe(32)
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("INSERT INTO login_tokens (token, uuid) VALUES (?, ?)", (token, user_uuid))
         return token
 
     def validate_login_token(self, token: str) -> Optional[str]:
         """یک توکن را اعتبارسنجی کرده و در صورت اعتبار، UUID کاربر را برمی‌گرداند."""
         five_minutes_ago = datetime.now(pytz.utc) - timedelta(minutes=5)
-        with self._conn() as c:
+        with self.write_conn() as c:
             # ابتدا توکن‌های منقضی شده را حذف می‌کنیم
             c.execute("DELETE FROM login_tokens WHERE created_at < ?", (five_minutes_ago,))
             
@@ -1274,14 +1305,14 @@ class DatabaseManager:
     def delete_old_snapshots(self, days_to_keep: int = 3) -> int:
         """Deletes usage snapshots older than a specified number of days."""
         time_limit = datetime.now(pytz.utc) - timedelta(days=days_to_keep)
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at < ?", (time_limit,))
             logger.info(f"Cleaned up {cursor.rowcount} old usage snapshots (older than {days_to_keep} days).")
             return cursor.rowcount
 
     def add_panel(self, name: str, panel_type: str, api_url: str, token1: str, token2: Optional[str] = None) -> bool:
         """Adds a new panel to the database."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             try:
                 c.execute(
                     "INSERT INTO panels (name, panel_type, api_url, api_token1, api_token2) VALUES (?, ?, ?, ?, ?)",
@@ -1294,37 +1325,37 @@ class DatabaseManager:
 
     def get_all_panels(self) -> List[Dict[str, Any]]:
         """Retrieves all configured panels from the database."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT * FROM panels ORDER BY name ASC").fetchall()
             return [dict(r) for r in rows]
 
     def get_active_panels(self) -> List[Dict[str, Any]]:
         """Retrieves only the active panels from the database."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT * FROM panels WHERE is_active = 1 ORDER BY name ASC").fetchall()
             return [dict(r) for r in rows]
 
     def delete_panel(self, panel_id: int) -> bool:
         """Deletes a panel by its ID."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM panels WHERE id = ?", (panel_id,))
             return cursor.rowcount > 0
 
     def toggle_panel_status(self, panel_id: int) -> bool:
         """Toggles the active status of a panel."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("UPDATE panels SET is_active = 1 - is_active WHERE id = ?", (panel_id,))
             return cursor.rowcount > 0
 
     def get_panel_by_id(self, panel_id: int) -> Optional[Dict[str, Any]]:
         """Retrieves a single panel's details by its ID."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT * FROM panels WHERE id = ?", (panel_id,)).fetchone()
             return dict(row) if row else None
 
     def update_panel_name(self, panel_id: int, new_name: str) -> bool:
         """Updates the name of a specific panel."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             try:
                 cursor = c.execute("UPDATE panels SET name = ? WHERE id = ?", (new_name, panel_id))
                 return cursor.rowcount > 0
@@ -1354,7 +1385,7 @@ class DatabaseManager:
             WHERE uu.is_active = 1
             ORDER BY u.user_id, uu.created_at;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
@@ -1366,7 +1397,7 @@ class DatabaseManager:
         
         column_name = f"has_access_{server}"
         
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute(
                 f"UPDATE user_uuids SET {column_name} = ? WHERE id = ?",
                 (int(status), uuid_id)
@@ -1375,13 +1406,13 @@ class DatabaseManager:
 
     def get_panel_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Retrieves a single panel's details by its unique name."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT * FROM panels WHERE name = ?", (name,)).fetchone()
             return dict(row) if row else None
         
     def toggle_template_random_pool(self, template_id: int) -> bool:
         """وضعیت عضویت یک قالب در استخر انتخاب تصادفی را تغییر می‌دهد."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("UPDATE config_templates SET is_random_pool = 1 - is_random_pool WHERE id = ?", (template_id,))
             return cursor.rowcount > 0
         
@@ -1396,7 +1427,7 @@ class DatabaseManager:
         """تاریخچه مصرف روزانه کاربر را به تفکیک هر پنل برای تعداد روز مشخص شده برمی‌گرداند."""
         tehran_tz = pytz.timezone("Asia/Tehran")
         history = []
-        with self._conn() as c:
+        with self.write_conn() as c:
             for i in range(days):
                 target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
@@ -1424,7 +1455,7 @@ class DatabaseManager:
 
     def add_sent_report(self, user_id: int, message_id: int):
         """یک رکورد برای پیام گزارش ارسال شده ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("INSERT INTO sent_reports (user_id, message_id, sent_at) VALUES (?, ?, ?)",
                       (user_id, message_id, datetime.now(pytz.utc)))
 
@@ -1437,13 +1468,13 @@ class DatabaseManager:
             JOIN users u ON sr.user_id = u.user_id
             WHERE sr.sent_at < ? AND u.auto_delete_reports = 1
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (time_limit,)).fetchall()
             return [dict(r) for r in rows]
 
     def delete_sent_report_record(self, record_id: int):
         """یک رکورد را از جدول sent_reports پس از تلاش برای حذف، پاک می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("DELETE FROM sent_reports WHERE id = ?", (record_id,))
 
     def get_sent_warnings_since_midnight(self) -> list:
@@ -1463,13 +1494,13 @@ class DatabaseManager:
             WHERE wl.sent_at >= ?
             ORDER BY uu.name;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query, (today_midnight_utc,)).fetchall()
             return [dict(r) for r in rows]
 
     def record_user_agent(self, uuid_id: int, user_agent: str):
         """Saves or updates the user agent for a given UUID, resetting the last_seen timestamp."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("""
                 INSERT INTO client_user_agents (uuid_id, user_agent, last_seen)
                 VALUES (?, ?, ?)
@@ -1479,7 +1510,7 @@ class DatabaseManager:
 
     def get_user_agents_for_uuid(self, uuid_id: int) -> List[Dict[str, Any]]:
         """Retrieves all recorded user agents for a specific user UUID, ordered by last seen."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("""
                 SELECT user_agent, last_seen FROM client_user_agents
                 WHERE uuid_id = ? ORDER BY last_seen DESC
@@ -1503,25 +1534,25 @@ class DatabaseManager:
             LEFT JOIN users u ON uu.user_id = u.user_id
             ORDER BY ca.last_seen DESC;
         """
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
     def count_user_agents(self, uuid_id: int) -> int:
             """Counts the number of recorded user agents for a specific user UUID."""
-            with self._conn() as c:
+            with self.write_conn() as c:
                 row = c.execute("SELECT COUNT(id) FROM client_user_agents WHERE uuid_id = ?", (uuid_id,)).fetchone()
             return row[0] if row else 0
     
     def delete_user_agents_by_uuid_id(self, uuid_id: int) -> int:
         """Deletes all user agent records for a given uuid_id."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM client_user_agents WHERE uuid_id = ?", (uuid_id,))
             return cursor.rowcount
 
     def log_traffic_transfer(self, sender_uuid_id: int, receiver_uuid_id: int, panel_type: str, amount_gb: float):
         """یک رکورد جدید برای انتقال ترافیک ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute(
                 "INSERT INTO traffic_transfers (sender_uuid_id, receiver_uuid_id, panel_type, amount_gb, transferred_at) VALUES (?, ?, ?, ?, ?)",
                 (sender_uuid_id, receiver_uuid_id, panel_type, amount_gb, datetime.now(pytz.utc))
@@ -1530,7 +1561,7 @@ class DatabaseManager:
     def has_transferred_in_last_30_days(self, sender_uuid_id: int) -> bool:
         """بررسی می‌کند آیا کاربر در ۳۰ روز گذشته انتقالی داشته است یا خیر."""
         thirty_days_ago = datetime.now(pytz.utc) - timedelta(days=30)
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(
                 "SELECT 1 FROM traffic_transfers WHERE sender_uuid_id = ? AND transferred_at >= ?",
                 (sender_uuid_id, thirty_days_ago)
@@ -1539,7 +1570,7 @@ class DatabaseManager:
 
     def add_achievement(self, user_id: int, badge_code: str) -> bool:
         """یک دستاورد جدید برای کاربر ثبت می‌کند و در صورت موفقیت True برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             try:
                 c.execute(
                     "INSERT INTO user_achievements (user_id, badge_code) VALUES (?, ?)",
@@ -1552,14 +1583,14 @@ class DatabaseManager:
 
     def get_user_achievements(self, user_id: int) -> List[str]:
         """لیست کدهای تمام نشان‌های یک کاربر را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute("SELECT badge_code FROM user_achievements WHERE user_id = ?", (user_id,)).fetchall()
             return [row['badge_code'] for row in rows]
 
     def get_total_usage_in_last_n_days(self, uuid_id: int, days: int) -> float:
         """مجموع کل مصرف یک کاربر در N روز گذشته را محاسبه می‌کند."""
         time_limit = datetime.now(pytz.utc) - timedelta(days=days)
-        with self._conn() as c:
+        with self.write_conn() as c:
             query = """
                 SELECT
                     MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_usage,
@@ -1580,7 +1611,7 @@ class DatabaseManager:
         time_limit = datetime.now(pytz.utc) - timedelta(days=days)
         tehran_tz = pytz.timezone("Asia/Tehran")
         
-        with self._conn() as c:
+        with self.write_conn() as c:
             query = """
                 SELECT hiddify_usage_gb, marzban_usage_gb, taken_at
                 FROM usage_snapshots
@@ -1621,7 +1652,7 @@ class DatabaseManager:
         results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0}
         active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set()}
 
-        with self._conn() as c:
+        with self.write_conn() as c:
             all_uuids = c.execute("SELECT id FROM user_uuids WHERE is_active = 1").fetchall()
             uuid_ids = [row['id'] for row in all_uuids]
 
@@ -1671,7 +1702,7 @@ class DatabaseManager:
 
     def get_or_create_referral_code(self, user_id: int) -> str:
         """کد معرف کاربر را برمی‌گرداند یا اگر وجود نداشته باشد، یکی برای او می‌سازد."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("SELECT referral_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
             if row and row['referral_code']:
                 return row['referral_code']
@@ -1685,7 +1716,7 @@ class DatabaseManager:
 
     def set_referrer(self, user_id: int, referrer_code: str):
         """کاربر معرف را برای یک کاربر جدید ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             referrer = c.execute("SELECT user_id FROM users WHERE referral_code = ?", (referrer_code,)).fetchone()
             if referrer:
                 c.execute("UPDATE users SET referred_by_user_id = ? WHERE user_id = ?", (referrer['user_id'], user_id))
@@ -1693,7 +1724,7 @@ class DatabaseManager:
 
     def get_referrer_info(self, user_id: int) -> Optional[dict]:
         """اطلاعات کاربر معرف را (در صورت وجود) برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute("""
                 SELECT u.referred_by_user_id, u.referral_reward_applied, r.first_name as referrer_name
                 FROM users u
@@ -1704,12 +1735,12 @@ class DatabaseManager:
 
     def mark_referral_reward_as_applied(self, user_id: int):
         """وضعیت پاداش معرفی را برای جلوگیری از اهدای مجدد، ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("UPDATE users SET referral_reward_applied = 1 WHERE user_id = ?", (user_id,))
 
     def get_last_transfer_timestamp(self, sender_uuid_id: int) -> Optional[datetime]:
         """آخرین زمان انتقال ترافیک توسط یک کاربر را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             row = c.execute(
                 "SELECT transferred_at FROM traffic_transfers WHERE sender_uuid_id = ? ORDER BY transferred_at DESC LIMIT 1",
                 (sender_uuid_id,)
@@ -1718,7 +1749,7 @@ class DatabaseManager:
 
     def delete_transfer_history(self, sender_uuid_id: int) -> int:
         """تمام تاریخچه انتقال یک کاربر خاص را برای ریست کردن محدودیت حذف می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM traffic_transfers WHERE sender_uuid_id = ?", (sender_uuid_id,))
             return cursor.rowcount
 
@@ -1737,7 +1768,7 @@ class DatabaseManager:
         weekly_usage_map = {uuid_id: 0.0 for uuid_id in all_uuids.keys()}
         daily_usage_map = {i: {} for i in range(7)}
 
-        with self._conn() as c:
+        with self.write_conn() as c:
             all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
             all_week_snapshots = c.execute(all_snapshots_query, (week_start_utc,)).fetchall()
 
@@ -1781,12 +1812,12 @@ class DatabaseManager:
 
     def add_achievement_points(self, user_id: int, points: int):
             """امتیاز به حساب یک کاربر اضافه می‌کند."""
-            with self._conn() as c:
+            with self.write_conn() as c:
                 c.execute("UPDATE users SET achievement_points = achievement_points + ? WHERE user_id = ?", (points, user_id))
 
     def spend_achievement_points(self, user_id: int, points: int) -> bool:
         """امتیاز را از حساب کاربر کم می‌کند و موفقیت عملیات را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             current_points = c.execute("SELECT achievement_points FROM users WHERE user_id = ?", (user_id,)).fetchone()
             if current_points and current_points['achievement_points'] >= points:
                 c.execute("UPDATE users SET achievement_points = achievement_points - ? WHERE user_id = ?", (points, user_id))
@@ -1795,12 +1826,12 @@ class DatabaseManager:
 
     def log_shop_purchase(self, user_id: int, item_key: str, cost: int):
         """یک خرید از فروشگاه را در دیتابیس ثبت می‌کند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             c.execute("INSERT INTO achievement_shop_log (user_id, item_key, cost) VALUES (?, ?, ?)", (user_id, item_key, cost))
 
     def get_achievement_leaderboard(self, limit: int = 10) -> list[dict]:
         """لیستی از کاربران برتر بر اساس امتیاز دستاوردها را برمی‌گرداند."""
-        with self._conn() as c:
+        with self.write_conn() as c:
             rows = c.execute(
                 "SELECT user_id, first_name, achievement_points FROM users WHERE achievement_points > 0 ORDER BY achievement_points DESC LIMIT ?",
                 (limit,)
@@ -1809,7 +1840,7 @@ class DatabaseManager:
 
     def get_referred_users(self, referrer_user_id: int) -> list[dict]:
             """لیست کاربرانی که توسط یک کاربر خاص معرفی شده‌اند را برمی‌گرداند."""
-            with self._conn() as c:
+            with self.write_conn() as c:
                 rows = c.execute(
                     "SELECT user_id, first_name, referral_reward_applied FROM users WHERE referred_by_user_id = ?",
                     (referrer_user_id,)
@@ -1819,7 +1850,7 @@ class DatabaseManager:
     def delete_all_daily_snapshots(self) -> int:
         """تمام اسنپ‌شات‌های مصرف امروز (به وقت UTC) را برای همه کاربران حذف می‌کند."""
         today_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        with self._conn() as c:
+        with self.write_conn() as c:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at >= ?", (today_start_utc,))
             deleted_count = cursor.rowcount
             logger.info(f"ADMIN ACTION: Deleted {deleted_count} daily snapshots for all users.")
