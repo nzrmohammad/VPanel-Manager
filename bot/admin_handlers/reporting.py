@@ -88,14 +88,22 @@ def handle_marzban_system_stats(call, params):
         logger.error(f"Error in handle_marzban_system_stats: {e}", exc_info=True)
         _safe_edit(uid, msg_id, escape_markdown("خطایی در هنگام دریافت آمار رخ داد."), reply_markup=back_to_status_menu)
 
+# In bot/admin_handlers/reporting.py
+
 def handle_paginated_list(call, params):
+    """
+    (نسخه نهایی و کامل) گزارش‌های صفحه‌بندی شده را برای ادمین مدیریت می‌کند.
+    این نسخه شامل صفحه‌بندی برای تمام لیست‌ها، از جمله کاربران ربات و تولدها است.
+    """
     list_type, page = params[0], int(params[-1])
+    # پنل ممکن است در برخی callback ها وجود نداشته باشد
     panel_type = params[1] if len(params) > 2 else None
     
     _safe_edit(call.from_user.id, call.message.message_id, escape_markdown("⏳ در حال دریافت و پردازش اطلاعات..."), reply_markup=None)
 
     all_users_combined = combined_handler.get_all_users_combined()
     
+    # اگر گزارش مخصوص یک پنل بود، کاربران را فیلتر می‌کنیم
     users_to_process = []
     if panel_type:
         all_panels_map = {p['name']: p['panel_type'] for p in db.get_all_panels()}
@@ -110,6 +118,7 @@ def handle_paginated_list(call, params):
     users = []
     now_utc = datetime.now(pytz.utc)
 
+    # --- منطق کامل برای جمع‌آوری لیست‌ها بر اساس نوع گزارش ---
     if list_type == "panel_users": 
         users = users_to_process
     elif list_type == "online_users":
@@ -132,15 +141,13 @@ def handle_paginated_list(call, params):
     elif list_type == "bot_users": 
         users = db.get_all_bot_users()
     elif list_type == "birthdays": 
-        users = list(db.get_users_with_birthdays()) # Convert generator to list
+        users = list(db.get_users_with_birthdays())
     elif list_type == "payments":
-        users = list(db.get_all_payments_with_user_info()) # Convert generator to list
+        users = list(db.get_all_payments_with_user_info())
 
-    # --- START: FIX ---
-    # Correctly handle formatters with different argument requirements.
     list_configs = {
         "panel_users": {"format": lambda u, pg, p_type: fmt_panel_users_list(u, "Hiddify" if p_type == "hiddify" else "Marzban", pg), "back": "panel_reports"},
-        "online_users": {"format": lambda u, pg, p_type: fmt_online_users_list(u, pg), "back": "panel_reports"}, # Fix is here
+        "online_users": {"format": lambda u, pg, p_type: fmt_online_users_list(u, pg), "back": "panel_reports"},
         "active_users": {"format": lambda u, pg, p_type: fmt_users_list(u, 'active', pg), "back": "panel_reports"},
         "inactive_users": {"format": lambda u, pg, p_type: fmt_users_list(u, 'inactive', pg), "back": "panel_reports"},
         "never_connected": {"format": lambda u, pg, p_type: fmt_users_list(u, 'never_connected', pg), "back": "panel_reports"},
@@ -149,16 +156,17 @@ def handle_paginated_list(call, params):
         "birthdays": {"format": fmt_birthdays_list, "back": "reports_menu"},
         "payments": {"format": fmt_payments_report_list, "back": "reports_menu"},
     }
-    # --- END: FIX ---
     
     config = list_configs.get(list_type)
     if not config: return
     
+    # فرمتر مناسب را بر اساس نوع گزارش فراخوانی می‌کنیم
     if list_type in ["top_consumers", "bot_users", "birthdays", "payments"]:
         text = config["format"](users, page)
     else:
         text = config["format"](users, page, panel_type)
     
+    # دکمه‌های صفحه‌بندی را بر اساس اطلاعات ساخته و به پیام اضافه می‌کنیم
     base_cb = f"admin:list:{list_type}" + (f":{panel_type}" if panel_type else "")
     back_cb = ""
     if list_type == "panel_users":

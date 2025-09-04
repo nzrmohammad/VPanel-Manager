@@ -998,14 +998,15 @@ def _get_receiver_uuid(message: types.Message):
     _safe_edit(uid, msg_id, confirm_prompt, reply_markup=kb)
 
 
+# In bot/user_handlers.py
+
 def _confirm_and_execute_transfer(call: types.CallbackQuery):
-    """انتقال را نهایی کرده، حجم‌ها را به دقت محاسبه و به همه طرفین اطلاع‌رسانی می‌کند."""
+    """(Transaction-Safe) انتقال را نهایی کرده، حجم‌ها را به دقت محاسبه و به همه طرفین اطلاع‌رسانی می‌کند."""
     global bot
     uid, msg_id = call.from_user.id, call.message.message_id
     if uid not in admin_conversations: return
     
     convo = admin_conversations.pop(uid)
-    
     sender_uuid_id = convo['uuid_id']
     receiver_uuid = convo['receiver_uuid']
     panel_type = convo['panel_type']
@@ -1013,10 +1014,12 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
 
     _safe_edit(uid, msg_id, escape_markdown("⏳ در حال انجام انتقال لطفا صبر کنید..."), reply_markup=None)
 
+    sender_uuid_record = db.uuid_by_id(uid, sender_uuid_id)
+    sender_uuid = sender_uuid_record['uuid']
+    
+    # --- START OF FIX: Transaction Logic ---
     try:
         # --- دریافت اطلاعات اولیه ---
-        sender_uuid_record = db.uuid_by_id(uid, sender_uuid_id)
-        sender_uuid = sender_uuid_record['uuid']
         sender_name = sender_uuid_record.get('name', 'کاربر ناشناس')
         
         receiver_uuid_record = db.get_user_uuid_record(receiver_uuid)
@@ -1024,78 +1027,62 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
         receiver_user_id = receiver_uuid_record['user_id']
         receiver_name = receiver_uuid_record.get('name', 'کاربر ناشناس')
 
-        # --- دریافت حجم‌های "قبل" از انتقال ---
-        sender_info_before = combined_handler.get_combined_user_info(sender_uuid)
-        receiver_info_before = combined_handler.get_combined_user_info(receiver_uuid)
-
-        sender_panel_data_before = next((p['data'] for p in sender_info_before.get('breakdown', {}).values() if p.get('type') == panel_type), {})
-        receiver_panel_data_before = next((p['data'] for p in receiver_info_before.get('breakdown', {}).values() if p.get('type') == panel_type), {})
-        
-        sender_limit_before = sender_panel_data_before.get('usage_limit_GB', 0)
-        receiver_limit_before = receiver_panel_data_before.get('usage_limit_GB', 0)
-
-        # --- اجرای تراکنش ---
+        # ۱. کم کردن حجم از فرستنده
         success1 = combined_handler.modify_user_on_all_panels(sender_uuid, add_gb=-amount_gb, target_panel_type=panel_type)
+        if not success1:
+            raise Exception(f"Failed to deduct {amount_gb}GB from sender {sender_uuid}")
+
+        # ۲. اضافه کردن حجم به گیرنده
         success2 = combined_handler.modify_user_on_all_panels(receiver_uuid, add_gb=amount_gb, target_panel_type=panel_type)
+        if not success2:
+            # اگر اضافه کردن به گیرنده با خطا مواجه شد، حجم را به فرستنده بازگردان (Rollback)
+            logger.warning(f"Rolling back traffic transfer. Could not add to receiver. Refunding {amount_gb}GB to {sender_uuid}")
+            combined_handler.modify_user_on_all_panels(sender_uuid, add_gb=amount_gb, target_panel_type=panel_type)
+            raise Exception(f"Failed to add {amount_gb}GB to receiver {receiver_uuid}")
+        
+        # ۳. ثبت لاگ در دیتابیس فقط در صورت موفقیت کامل
+        db.log_traffic_transfer(sender_uuid_id, receiver_uuid_id, panel_type, amount_gb)
+        
+        # ۴. ارسال پیام‌های موفقیت
+        def format_amount(gb):
+            val_str = str(int(gb)) if gb == int(gb) else str(gb).replace('.', ',')
+            return escape_markdown(val_str)
 
-        if success1 and success2:
-            db.log_traffic_transfer(sender_uuid_id, receiver_uuid_id, panel_type, amount_gb)
-
-            # --- آماده‌سازی متن پیام‌ها ---
-            def format_amount(gb):
-                # تابعی برای نمایش اعداد صحیح بدون اعشار و جایگزینی نقطه با ویرگول
-                val_str = str(int(gb)) if gb == int(gb) else str(gb).replace('.', ',')
-                return escape_markdown(val_str)
-
-            amount_str = format_amount(amount_gb)
-            receiver_name_str = escape_markdown(receiver_name)
-            sender_name_str = escape_markdown(sender_name)
+        amount_str = format_amount(amount_gb)
+        receiver_name_str = escape_markdown(receiver_name)
+        sender_name_str = escape_markdown(sender_name)
+        
+        # پیام به فرستنده
+        sender_final_msg = (
+            f"✅ انتقال *{amount_str}* گیگابایت حجم به کاربر *{receiver_name_str}* با موفقیت انجام شد\\."
+        )
+        kb_back_to_account = types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data=f"acc_{sender_uuid_id}")
+        )
+        _safe_edit(uid, msg_id, sender_final_msg, reply_markup=kb_back_to_account)
+        
+        # پیام به گیرنده
+        receiver_message = (
+            f"🎁 شما *{amount_str}* گیگابایت حجم هدیه از طرف کاربر *{sender_name_str}* دریافت کردید\\!"
+        )
+        _notify_user(receiver_user_id, receiver_message)
+        
+        # پیام به ادمین‌ها
+        server_name = 'آلمان 🇩🇪' if panel_type == 'hiddify' else 'فرانسه/ترکیه 🇫🇷🇹🇷'
+        admin_message = (
+            f"💸 *اطلاع‌رسانی انتقال ترافیک*\n\n"
+            f"*{escape_markdown('فرستنده:')}* {sender_name_str} \\(`{uid}`\\)\n"
+            f"*{escape_markdown('گیرنده:')}* {receiver_name_str} \\(`{receiver_user_id}`\\)\n"
+            f"*{escape_markdown('مقدار:')}* {amount_str} {escape_markdown('گیگابایت')}\n"
+            f"*{escape_markdown('سرور:')}* {escape_markdown(server_name)}"
+        )
+        for admin_id in ADMIN_IDS:
+            _notify_user(admin_id, admin_message)
             
-            sender_limit_before_str = format_amount(sender_limit_before)
-            sender_limit_after_str = format_amount(sender_limit_before - amount_gb)
-            receiver_limit_before_str = format_amount(receiver_limit_before)
-            receiver_limit_after_str = format_amount(receiver_limit_before + amount_gb)
-
-            # پیام به فرستنده
-            sender_final_msg = (
-                f"✅ انتقال *{amount_str}* گیگابایت حجم به کاربر *{receiver_name_str}* با موفقیت انجام شد\\.\n\n"
-                f" موجودی شما از `{sender_limit_before_str}` به `{sender_limit_after_str}` گیگابایت تغییر کرد\\."
-            )
-            kb_back_to_account = types.InlineKeyboardMarkup().add(
-                types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data=f"acc_{sender_uuid_id}")
-            )
-            _safe_edit(uid, msg_id, sender_final_msg, reply_markup=kb_back_to_account)
-            
-            # پیام به گیرنده
-            receiver_message = (
-                f"🎁 شما *{amount_str}* گیگابایت حجم هدیه از طرف کاربر *{sender_name_str}* دریافت کردید\\!\n\n"
-                f"موجودی شما از `{receiver_limit_before_str}` به `{receiver_limit_after_str}` گیگابایت افزایش یافت\\."
-            )
-            _notify_user(receiver_user_id, receiver_message)
-            
-            server_name = 'آلمان 🇩🇪' if panel_type == 'hiddify' else 'فرانسه/ترکیه 🇫🇷🇹🇷'
-            admin_message = (
-                f"💸 *اطلاع‌رسانی انتقال ترافیک*\n\n"
-                f"*{escape_markdown('فرستنده:')}* {sender_name_str} \\(`{uid}`\\)\n"
-                f"*{escape_markdown('گیرنده:')}* {receiver_name_str} \\(`{receiver_user_id}`\\)\n"
-                f"*{escape_markdown('مقدار:')}* {amount_str} {escape_markdown('گیگابایت')}\n"
-                f"*{escape_markdown('سرور:')}* {escape_markdown(server_name)}\n"
-                f"`──────────────────`\n"
-                f"*{escape_markdown('حجم فرستنده:')}* `{sender_limit_before_str}` ⬅️ `{sender_limit_after_str}`\n"
-                f"*{escape_markdown('حجم گیرنده:')}* `{receiver_limit_before_str}` ⬅️ `{receiver_limit_after_str}`"
-            )
-            for admin_id in ADMIN_IDS:
-                _notify_user(admin_id, admin_message)
-                
-        else:
-            # بازگرداندن حجم در صورت خطا
-            if success1 and not success2:
-                combined_handler.modify_user_on_all_panels(sender_uuid, add_gb=amount_gb, target_panel_type=panel_type)
-            raise Exception("Transaction failed at panel level.")
-
     except Exception as e:
         logger.error(f"Error during traffic transfer execution: {e}", exc_info=True)
         _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در هنگام انتقال رخ داد. لطفاً با پشتیبانی تماس بگیرید."), reply_markup=menu.user_cancel_action(f"acc_{sender_uuid_id}", db.get_user_language(uid)))
+    # --- END OF FIX ---
 
 
 def _show_achievements_page(call: types.CallbackQuery):

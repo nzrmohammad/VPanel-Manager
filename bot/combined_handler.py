@@ -70,7 +70,6 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
             continue
 
         for user in panel_users:
-            # <<<<<<< START OF FIX: Robust Identifier Logic >>>>>>>>>
             identifier = None
             uuid = None
 
@@ -79,23 +78,20 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
                 identifier = uuid
             elif panel_config['panel_type'] == 'marzban':
                 marzban_username = user.get('username')
-                # Try to find a linked Hiddify UUID for this Marzban user.
                 linked_uuid = db.get_uuid_by_marzban_username(marzban_username)
                 if linked_uuid:
                     identifier = linked_uuid
                     uuid = linked_uuid
                 else:
-                    # This is a Marzban-only user with no mapping.
                     identifier = f"marzban_{marzban_username}"
-                    uuid = None # No UUID for this user.
+                    uuid = None
             
             if not identifier:
-                continue # Skip user if no identifier could be determined.
-            # <<<<<<< END OF FIX: Robust Identifier Logic >>>>>>>>>
+                continue
             
             if identifier not in all_users_map:
                 all_users_map[identifier] = {
-                    'uuid': uuid, # Use the determined UUID
+                    'uuid': uuid,
                     'is_active': False, 'expire': None,
                     'last_online': None,
                     'current_usage_GB': 0, 'usage_limit_GB': 0,
@@ -103,8 +99,6 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
                     'panels': set()
                 }
 
-            # If we're processing a Hiddify user for an entry that was created by Marzban,
-            # make sure the 'uuid' field gets populated.
             if uuid and not all_users_map[identifier].get('uuid'):
                  all_users_map[identifier]['uuid'] = uuid
 
@@ -306,7 +300,7 @@ def delete_user_from_all_panels(identifier: str) -> bool:
             if not handler.delete_user(user_panel_data['username']):
                 all_success = False
     
-    if all_success and user_info.get('uuid'):
+    if user_info.get('uuid'):
         db.delete_user_by_uuid(user_info['uuid'])
         
     return all_success

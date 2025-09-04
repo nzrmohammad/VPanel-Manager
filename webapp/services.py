@@ -56,7 +56,6 @@ def _check_system_health():
             health[name] = {'ok': False, 'error': html_escape(str(e))}
     return health
 
-
 def _process_user_data(all_users_data):
     stats = {
         "total_users": len(all_users_data), "active_users": 0, "online_users": 0,
@@ -67,12 +66,8 @@ def _process_user_data(all_users_data):
     db_users_map = {u['uuid']: u for u in db.get_all_user_uuids()}
     now_utc = datetime.now(pytz.utc)
 
-    # محاسبه مصرف کل و روزانه از این تابع حذف شد تا با تابع اصلی تداخل نکند
-
     for user in all_users_data:
         user['name'] = html_escape(user.get('name', 'کاربر ناشناس'))
-        
-        # توجه: 'daily_usage_gb' اکنون از قبل توسط تابع get_dashboard_data محاسبه شده است
         
         user_breakdown = user.get('breakdown', {})
         is_on_hiddify = any(p.get('type') == 'hiddify' for p in user_breakdown.values())
@@ -92,8 +87,16 @@ def _process_user_data(all_users_data):
             last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
             if (now_utc - last_online_aware).total_seconds() < 180:
                 stats['online_users'] += 1
-                if is_on_hiddify: online_users_hiddify.append(user)
-                if is_on_marzban: online_users_marzban.append(user)
+                
+                # --- START OF FIX ---
+                h_online = next((p['data'].get('last_online') for p in user_breakdown.values() if p.get('type') == 'hiddify'), None)
+                m_online = next((p['data'].get('last_online') for p in user_breakdown.values() if p.get('type') == 'marzban'), None)
+                
+                if h_online and (not m_online or h_online >= m_online):
+                    online_users_hiddify.append(user)
+                elif m_online:
+                    online_users_marzban.append(user)
+                # --- END OF FIX ---
 
         expire_days = user.get('expire')
         if expire_days is not None and 0 <= expire_days <= 7:
@@ -492,8 +495,10 @@ def update_user_in_panels(data: dict):
         else:
             logger.warning(f"Could not update Marzban user for UUID {uuid} because Marzban username was not found.")
 
-    elif 'common_name' in data and 'h_usage_limit_GB' not in data:
-         hiddify_handler.modify_user(uuid, {'name': data.get('common_name')})
+    if 'common_name' in data and uuid:
+        uuid_record = db.get_user_uuid_record(uuid)
+        if uuid_record:
+            db.update_config_name(uuid_record['id'], data['common_name'])
 
     logger.info(f"Update process finished for user UUID: {uuid}")
     return True

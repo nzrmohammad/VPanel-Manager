@@ -32,6 +32,7 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
+scheduler_lock = threading.Lock()
 
 class SchedulerManager:
     def __init__(self, bot: TeleBot) -> None:
@@ -64,126 +65,159 @@ class SchedulerManager:
             return False
 
     def _hourly_snapshots(self) -> None:
-        """Takes a snapshot of current usage for all active users."""
-        logger.info("SCHEDULER: Starting hourly usage snapshot job.")
-        try:
-            all_users_info = combined_handler.get_all_users_combined()
-            if not all_users_info:
-                logger.warning("SCHEDULER (Snapshot): No user info could be fetched. Aborting job.")
-                return
+        """(Thread-Safe) Takes a snapshot of current usage for all active users."""
+        logger.info("SCHEDULER: Attempting to acquire lock for hourly snapshot.")
+        with scheduler_lock:
+            logger.info("SCHEDULER: Lock acquired for hourly snapshot.")
+            try:
+                all_users_info = combined_handler.get_all_users_combined()
+                if not all_users_info:
+                    logger.warning("SCHEDULER (Snapshot): No user info could be fetched. Aborting job.")
+                    return
                 
-            user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
-            all_uuids_from_db = list(db.all_active_uuids())
-            
-            for u_row in all_uuids_from_db:
-                try:
-                    uuid_str = u_row['uuid']
-                    if uuid_str in user_info_map:
-                        info = user_info_map[uuid_str]
-                        breakdown = info.get('breakdown', {})
-                        h_usage, m_usage = 0.0, 0.0
+                user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
+                all_uuids_from_db = list(db.all_active_uuids())
+                
+                for u_row in all_uuids_from_db:
+                    try:
+                        uuid_str = u_row['uuid']
+                        if uuid_str in user_info_map:
+                            info = user_info_map[uuid_str]
+                            breakdown = info.get('breakdown', {})
+                            h_usage, m_usage = 0.0, 0.0
 
-                        for panel_details in breakdown.values():
-                            panel_type = panel_details.get('type')
-                            panel_data = panel_details.get('data', {})
-                            if panel_type == 'hiddify':
-                                h_usage += panel_data.get('current_usage_GB', 0.0)
-                            elif panel_type == 'marzban':
-                                m_usage += panel_data.get('current_usage_GB', 0.0)
-                        
-                        db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
-                except Exception as e:
-                    logger.error(f"SCHEDULER (Snapshot): Failed to process for uuid_id {u_row['id']}: {e}")
-            logger.info("SCHEDULER: Finished hourly usage snapshot job successfully.")
-        except Exception as e:
-            logger.error(f"SCHEDULER (Snapshot): A critical error occurred: {e}", exc_info=True)
+                            for panel_details in breakdown.values():
+                                panel_type = panel_details.get('type')
+                                panel_data = panel_details.get('data', {})
+                                if panel_type == 'hiddify':
+                                    h_usage += panel_data.get('current_usage_GB', 0.0)
+                                elif panel_type == 'marzban':
+                                    m_usage += panel_data.get('current_usage_GB', 0.0)
+                            
+                            db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
+                    except Exception as e:
+                        logger.error(f"SCHEDULER (Snapshot): Failed to process for uuid_id {u_row['id']}: {e}")
+                logger.info("SCHEDULER: Finished hourly usage snapshot job successfully.")
+            except Exception as e:
+                logger.error(f"SCHEDULER (Snapshot): A critical error occurred: {e}", exc_info=True)
+            finally:
+                logger.info("SCHEDULER: Releasing lock for hourly snapshot.")
 
     def _check_for_warnings(self, target_user_id: int = None) -> None:
-        """Periodically checks all users for various conditions and sends notifications."""
-        logger.info("SCHEDULER: Starting warnings check job.")
-        active_uuids_list = [row for row in db.all_active_uuids() if not target_user_id or row['user_id'] == target_user_id]
-        
-        try:
-            all_users_info_map = {u['uuid']: u for u in combined_handler.get_all_users_combined() if u.get('uuid')}
-        except Exception as e:
-            logger.error(f"SCHEDULER (Warnings): Failed to fetch combined user data: {e}", exc_info=True)
-            return
-
-        for u_row in active_uuids_list:
+        """
+        (نسخه نهایی و امن‌شده) به صورت دوره‌ای تمام کاربران را برای شرایط مختلف بررسی کرده و اعلان ارسال می‌کند.
+        این نسخه در مقابل تداخل (thread-safe) امن است و کاربران حذف شده از پنل را مدیریت می‌کند.
+        """
+        logger.info("SCHEDULER: Attempting to acquire lock for warnings check.")
+        with scheduler_lock:
+            logger.info("SCHEDULER: Lock acquired for warnings check.")
             try:
-                uuid_str = u_row['uuid']
-                uuid_id_in_db = u_row['id']
-                user_id_in_telegram = u_row['user_id']
-                info = all_users_info_map.get(uuid_str)
-                if not info: continue
-
-                user_settings = db.get_user_settings(user_id_in_telegram)
-                user_name = info.get('name', 'کاربر ناشناس')
+                # ابتدا تمام کاربران فعال در دیتابیس ربات را می‌خوانیم
+                active_uuids_list = [row for row in db.all_active_uuids() if not target_user_id or row['user_id'] == target_user_id]
                 
-                # 1. Welcome Message
-                if u_row.get('first_connection_time') and not u_row.get('welcome_message_sent', 0):
-                    first_conn_time = pytz.utc.localize(u_row['first_connection_time']) if u_row['first_connection_time'].tzinfo is None else u_row['first_connection_time']
-                    if datetime.now(pytz.utc) - first_conn_time >= timedelta(hours=WELCOME_MESSAGE_DELAY_HOURS):
-                        welcome_text = (f"🎉 *به جمع ما خوش آمدی\\!* 🎉\n\nاز اینکه به ما اعتماد کردی خوشحالیم\\. امیدواریم از کیفیت سرویس لذت ببری\\.\n\n"
-                                        f"💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم\\.\n\nبا آرزوی بهترین‌ها ✨")
-                        if self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="MarkdownV2"):
-                            db.mark_welcome_message_as_sent(uuid_id_in_db)
+                if not active_uuids_list:
+                    logger.info("SCHEDULER (Warnings): No active users in bot DB to check.")
+                    return
 
-                # 2. Renewal Reminder
-                expire_days = info.get('expire')
-                if expire_days == 1 and not u_row.get('renewal_reminder_sent', 0):
-                    renewal_text = (f"⏳ *یادآوری تمدید سرویس*\n\n"
-                                    f"کاربر گرامی، تنها *۱ روز* از اعتبار اکانت *{escape_markdown(user_name)}* شما باقی مانده است\\.\n\n"
-                                    f"برای جلوگیری از قطع شدن سرویس، لطفاً نسبت به تمدید آن اقدام نمایید\\.")
-                    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚀 مشاهده و تمدید سرویس‌ها", callback_data="view_plans"))
-                    if self.bot.send_message(user_id_in_telegram, renewal_text, parse_mode="MarkdownV2", reply_markup=kb):
-                        db.set_renewal_reminder_sent(uuid_id_in_db)
-
-                # 3. Expiry Warning
-                if user_settings.get('expiry_warnings') and expire_days is not None and 1 < expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
-                    if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
-                        msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
-                        if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
-                            db.log_warning(uuid_id_in_db, 'expiry')
-
-                # 4. Data Usage Warning
-                server_map = {'hiddify': {'name': 'آلمان 🇩🇪', 'setting': 'data_warning_hiddify'}, 'marzban': {'name': 'فرانسه/ترکیه 🇫🇷🇹🇷', 'setting': 'data_warning_fr_tr'}}
-                for code, details in server_map.items():
-                    panel_info = next((p.get('data', {}) for p in info.get('breakdown', {}).values() if p.get('type') == code), None)
-                    if user_settings.get(details['setting']) and panel_info:
-                        limit, usage = panel_info.get('usage_limit_GB', 0.0), panel_info.get('current_usage_GB', 0.0)
-                        if limit > 0 and (usage / limit * 100) >= WARNING_USAGE_THRESHOLD:
-                            warning_type = f'low_data_{code}'
-                            if not db.has_recent_warning(uuid_id_in_db, warning_type):
-                                msg_template = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\nکاربر گرامی، حجم اکانت *{{user_name}}* شما در سرور *{{server_name}}* رو به اتمام است\\.\n"
-                                                f"\\- حجم باقیمانده: *{{remaining_gb}} GB*")
-                                if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, server_name=details['name'], remaining_gb=f"{max(0, limit - usage):.2f}"):
-                                    db.log_warning(uuid_id_in_db, warning_type)
+                # سپس، لیست کامل و به‌روز کاربران را از تمام پنل‌ها دریافت می‌کنیم
+                all_users_info_map = {u['uuid']: u for u in combined_handler.get_all_users_combined() if u.get('uuid')}
                 
-                # 5. Unusual Daily Usage Alert (for Admins)
-                if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
-                    total_daily_usage = sum(db.get_usage_since_midnight_by_uuid(uuid_str).values())
-                    if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage', hours=24):
-                        alert_message = (f"⚠️ *مصرف غیرعادی روزانه*\n\nکاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
-                                         f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
-                                         f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
-                        for admin_id in ADMIN_IDS:
-                            self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
-                        db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
+                # اگر نتوانیم اطلاعاتی از پنل‌ها بگیریم، برای جلوگیری از خطا خارج می‌شویم
+                if not all_users_info_map:
+                    logger.warning("SCHEDULER (Warnings): Could not fetch any user data from panels. Aborting check.")
+                    return
 
-                # 6. Too Many Devices Alert (for Admins)
-                device_count = db.count_user_agents(uuid_id_in_db)
-                if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168): # Check once a week
-                    alert_message = (f"⚠️ *تعداد دستگاه بالا*\n\n"
-                                     f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
-                                     f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
-                    for admin_id in ADMIN_IDS:
-                        self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
-                    db.log_warning(uuid_id_in_db, 'too_many_devices')
-                # --- END: NEW CHANGE ---
+                # حالا در لیست کاربران دیتابیس ربات حلقه می‌زنیم
+                for u_row in active_uuids_list:
+                    try:
+                        uuid_str = u_row['uuid']
+                        uuid_id_in_db = u_row['id']
+                        user_id_in_telegram = u_row['user_id']
+                        
+                        # اگر کاربر در لیست کاربران پنل‌ها وجود نداشت، یعنی حذف شده است. پس از آن رد می‌شویم.
+                        info = all_users_info_map.get(uuid_str)
+                        if not info:
+                            logger.warning(f"SCHEDULER (Warnings): User with UUID {uuid_str} found in bot DB but not in panels. Skipping.")
+                            continue
 
+                        user_settings = db.get_user_settings(user_id_in_telegram)
+                        user_name = info.get('name', 'کاربر ناشناس')
+                        
+                        # 1. ارسال پیام خوش‌آمدگویی
+                        if u_row.get('first_connection_time') and not u_row.get('welcome_message_sent', 0):
+                            first_conn_time = pytz.utc.localize(u_row['first_connection_time']) if u_row['first_connection_time'].tzinfo is None else u_row['first_connection_time']
+                            if datetime.now(pytz.utc) - first_conn_time >= timedelta(hours=WELCOME_MESSAGE_DELAY_HOURS):
+                                welcome_text = (
+                                    "🎉 *به جمع ما خوش آمدی\\!* 🎉\n\n"
+                                    "از اینکه به ما اعتماد کردی خوشحالیم\\. امیدواریم از کیفیت سرویس لذت ببری\\.\n\n"
+                                    "💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم\\.\n\n"
+                                    "با آرزوی بهترین‌ها ✨"
+                                )
+                                if self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="MarkdownV2"):
+                                    db.mark_welcome_message_as_sent(uuid_id_in_db)
+
+                        # 2. ارسال یادآوری تمدید
+                        expire_days = info.get('expire')
+                        if expire_days == 1 and not u_row.get('renewal_reminder_sent', 0):
+                            renewal_text = (
+                                f"⏳ *یادآوری تمدید سرویس*\n\n"
+                                f"کاربر گرامی، تنها *۱ روز* از اعتبار اکانت *{escape_markdown(user_name)}* شما باقی مانده است\\.\n\n"
+                                f"برای جلوگیری از قطع شدن سرویس، لطفاً نسبت به تمدید آن اقدام نمایید\\."
+                            )
+                            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚀 مشاهده و تمدید سرویس‌ها", callback_data="view_plans"))
+                            if self.bot.send_message(user_id_in_telegram, renewal_text, parse_mode="MarkdownV2", reply_markup=kb):
+                                db.set_renewal_reminder_sent(uuid_id_in_db)
+
+                        # 3. ارسال هشدار انقضای اکانت
+                        if user_settings.get('expiry_warnings') and expire_days is not None and 1 < expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
+                            if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
+                                msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
+                                if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
+                                    db.log_warning(uuid_id_in_db, 'expiry')
+
+                        # 4. ارسال هشدار اتمام حجم
+                        server_map = {'hiddify': {'name': 'آلمان 🇩🇪', 'setting': 'data_warning_hiddify'}, 'marzban': {'name': 'فرانسه/ترکیه 🇫🇷🇹🇷', 'setting': 'data_warning_fr_tr'}}
+                        for code, details in server_map.items():
+                            panel_info = next((p.get('data', {}) for p in info.get('breakdown', {}).values() if p.get('type') == code), None)
+                            if user_settings.get(details['setting']) and panel_info:
+                                limit, usage = panel_info.get('usage_limit_GB', 0.0), panel_info.get('current_usage_GB', 0.0)
+                                if limit > 0 and (usage / limit * 100) >= WARNING_USAGE_THRESHOLD:
+                                    warning_type = f'low_data_{code}'
+                                    if not db.has_recent_warning(uuid_id_in_db, warning_type):
+                                        msg_template = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\nکاربر گرامی، حجم اکانت *{{user_name}}* شما در سرور *{{server_name}}* رو به اتمام است\\.\n"
+                                                        f"\\- حجم باقیمانده: *{{remaining_gb}} GB*")
+                                        if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, server_name=details['name'], remaining_gb=f"{max(0, limit - usage):.2f}"):
+                                            db.log_warning(uuid_id_in_db, warning_type)
+                        
+                        # 5. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
+                        if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
+                            total_daily_usage = sum(db.get_usage_since_midnight_by_uuid(uuid_str).values())
+                            if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage', hours=24):
+                                alert_message = (f"⚠️ *مصرف غیرعادی روزانه*\n\nکاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
+                                                f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
+                                                f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
+                                for admin_id in ADMIN_IDS:
+                                    self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
+                                db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
+
+                        # 6. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
+                        device_count = db.count_user_agents(uuid_id_in_db)
+                        if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168): # Check once a week
+                            alert_message = (f"⚠️ *تعداد دستگاه بالا*\n\n"
+                                            f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
+                                            f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
+                            for admin_id in ADMIN_IDS:
+                                self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
+                            db.log_warning(uuid_id_in_db, 'too_many_devices')
+
+                    except Exception as e:
+                        logger.error(f"SCHEDULER (Warnings): Error processing UUID_ID {u_row.get('id', 'N/A')}: {e}", exc_info=True)
+            
             except Exception as e:
-                logger.error(f"SCHEDULER (Warnings): Error processing UUID_ID {u_row.get('id', 'N/A')}: {e}", exc_info=True)
+                logger.error(f"SCHEDULER (Warnings): A critical error occurred during check: {e}", exc_info=True)
+            finally:
+                logger.info("SCHEDULER: Releasing lock for warnings check.")
+
 
     def _nightly_report(self, target_user_id: int = None) -> None:
         tehran_tz = pytz.timezone("Asia/Tehran")
@@ -282,15 +316,34 @@ class SchedulerManager:
         if not today_birthday_users:
             return
             
+        current_year = jdatetime.datetime.now(self.tz).year
+
         for user_id in today_birthday_users:
+            # FIX: Check if a gift has already been given this year
+            with db._conn() as c:
+                already_given = c.execute(
+                    "SELECT 1 FROM birthday_gift_log WHERE user_id = ? AND gift_year = ?",
+                    (user_id, current_year)
+                ).fetchone()
+
+            if already_given:
+                logger.info(f"Skipping birthday gift for user {user_id}, already given in year {current_year}.")
+                continue
+
             user_uuids = db.uuids(user_id)
-            if any(combined_handler.modify_user_on_all_panels(row['uuid'], add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS) for row in user_uuids):
-                gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
-                                f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
-                                f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
-                                f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
-                                f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
-                self._send_warning_message(user_id, gift_message)
+            # هدیه فقط به اولین اکانت کاربر اضافه می‌شود
+            if user_uuids:
+                first_uuid = user_uuids[0]['uuid']
+                if combined_handler.modify_user_on_all_panels(first_uuid, add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS):
+                    gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
+                                    f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
+                                    f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
+                                    f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
+                                    f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
+                    if self._send_warning_message(user_id, gift_message):
+                        # FIX: Log the gift in the new table
+                        with db._conn() as c:
+                            c.execute("INSERT INTO birthday_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
 
     def _weekly_report(self, target_user_id: int = None) -> None:
         now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(self.tz)).strftime("%Y/%m/%d - %H:%M")
@@ -517,6 +570,37 @@ class SchedulerManager:
         for admin_id in ADMIN_IDS:
             self._notify_user(admin_id, admin_report_text)
 
+    def _sync_users_with_panels(self) -> None:
+        """
+        (Thread-Safe) Periodically syncs the local bot database with the panels,
+        deactivating users in the bot who no longer exist on any panel.
+        """
+        logger.info("SCHEDULER: Starting user synchronization with panels.")
+        with scheduler_lock:
+            try:
+                panel_uuids = {user['uuid'] for user in combined_handler.get_all_users_combined() if user.get('uuid')}
+                if not panel_uuids:
+                    logger.warning("SYNC: Could not fetch any users from panels. Aborting sync.")
+                    return
+
+                bot_uuids = {row['uuid'] for row in db.all_active_uuids()}
+                
+                uuids_to_deactivate = bot_uuids - panel_uuids
+                
+                if uuids_to_deactivate:
+                    logger.warning(f"SYNC: Found {len(uuids_to_deactivate)} orphan UUIDs to deactivate.")
+                    for uuid_str in uuids_to_deactivate:
+                        uuid_record = db.get_user_uuid_record(uuid_str)
+                        if uuid_record:
+                            db.deactivate_uuid(uuid_record['id'])
+                            logger.info(f"SYNC: Deactivated orphan user with UUID: {uuid_str}")
+                else:
+                    logger.info("SYNC: Database is already in sync with panels.")
+
+            except Exception as e:
+                logger.error(f"Error during user synchronization: {e}", exc_info=True)
+            finally:
+                logger.info("SCHEDULER: User synchronization finished.")
 
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
@@ -547,6 +631,7 @@ class SchedulerManager:
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements)
+        schedule.every(12).hours.do(self._sync_users_with_panels)
         schedule.every(8).hours.do(self._cleanup_old_reports)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
         

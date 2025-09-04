@@ -61,10 +61,7 @@ def to_shamsi(dt: Optional[Union[datetime, date, str]], include_time: bool = Fal
         # بخش ۳: تبدیل به شمسی و فرمت‌بندی خروجی
         dt_shamsi = jdatetime.datetime.fromgregorian(datetime=local_dt)
         
-        # <<<<<<<<<<<<<<<< تغییر اصلی اینجاست >>>>>>>>>>>>>>>>
-        # اگر فقط ماه و سال مورد نیاز باشد، آن را برمی‌گرداند
         if month_only:
-            # استفاده از متد خود کتابخانه jdatetime برای دریافت نام ماه
             return f"{dt_shamsi.j_month_name()} {dt_shamsi.year}"
         
         if include_time:
@@ -75,7 +72,6 @@ def to_shamsi(dt: Optional[Union[datetime, date, str]], include_time: bool = Fal
     except Exception as e:
         logger.error(f"Error in to_shamsi conversion: value={dt}, error={e}", exc_info=True)
         return "خطا"
-
 
 
 def format_relative_time(dt: Optional[datetime]) -> str:
@@ -150,7 +146,10 @@ def _safe_edit(chat_id: int, msg_id: int, text: str, **kwargs):
 
         bot.edit_message_text(text=text, chat_id=chat_id, message_id=msg_id, **kwargs)
     except Exception as e:
-        logger.error(f"Safe edit failed: {e}. Text was: \n---\n{text}\n---")
+        if 'message is not modified' in str(e).lower():
+            pass
+        else:
+            logger.error(f"Safe edit failed: {e}. Text was: \n---\n{text}\n---")
 
 def safe_float(value, default: float = 0.0) -> float:
     try:

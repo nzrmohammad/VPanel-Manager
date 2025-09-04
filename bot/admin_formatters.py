@@ -347,8 +347,8 @@ def fmt_bot_users_list(bot_users: list, page: int) -> str:
     total_users = len(bot_users)
     if total_users > PAGE_SIZE:
         total_pages = (total_users + PAGE_SIZE - 1) // PAGE_SIZE
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل: {total_users})"
-        header_text += f"\n{escape_markdown(pagination_text)}"
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_users}\\)"
+        header_text += f"\n{pagination_text}"
 
     lines = [header_text]
     start_index = page * PAGE_SIZE
@@ -659,13 +659,12 @@ def fmt_birthdays_list(users: list, page: int) -> str:
     if not users:
         return f"🎂 *{escape_markdown(title)}*\n\n{escape_markdown('هیچ کاربری تاریخ تولد خود را ثبت نکرده است.')}"
     
-
     title_text = f"{title} (مرتب شده بر اساس ماه)"
     header_text = f"🎂 *{escape_markdown(title_text)}*"
-
-    if len(users) > PAGE_SIZE:
-        total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
-        pagination_text = f"(صفحه {page + 1} از {total_pages} | کل : {len(users)})"
+    total_users = len(users)
+    if total_users > PAGE_SIZE:
+        total_pages = (total_users + PAGE_SIZE - 1) // PAGE_SIZE
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_users}\\)"
         header_text += f"\n{pagination_text}"
 
     lines = [header_text]
@@ -680,7 +679,7 @@ def fmt_birthdays_list(users: list, page: int) -> str:
         shamsi_str = to_shamsi(birthday_obj)
 
         remaining_days = days_until_next_birthday(birthday_obj)
-        days_str = f"{remaining_days} day" if remaining_days is not None else "نامشخص"
+        days_str = f"{remaining_days} روز" if remaining_days is not None else "نامشخص"
 
         lines.append(f"🎂 *{name}*{separator}`{shamsi_str}`{separator}{escape_markdown(days_str)}")
 
