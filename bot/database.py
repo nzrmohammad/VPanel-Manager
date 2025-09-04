@@ -265,13 +265,10 @@ class DatabaseManager:
                 (uuid_id, hiddify_usage, marzban_usage, datetime.now(pytz.utc))
             )
 
-# در فایل bot/database.py
-
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
         """
-        (نسخه نهایی و قطعی) مصرف روزانه را محاسبه می‌کند.
-        - برای Hiddify: تفاوت مصرف اول و آخر روز را حساب می‌کند.
-        - برای Marzban: آخرین مقدار ثبت‌شده در روز را به عنوان مصرف روزانه برمی‌گرداند.
+        (نسخه نهایی و اصلاح شده) مصرف روزانه را برای هر دو پنل به درستی محاسبه می‌کند.
+        - برای هر دو پنل: تفاوت مصرف اولین و آخرین اسنپ‌شات روز را محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
@@ -280,14 +277,12 @@ class DatabaseManager:
 
         with self._conn() as c:
             # --- محاسبه Hiddify (مصرف تجمعی) ---
-            # ابتدا اولین اسنپ‌شات قبل از شروع امروز را پیدا می‌کنیم
             hiddify_start_row = c.execute(
                 "SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
             ).fetchone()
             start_h = hiddify_start_row['hiddify_usage_gb'] if hiddify_start_row and hiddify_start_row['hiddify_usage_gb'] is not None else 0
 
-            # سپس آخرین اسنپ‌شات امروز را پیدا می‌کنیم
             hiddify_end_row = c.execute(
                 "SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
@@ -296,29 +291,42 @@ class DatabaseManager:
             total_h_usage = 0.0
             if hiddify_end_row and hiddify_end_row['hiddify_usage_gb'] is not None:
                 end_h = hiddify_end_row['hiddify_usage_gb']
-                # اگر نقطه شروعی از قبل نداشتیم، اولین اسنپ‌شات امروز را به عنوان شروع در نظر می‌گیریم
                 if start_h == 0:
                     first_snap_today = c.execute("SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1", (uuid_id, today_midnight_utc)).fetchone()
                     if first_snap_today and first_snap_today['hiddify_usage_gb'] is not None:
                         start_h = first_snap_today['hiddify_usage_gb']
-
+                
                 if end_h >= start_h:
                     total_h_usage = end_h - start_h
 
-            # --- محاسبه Marzban (مصرف روزانه با قابلیت ریست) ---
-            # چون پنل مرزبان خودش مصرف روزانه را می‌دهد، فقط آخرین مقدار ثبت شده در امروز را می‌خوانیم
-            marzban_latest_row = c.execute(
+            # --- ✨ شروع اصلاحیه: محاسبه Marzban مشابه Hiddify ---
+            # ابتدا آخرین اسنپ‌شات قبل از شروع امروز را به عنوان نقطه شروع پیدا می‌کنیم
+            marzban_start_row = c.execute(
+                "SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                (uuid_id, today_midnight_utc)
+            ).fetchone()
+            start_m = marzban_start_row['marzban_usage_gb'] if marzban_start_row and marzban_start_row['marzban_usage_gb'] is not None else 0
+
+            # سپس آخرین اسنپ‌شات امروز را پیدا می‌کنیم
+            marzban_end_row = c.execute(
                 "SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
             ).fetchone()
-
+            
             total_m_usage = 0.0
-            if marzban_latest_row and marzban_latest_row['marzban_usage_gb'] is not None:
-                total_m_usage = marzban_latest_row['marzban_usage_gb']
+            if marzban_end_row and marzban_end_row['marzban_usage_gb'] is not None:
+                end_m = marzban_end_row['marzban_usage_gb']
+                # اگر نقطه شروعی از قبل نداشتیم، اولین اسنپ‌شات امروز را به عنوان شروع در نظر می‌گیریم
+                if start_m == 0:
+                    first_snap_today_m = c.execute("SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1", (uuid_id, today_midnight_utc)).fetchone()
+                    if first_snap_today_m and first_snap_today_m['marzban_usage_gb'] is not None:
+                        start_m = first_snap_today_m['marzban_usage_gb']
+
+                if end_m >= start_m:
+                    total_m_usage = end_m - start_m
+            # --- ✨ پایان اصلاحیه ---
 
             return {'hiddify': total_h_usage, 'marzban': total_m_usage}
-    
-# در فایل bot/database.py
 
     def get_weekly_usage_by_uuid(self, uuid_str: str) -> Dict[str, float]:
         """
@@ -345,20 +353,17 @@ class DatabaseManager:
                 if end_h >= start_h:
                     total_h_usage = end_h - start_h
 
-            # --- محاسبه هفتگی Marzban (جمع مصرف روزانه) ---
-            # بیشترین مصرف ثبت شده در هر روز از هفته را با هم جمع می‌زنیم
-            daily_max_marzban = c.execute(
-                """
-                SELECT DATE(taken_at, 'utc') as usage_day, MAX(marzban_usage_gb) as daily_total
-                FROM usage_snapshots
-                WHERE uuid_id = ? AND taken_at >= ?
-                GROUP BY usage_day
-                """, (uuid_id, week_start_utc)
-            ).fetchall()
-
+            # --- ✨ شروع اصلاحیه: محاسبه هفتگی Marzban مشابه Hiddify ---
+            marzban_start_row = c.execute("SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
+            marzban_end_row = c.execute("SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
+            
             total_m_usage = 0.0
-            if daily_max_marzban:
-                total_m_usage = sum(row['daily_total'] for row in daily_max_marzban if row['daily_total'] is not None)
+            if marzban_end_row and marzban_end_row['marzban_usage_gb'] is not None:
+                start_m = marzban_start_row['marzban_usage_gb'] if marzban_start_row and marzban_start_row['marzban_usage_gb'] is not None else 0
+                end_m = marzban_end_row['marzban_usage_gb']
+                if end_m >= start_m:
+                    total_m_usage = end_m - start_m
+            # --- ✨ پایان اصلاحیه ---
                 
             return {'hiddify': total_h_usage, 'marzban': total_m_usage}
 
