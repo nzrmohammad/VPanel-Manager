@@ -361,10 +361,14 @@ class SchedulerManager:
                 if not user_uuids:
                     continue
 
-                uuid_id = user_uuids[0]['id'] # از اولین UUID کاربر استفاده می‌کنیم
+                first_uuid_record = user_uuids[0]
+                uuid_id = first_uuid_record['id']
+
+                first_uuid_creation_date = first_uuid_record['created_at']
+                if first_uuid_creation_date.tzinfo is None:
+                    first_uuid_creation_date = pytz.utc.localize(first_uuid_creation_date)
 
                 # --- ۱. بررسی نشان "کهنه‌کار" ---
-                first_uuid_creation_date = user_uuids[0]['created_at']
                 if (datetime.now(pytz.utc) - first_uuid_creation_date).days >= 365:
                     if db.add_achievement(user_id, 'veteran'):
                         self._notify_user_achievement(user_id, 'veteran')
@@ -407,7 +411,6 @@ class SchedulerManager:
 
             except Exception as e:
                 logger.error(f"Error checking achievements for user_id {user_id}: {e}")
-
 
     def _notify_user_achievement(self, user_id: int, badge_code: str):
         """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""

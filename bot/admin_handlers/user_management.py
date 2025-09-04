@@ -962,3 +962,40 @@ def handle_reset_transfer_cooldown(call, params):
     _safe_edit(call.from_user.id, call.message.message_id, text_to_show, reply_markup=kb)
     
     bot.answer_callback_query(call.id, "✅ عملیات انجام شد.")
+
+def handle_system_tools_menu(call, params):
+    """(نسخه اصلاح شده) منوی جدید ابزارهای سیستمی را با استایل صحیح نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    prompt = (
+        f"🛠️ *{escape_markdown('ابزارهای سیستمی')}*\n\n"
+        f"{escape_markdown('لطفاً دستور مورد نظر خود را انتخاب کنید. در استفاده از این ابزارها دقت کنید.')}"
+    )
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+def handle_reset_all_daily_usage_confirm(call, params):
+    """(نسخه اصلاح شده) از ادمین برای صفر کردن مصرف روزانه همه کاربران تاییدیه می‌گیرد."""
+    prompt = (
+        f"⚠️ *{escape_markdown('توجه بسیار مهم!')}*\n\n"
+        f"{escape_markdown('آیا مطمئن هستید که می‌خواهید آمار مصرف')} *{escape_markdown('امروز')}* {escape_markdown('برای')} "
+        f"*{escape_markdown('تمام کاربران')}* {escape_markdown('را صفر کنید؟ این عمل غیرقابل بازگشت است.')}"
+    )
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، ریست کن", callback_data="admin:reset_all_daily_usage_exec"),
+        types.InlineKeyboardButton("❌ انصراف", callback_data="admin:system_tools_menu")   
+    )
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
+
+def handle_reset_all_daily_usage_action(call, params):
+    """(نسخه اصلاح شده) مصرف روزانه همه کاربران را صفر کرده و پیام موفقیت را با استایل صحیح نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, "⏳ در حال حذف اسنپ‌شات‌های امروز برای تمام کاربران...", reply_markup=None)
+    
+    deleted_count = db.delete_all_daily_snapshots()
+    
+    success_msg = (
+        f"✅ *{escape_markdown('عملیات با موفقیت انجام شد.')}*\n\n"
+        f"{escape_markdown('تعداد')} `{deleted_count}` {escape_markdown('رکورد مصرف روزانه از دیتابیس حذف گردید. ')}"
+        f"{escape_markdown('آمار مصرف از این لحظه مجدداً محاسبه خواهد شد.')}"
+    )
+    _safe_edit(uid, msg_id, success_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")

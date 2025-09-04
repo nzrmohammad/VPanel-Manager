@@ -192,6 +192,9 @@ ADMIN_CALLBACK_HANDLERS = {
     "backup_menu": backup.handle_backup_menu,
     "backup": backup.handle_backup_action,
     "add_user_back": handle_add_user_back_step,
+    "system_tools_menu": user_management.handle_system_tools_menu,
+    "reset_all_daily_usage_confirm": user_management.handle_reset_all_daily_usage_confirm,
+    "reset_all_daily_usage_exec": user_management.handle_reset_all_daily_usage_action,
 }
 
 def handle_admin_callbacks(call: types.CallbackQuery):

@@ -230,14 +230,13 @@ class DatabaseManager:
             )
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
-        """Calculates daily usage by summing positive differences between snapshots to correctly handle resets."""
+        """(نسخه نهایی) مصرف روزانه را با محاسبه صحیح تفاوت بین تمام اسنپ‌شات‌های روز محاسبه می‌کند."""
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
         today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
         today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
         with self._conn() as c:
-            # Get all of today's snapshots, ordered by time
             today_snapshots_query = """
                 SELECT hiddify_usage_gb, marzban_usage_gb
                 FROM usage_snapshots
@@ -246,7 +245,6 @@ class DatabaseManager:
             """
             today_rows = c.execute(today_snapshots_query, (uuid_id, today_midnight_utc)).fetchall()
 
-            # Get the last snapshot from before today's midnight to use as the starting point
             yesterday_last_snapshot_query = """
                 SELECT hiddify_usage_gb, marzban_usage_gb
                 FROM usage_snapshots
@@ -256,33 +254,30 @@ class DatabaseManager:
             """
             yesterday_row = c.execute(yesterday_last_snapshot_query, (uuid_id, today_midnight_utc)).fetchone()
 
-            # Set initial usage values from yesterday's last snapshot, or 0 if none exists
-            last_h_usage = yesterday_row['hiddify_usage_gb'] if yesterday_row else 0
-            last_m_usage = yesterday_row['marzban_usage_gb'] if yesterday_row else 0
+            last_h_usage = yesterday_row['hiddify_usage_gb'] if yesterday_row else 0.0
+            last_m_usage = yesterday_row['marzban_usage_gb'] if yesterday_row else 0.0
 
             h_total_usage = 0.0
             m_total_usage = 0.0
 
-            # Iterate through today's snapshots to calculate cumulative usage
+            # حلقه تمام اسنپ‌شات‌های امروز را پردازش می‌کند
             for row in today_rows:
-                current_h_usage = row['hiddify_usage_gb']
-                current_m_usage = row['marzban_usage_gb']
+                current_h_usage = row['hiddify_usage_gb'] or 0.0
+                current_m_usage = row['marzban_usage_gb'] or 0.0
 
-                # Calculate Hiddify usage, adding only positive differences
                 if current_h_usage is not None and last_h_usage is not None:
                     h_diff = current_h_usage - last_h_usage
                     if h_diff > 0:
                         h_total_usage += h_diff
                     last_h_usage = current_h_usage
 
-                # Calculate Marzban usage, adding only positive differences
                 if current_m_usage is not None and last_m_usage is not None:
                     m_diff = current_m_usage - last_m_usage
                     if m_diff > 0:
                         m_total_usage += m_diff
                     last_m_usage = current_m_usage
 
-            return {'hiddify': h_total_usage, 'marzban': m_total_usage}
+        return {'hiddify': h_total_usage, 'marzban': m_total_usage}
     
     def get_weekly_usage_by_uuid(self, uuid_str: str) -> Dict[str, float]:
         """مصرف هفتگی کاربر را با محاسبه مجموع افزایش‌های مثبت مصرف برای مدیریت صحیح ریست شدن حجم محاسبه می‌کند."""
@@ -1706,55 +1701,59 @@ class DatabaseManager:
 
     def get_weekly_top_consumers_report(self) -> dict:
         """
-        گزارشی از پرمصرف‌ترین کاربران هفته و هر روز هفته را برمی‌گرداند.
+        (نسخه اصلاح شده) گزارشی از پرمصرف‌ترین کاربران هفته و هر روز هفته را با محاسبه دقیق مصرف برمی‌گرداند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
-        today = datetime.now(tehran_tz).date()
-        week_start_day = today - timedelta(days=today.weekday() + 1) # شنبه
+        today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+        days_since_saturday = (today_jalali.weekday() + 1) % 7
+        week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+
+        report = {'top_10_overall': [], 'top_daily': {}}
+        all_uuids = {row['id']: row['name'] for row in self.get_all_user_uuids()}
         
-        report = {
-            'top_10_overall': [],
-            'top_daily': {}
-        }
+        weekly_usage_map = {uuid_id: 0.0 for uuid_id in all_uuids.keys()}
+        daily_usage_map = {i: {} for i in range(7)}
 
         with self._conn() as c:
-            # محاسبه مصرف هفتگی هر کاربر
-            weekly_usage_query = """
-                SELECT
-                    uu.name,
-                    SUM(MAX(s.hiddify_usage_gb) - MIN(s.hiddify_usage_gb)) + SUM(MAX(s.marzban_usage_gb) - MIN(s.marzban_usage_gb)) as total_usage
-                FROM usage_snapshots s
-                JOIN user_uuids uu ON s.uuid_id = uu.id
-                WHERE DATE(s.taken_at) >= ?
-                GROUP BY uu.id, uu.name
-                ORDER BY total_usage DESC
-                LIMIT 10;
-            """
-            rows = c.execute(weekly_usage_query, (week_start_day,)).fetchall()
-            report['top_10_overall'] = [dict(r) for r in rows]
+            all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
+            all_week_snapshots = c.execute(all_snapshots_query, (week_start_utc,)).fetchall()
 
-            # محاسبه پرمصرف‌ترین کاربر هر روز
-            for i in range(7):
-                day = week_start_day + timedelta(days=i)
-                day_str = day.strftime('%Y-%m-%d')
+            snapshots_by_user = {}
+            for snap in all_week_snapshots:
+                snapshots_by_user.setdefault(snap['uuid_id'], []).append(snap)
+            
+            for uuid_id, user_snaps in snapshots_by_user.items():
+                last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
                 
-                daily_top_query = """
-                    SELECT
-                        uu.name,
-                        MAX(s.hiddify_usage_gb) - MIN(s.hiddify_usage_gb) as h_usage,
-                        MAX(s.marzban_usage_gb) - MIN(s.marzban_usage_gb) as m_usage
-                    FROM usage_snapshots s
-                    JOIN user_uuids uu ON s.uuid_id = uu.id
-                    WHERE DATE(s.taken_at) = ?
-                    GROUP BY uu.id, uu.name
-                    ORDER BY (h_usage + m_usage) DESC
-                    LIMIT 1;
-                """
-                top_user = c.execute(daily_top_query, (day_str,)).fetchone()
-                if top_user and (top_user['h_usage'] is not None or top_user['m_usage'] is not None):
-                    total_usage = (top_user['h_usage'] or 0) + (top_user['m_usage'] or 0)
-                    if total_usage > 0.01: # حداقل ۱۰ مگابایت مصرف
-                        report['top_daily'][i] = {'name': top_user['name'], 'usage': total_usage}
+                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before else 0.0
+                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before else 0.0
+
+                for snap in user_snaps:
+                    h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
+                    m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
+                    total_diff = h_diff + m_diff
+                    
+                    weekly_usage_map[uuid_id] += total_diff
+                    
+                    snap_date_local = snap['taken_at'].astimezone(tehran_tz)
+                    day_of_week_jalali = (jdatetime.datetime.fromgregorian(datetime=snap_date_local).weekday() + 1) % 7
+                    daily_usage_map[day_of_week_jalali].setdefault(uuid_id, 0.0)
+                    daily_usage_map[day_of_week_jalali][uuid_id] += total_diff
+
+                    last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
+
+        sorted_weekly = sorted(weekly_usage_map.items(), key=lambda item: item[1], reverse=True)
+        for uuid_id, total_usage in sorted_weekly[:10]:
+            if total_usage > 0.01:
+                report['top_10_overall'].append({'name': all_uuids.get(uuid_id, 'ناشناس'), 'total_usage': total_usage})
+
+        for day_index, daily_data in daily_usage_map.items():
+            if not daily_data: continue
+            top_user_id = max(daily_data, key=daily_data.get)
+            top_usage = daily_data[top_user_id]
+            if top_usage > 0.01:
+                report['top_daily'][day_index] = {'name': all_uuids.get(top_user_id, 'ناشناس'), 'usage': top_usage}
+                
         return report
 
     def add_achievement_points(self, user_id: int, points: int):
@@ -1793,5 +1792,14 @@ class DatabaseManager:
                     (referrer_user_id,)
                 ).fetchall()
                 return [dict(r) for r in rows]
+
+    def delete_all_daily_snapshots(self) -> int:
+        """تمام اسنپ‌شات‌های مصرف امروز (به وقت UTC) را برای همه کاربران حذف می‌کند."""
+        today_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at >= ?", (today_start_utc,))
+            deleted_count = cursor.rowcount
+            logger.info(f"ADMIN ACTION: Deleted {deleted_count} daily snapshots for all users.")
+            return deleted_count
 
 db = DatabaseManager()

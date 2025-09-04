@@ -235,7 +235,6 @@ class Menu:
     # =============================================================================
     def admin_panel(self):
         kb = types.InlineKeyboardMarkup(row_width=2)
-
         btn_dashboard = types.InlineKeyboardButton("📊 داشبورد سریع", callback_data="admin:quick_dashboard")
         btn1 = types.InlineKeyboardButton("👥 مدیریت کاربران", callback_data="admin:management_menu")
         btn2 = types.InlineKeyboardButton("🔎 جستجوی کاربر", callback_data="admin:search_menu")
@@ -247,17 +246,23 @@ class Menu:
         btn8 = types.InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back")
         btn9 = types.InlineKeyboardButton("🗂️ مدیریت پلن‌ها", callback_data="admin:plan_manage")
         btn10 = types.InlineKeyboardButton("⚙️ مدیریت پنل‌ها", callback_data="admin:panel_manage")
-
+        btn11 = types.InlineKeyboardButton("🛠️ ابزارهای سیستمی", callback_data="admin:system_tools_menu")
 
         kb.add(btn_dashboard)
-        kb.add(btn2,btn1)
+        kb.add(btn2, btn1)
         kb.add(btn4, btn3)
         kb.add(btn6, btn5)
         kb.add(btn7, btn9)
-        kb.add(btn10)
+        kb.add(btn10, btn11)
         kb.add(btn8)
         return kb
 
+    def admin_system_tools_menu(self):
+        """منوی جدید برای دستورات حساس و سیستمی."""
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(types.InlineKeyboardButton("🔄 ریست مصرف امروز همه کاربران", callback_data="admin:reset_all_daily_usage_confirm"))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
+        return kb
 
     def admin_server_selection_menu(self, base_callback: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
