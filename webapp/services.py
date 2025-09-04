@@ -124,17 +124,20 @@ def get_dashboard_data():
     }
 
     try:
+        # 🔥 تغییر اصلی اینجاست: ما ابتدا مصرف روزانه صحیح را برای همه کاربران یکجا می‌خوانیم
+        all_daily_usages = db.get_all_daily_usage_since_midnight()
         all_users_data = get_all_users_combined()
+        
         total_usage_today_gb = 0
         
-        # محاسبه مصرف روزانه فقط یک بار و در اینجا انجام می‌شود
+        # سپس، مصرف محاسبه‌شده را به اطلاعات هر کاربر اضافه می‌کنیم
         for user in all_users_data:
             uuid = user.get('uuid')
             if not uuid:
                 user['daily_usage_gb'] = 0
                 continue
             
-            user_daily_usage_dict = db.get_usage_since_midnight_by_uuid(uuid)
+            user_daily_usage_dict = all_daily_usages.get(uuid, {'hiddify': 0.0, 'marzban': 0.0})
             user_daily_usage_gb = sum(user_daily_usage_dict.values())
             user['daily_usage_gb'] = user_daily_usage_gb
             total_usage_today_gb += user_daily_usage_gb
@@ -144,8 +147,6 @@ def get_dashboard_data():
         all_users_data = []
         total_usage_today_gb = 0
 
-    # بقیه تابع بدون تغییر باقی می‌ماند و از داده‌های صحیح استفاده می‌کند
-    # ... (کد این بخش طولانی است و نیازی به تغییر ندارد)
     try:
         daily_usage_summary = db.get_daily_usage_summary(days=7)
     except Exception as e:

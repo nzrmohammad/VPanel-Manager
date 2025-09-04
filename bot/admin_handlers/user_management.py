@@ -110,10 +110,9 @@ def handle_select_panel_for_edit(call, params):
     edit_type_map = {"agb": "افزودن حجم", "ady": "افزودن روز"}
     edit_type_name = edit_type_map.get(edit_type, "ویرایش")
 
-    prompt = f"⚙️ لطفاً پنلی که می‌خواهید «{edit_type_name}» به آن اضافه شود را انتخاب کنید:"
+    prompt = "⚙️ " + f"لطفاً پنلی که می‌خواهید «{edit_type_name}» به آن اضافه شود را انتخاب کنید:"
     
     kb = types.InlineKeyboardMarkup(row_width=2)
-    # نام پنل‌ها به جای hiddify/marzban برای خوانایی بهتر به کار رفته است
     btn_h = types.InlineKeyboardButton("آلمان 🇩🇪", callback_data=f"admin:ae:{edit_type}:hiddify:{identifier}{context_suffix}")
     btn_m = types.InlineKeyboardButton("فرانسه 🇫🇷", callback_data=f"admin:ae:{edit_type}:marzban:{identifier}{context_suffix}")
     
@@ -986,16 +985,89 @@ def handle_reset_all_daily_usage_confirm(call, params):
     )
     _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
 
+
 def handle_reset_all_daily_usage_action(call, params):
-    """(نسخه اصلاح شده) مصرف روزانه همه کاربران را صفر کرده و پیام موفقیت را با استایل صحیح نمایش می‌دهد."""
+    """(نسخه نهایی) مصرف روزانه همه کاربران را صفر کرده و یک نقطه شروع جدید ثبت می‌کند."""
     uid, msg_id = call.from_user.id, call.message.message_id
-    _safe_edit(uid, msg_id, "⏳ در حال حذف اسنپ‌شات‌های امروز برای تمام کاربران...", reply_markup=None)
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال حذف اسنپ‌شات‌های امروز..."), reply_markup=None)
     
     deleted_count = db.delete_all_daily_snapshots()
     
-    success_msg = (
-        f"✅ *{escape_markdown('عملیات با موفقیت انجام شد.')}*\n\n"
-        f"{escape_markdown('تعداد')} `{deleted_count}` {escape_markdown('رکورد مصرف روزانه از دیتابیس حذف گردید. ')}"
-        f"{escape_markdown('آمار مصرف از این لحظه مجدداً محاسبه خواهد شد.')}"
-    )
-    _safe_edit(uid, msg_id, success_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+    _safe_edit(uid, msg_id, escape_markdown(f"✅ {deleted_count} رکورد حذف شد. حالا در حال ثبت نقطه شروع جدید..."), reply_markup=None)
+
+    try:
+        all_users_info = combined_handler.get_all_users_combined()
+        user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
+        all_uuids_from_db = list(db.all_active_uuids())
+        
+        reset_count = 0
+        for u_row in all_uuids_from_db:
+            uuid_str = u_row['uuid']
+            if uuid_str in user_info_map:
+                info = user_info_map[uuid_str]
+                breakdown = info.get('breakdown', {})
+                h_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'hiddify')
+                m_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'marzban')
+                db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
+                reset_count += 1
+
+        success_msg = (
+            f"✅ *{escape_markdown('عملیات با موفقیت کامل شد.')}*\n\n"
+            f"{escape_markdown('مصرف روزانه برای')} `{reset_count}` {escape_markdown('کاربر فعال با موفقیت ریست شد.')}"
+        )
+        _safe_edit(uid, msg_id, success_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+    except Exception as e:
+        logger.error(f"Error while creating new baseline snapshot after reset: {e}", exc_info=True)
+        error_msg = escape_markdown("❌ خطا در ثبت نقطه شروع جدید. لطفاً لاگ‌ها را بررسی کنید.")
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+
+def handle_force_snapshot(call, params):
+    """
+    به صورت دستی فرآیند ذخیره آمار مصرف (snapshot) را برای تمام کاربران فعال اجرا می‌کند.
+    """
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال دریافت اطلاعات از پنل‌ها و به‌روزرسانی آمار مصرف... لطفاً چند لحظه صبر کنید."), reply_markup=None)
+
+    try:
+        # این کد دقیقا از روی تابع scheduler کپی شده است
+        all_users_info = combined_handler.get_all_users_combined()
+        if not all_users_info:
+            bot.answer_callback_query(call.id, "هیچ کاربری در پنل‌ها یافت نشد.", show_alert=True)
+            _safe_edit(uid, msg_id, escape_markdown("هیچ کاربری برای به‌روزرسانی یافت نشد."), reply_markup=menu.admin_system_tools_menu())
+            return
+            
+        user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
+        all_uuids_from_db = list(db.all_active_uuids())
+        
+        updated_count = 0
+        for u_row in all_uuids_from_db:
+            try:
+                uuid_str = u_row['uuid']
+                if uuid_str in user_info_map:
+                    info = user_info_map[uuid_str]
+                    breakdown = info.get('breakdown', {})
+                    h_usage, m_usage = 0.0, 0.0
+
+                    for panel_details in breakdown.values():
+                        panel_type = panel_details.get('type')
+                        panel_data = panel_details.get('data', {})
+                        if panel_type == 'hiddify':
+                            h_usage += panel_data.get('current_usage_GB', 0.0)
+                        elif panel_type == 'marzban':
+                            m_usage += panel_data.get('current_usage_GB', 0.0)
+                    
+                    db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
+                    updated_count += 1
+            except Exception as e:
+                logger.error(f"ADMIN_FORCE_SNAPSHOT: Failed to process for uuid_id {u_row['id']}: {e}")
+
+        success_msg = f"✅ عملیات با موفقیت انجام شد.\n\nآمار مصرف برای {updated_count} کاربر فعال به‌روزرسانی گردید."
+        bot.answer_callback_query(call.id, "✅ آمار با موفقیت به‌روز شد.", show_alert=True)
+        _safe_edit(uid, msg_id, escape_markdown(success_msg), reply_markup=menu.admin_system_tools_menu())
+
+    except Exception as e:
+        logger.error(f"Error in handle_force_snapshot: {e}", exc_info=True)
+        bot.answer_callback_query(call.id, "❌ خطایی در هنگام اجرای عملیات رخ داد.", show_alert=True)
+        _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در ارتباط با پنل‌ها یا دیتابیس رخ داد."), reply_markup=menu.admin_system_tools_menu())

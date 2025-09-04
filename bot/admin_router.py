@@ -195,6 +195,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "system_tools_menu": user_management.handle_system_tools_menu,
     "reset_all_daily_usage_confirm": user_management.handle_reset_all_daily_usage_confirm,
     "reset_all_daily_usage_exec": user_management.handle_reset_all_daily_usage_action,
+    "force_snapshot": user_management.handle_force_snapshot,
 }
 
 def handle_admin_callbacks(call: types.CallbackQuery):

@@ -260,6 +260,7 @@ class Menu:
     def admin_system_tools_menu(self):
         """منوی جدید برای دستورات حساس و سیستمی."""
         kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(types.InlineKeyboardButton("🔄 به‌روزرسانی دستی آمار مصرف (Snapshot)", callback_data="admin:force_snapshot"))
         kb.add(types.InlineKeyboardButton("🔄 ریست مصرف امروز همه کاربران", callback_data="admin:reset_all_daily_usage_confirm"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb

@@ -30,27 +30,32 @@ def setup_bot_logging():
             if not hasattr(record, 'user_id'):
                 record.user_id = 'SYSTEM'
             return True
+    
     LOG_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — [User:%(user_id)s] — %(message)s"
+    
+    # 🔥 تغییر اصلی اینجاست: استفاده از force=True
+    # این دستور تمام تنظیمات قبلی لاگ را پاک کرده و تنظیمات ما را اعمال می‌کند.
+    logging.basicConfig(
+        level=LOG_LEVEL,
+        format=LOG_FORMAT,
+        handlers=[
+            logging.FileHandler("bot.log", encoding="utf-8"),
+            logging.FileHandler("error.log", encoding="utf-8"),
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True
+    )
+
+    # فیلتر سفارشی را به هندلرهای فایل اضافه می‌کنیم
     root_logger = logging.getLogger()
-    if not root_logger.hasHandlers():
-        root_logger.setLevel(LOG_LEVEL)
-        log_formatter = logging.Formatter(LOG_FORMAT)
-        user_id_filter = UserIdFilter()
-        info_handler = logging.FileHandler("bot.log", encoding="utf-8")
-        info_handler.setLevel(logging.INFO)
-        info_handler.setFormatter(log_formatter)
-        info_handler.addFilter(user_id_filter)
-        error_handler = logging.FileHandler("error.log", encoding="utf-8")
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(log_formatter)
-        error_handler.addFilter(user_id_filter)
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.INFO)
-        stream_handler.setFormatter(log_formatter)
-        stream_handler.addFilter(user_id_filter)
-        root_logger.addHandler(info_handler)
-        root_logger.addHandler(error_handler)
-        root_logger.addHandler(stream_handler)
+    user_id_filter = UserIdFilter()
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.addFilter(user_id_filter)
+            if "error.log" in handler.baseFilename:
+                handler.setLevel(logging.ERROR)
+            else:
+                handler.setLevel(logging.INFO)
 
 def _notify_admins_start() -> None:
     text = "🚀 ربات با موفقیت فعال شد"

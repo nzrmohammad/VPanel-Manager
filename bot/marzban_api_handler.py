@@ -168,11 +168,13 @@ class MarzbanAPIHandler:
                 if not username:
                     continue
 
-                data_limit = user.get('data_limit')
-                limit_gb = round(data_limit / (1024**3), 3) if data_limit is not None else 0
-                
+                # 🔥 تغییر اصلی اینجاست: ما همیشه used_traffic را به عنوان مصرف فعلی در نظر می‌گیریم
+                # چون پنل مرزبان پس از ریست شدن، این عدد را صفر می‌کند
                 used_traffic = user.get('used_traffic', 0)
                 usage_gb = used_traffic / (1024 ** 3)
+                
+                data_limit = user.get('data_limit')
+                limit_gb = round(data_limit / (1024**3), 3) if data_limit is not None else 0
                 
                 uuid = db.get_uuid_by_marzban_username(username)
                 expire_timestamp = user.get('expire')
@@ -188,7 +190,7 @@ class MarzbanAPIHandler:
                     "is_active": user.get('status') == 'active',
                     "last_online": self._parse_marzban_datetime(user.get('online_at')),
                     "usage_limit_GB": limit_gb,
-                    "current_usage_GB": usage_gb,
+                    "current_usage_GB": usage_gb, # <-- مصرف فعلی به درستی تنظیم می‌شود
                     "remaining_GB": max(0, limit_gb - usage_gb),
                     "usage_percentage": (usage_gb / limit_gb * 100) if limit_gb > 0 else 0,
                     "expire": expire_days,
