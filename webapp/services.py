@@ -115,6 +115,13 @@ def _process_user_data(all_users_data):
 # ===================================================================
 # == تابع اصلی سرویس داشبورد (نسخه نهایی و اصلاح شده) ==
 # ===================================================================
+# webapp/services.py
+
+# ... (تمام کدهای دیگر فایل را دست‌نخورده باقی بگذارید)
+
+# ===================================================================
+# == تابع اصلی سرویس داشبورد (نسخه نهایی و اصلاح شده) ==
+# ===================================================================
 def get_dashboard_data():
     """
     داده‌های کامل و پردازش‌شده را برای داشبورد ادمین جمع‌آوری می‌کند.
@@ -152,11 +159,13 @@ def get_dashboard_data():
         total_usage_today_gb = 0
 
     try:
+        # داده‌های روزهای گذشته را از دیتابیس می‌خوانیم
         daily_usage_summary = db.get_daily_usage_summary(days=7)
     except Exception as e:
         logger.error(f"Failed to get daily usage summary: {e}", exc_info=True)
         daily_usage_summary = []
     
+    # اگر هیچ کاربری وجود نداشت، یک پاسخ خالی برمی‌گردانیم
     if not all_users_data:
         return {
            "stats": empty_stats, "new_users_last_24h": [], "expiring_soon_users": [], 
@@ -168,6 +177,7 @@ def get_dashboard_data():
 
     stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban = _process_user_data(all_users_data)
     
+    # آمار کارت بالای صفحه را با عدد دقیق امروز پر می‌کنیم
     stats['total_usage_today_gb'] = total_usage_today_gb
     stats['total_usage_today'] = f"{stats['total_usage_today_gb']:.2f} GB"
     
@@ -182,10 +192,24 @@ def get_dashboard_data():
         "series": [stats.get('hiddify_only_active', 0), stats.get('marzban_only_active', 0), stats.get('both_panels_active', 0)]
     }
     
+    # ✅ --- منطق جدید برای یکپارچه‌سازی داده‌های نمودار ---
     if daily_usage_summary:
+        # اگر داده‌ای برای امروز در summary وجود داشت، آن را با عدد دقیق جایگزین می‌کنیم
+        today_str = datetime.now(pytz.timezone("Asia/Tehran")).strftime('%Y-%m-%d')
+        found_today = False
+        for item in daily_usage_summary:
+            if item['date'] == today_str:
+                item['total_gb'] = round(total_usage_today_gb, 2)
+                found_today = True
+                break
+        # اگر داده‌ای برای امروز وجود نداشت، آن را اضافه می‌کنیم
+        if not found_today:
+             daily_usage_summary.append({'date': today_str, 'total_gb': round(total_usage_today_gb, 2)})
+             
         usage_chart_data = { "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d'), include_time=False) for item in daily_usage_summary], "data": [item['total_gb'] for item in daily_usage_summary]}
     else: 
         usage_chart_data = {"labels": [], "data": []}
+    # ✅ --- پایان منطق جدید ---
     
     top_consumers_chart_data = {
         "labels": [html_escape(user['name']) for user in top_consumers_today],
@@ -205,6 +229,9 @@ def get_dashboard_data():
         "top_consumers_chart_data": top_consumers_chart_data,
         "users_with_birthdays": users_with_birthdays
     }
+    
+# ... (بقیه کدهای فایل را دست‌نخورده باقی بگذارید)
+    
 # ===================================================================
 # == سرویس گزارش جامع (نسخه نهایی با اصلاح نام کاربر در پرداخت‌ها) ==
 # ===================================================================

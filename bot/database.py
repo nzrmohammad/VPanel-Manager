@@ -811,6 +811,7 @@ class DatabaseManager:
             logger.error(f"Database connection check FAILED: {e}")
             return False
 
+
     def get_all_daily_usage_since_midnight(self) -> Dict[str, Dict[str, float]]:
         """
         (نسخه نهایی) مصرف روزانه تمام UUID ها را از نیمه‌شب به صورت یک‌جا و با مدیریت ریست شدن حجم محاسبه می‌کند.
@@ -870,57 +871,81 @@ class DatabaseManager:
     def get_daily_usage_summary(self, days: int = 7) -> List[Dict[str, Any]]:
         """
         (نسخه نهایی و کامل شده) مجموع مصرف روزانه تمام کاربران را برای نمودار داشبورد ادمین، با مدیریت صحیح ریست شدن حجم، محاسبه می‌کند.
+        این نسخه برای تک تک روزهای گذشته نیز محاسبات را به صورت دقیق انجام می‌دهد.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
         summary = []
+        
+        with self._conn() as c:
+            for i in range(days - 1, -1, -1):
+                # 1. محدوده زمانی روز مورد نظر را مشخص می‌کنیم
+                target_date = now_in_tehran.date() - timedelta(days=i)
+                day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+                day_end_utc = day_start_utc + timedelta(days=1)
+                
+                # 2. آخرین مصرف ثبت‌شده هر کاربر *قبل* از شروع این روز را به عنوان نقطه شروع (baseline) پیدا می‌کنیم
+                prev_day_snapshots_query = """
+                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
+                    FROM (
+                        SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
+                               ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn
+                        FROM usage_snapshots
+                        WHERE taken_at < ?
+                    )
+                    WHERE rn = 1
+                """
+                prev_day_rows = c.execute(prev_day_snapshots_query, (day_start_utc,)).fetchall()
+                baseline_usage = {row['uuid_id']: {'h_start': row['hiddify_usage_gb'], 'm_start': row['marzban_usage_gb']} for row in prev_day_rows}
 
-        # 🔥 تغییر اصلی: محاسبه مصرف امروز با استفاده از تابع دقیق‌تر
-        try:
-            all_daily_usages_today = self.get_all_daily_usage_since_midnight()
-            total_today_gb = sum(sum(usages.values()) for usages in all_daily_usages_today.values())
-        except Exception as e:
-            logger.error(f"Could not calculate today's usage for summary chart: {e}")
-            total_today_gb = 0.0
-
-        # محاسبه برای روزهای گذشته (از دیروز تا ۶ روز قبل)
-        for i in range(1, days):
-            target_date = now_in_tehran.date() - timedelta(days=i)
-            day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
-            day_end_utc = day_start_utc + timedelta(days=1)
-            
-            # این کوئری برای روزهای گذشته به درستی کار می‌کند
-            query = """
-                SELECT
-                    SUM(COALESCE(h_diff, 0)) as total_h,
-                    SUM(COALESCE(m_diff, 0)) as total_m
-                FROM (
-                    SELECT
-                        MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_diff,
-                        MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_diff
+                # 3. اولین و آخرین مصرف ثبت‌شده هر کاربر *در طول* این روز را پیدا می‌کنیم
+                daily_snapshots_query = """
+                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
+                           ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at ASC) as rn_asc,
+                           ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn_desc
                     FROM usage_snapshots
                     WHERE taken_at >= ? AND taken_at < ?
-                    GROUP BY uuid_id
-                )
-            """
-            with self._conn() as c:
-                row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
-                total_gb = (row['total_h'] if row and row['total_h'] else 0) + (row['total_m'] if row and row['total_m'] else 0)
+                """
+                daily_rows = c.execute(daily_snapshots_query, (day_start_utc, day_end_utc)).fetchall()
+                
+                daily_usage_by_user = {}
+                for row in daily_rows:
+                    uuid_id = row['uuid_id']
+                    if uuid_id not in daily_usage_by_user:
+                        daily_usage_by_user[uuid_id] = {}
+                    
+                    if row['rn_asc'] == 1:
+                        daily_usage_by_user[uuid_id]['h_first'] = row['hiddify_usage_gb']
+                        daily_usage_by_user[uuid_id]['m_first'] = row['marzban_usage_gb']
+                    
+                    if row['rn_desc'] == 1:
+                        daily_usage_by_user[uuid_id]['h_end'] = row['hiddify_usage_gb']
+                        daily_usage_by_user[uuid_id]['m_end'] = row['marzban_usage_gb']
+
+                # 4. مصرف کل آن روز را با مقایسه نقطه شروع و پایان هر کاربر محاسبه می‌کنیم
+                day_total_gb = 0.0
+                for uuid_id, daily_data in daily_usage_by_user.items():
+                    baseline = baseline_usage.get(uuid_id)
+                    
+                    h_start = baseline['h_start'] if baseline else daily_data.get('h_first', 0.0)
+                    m_start = baseline['m_start'] if baseline else daily_data.get('m_first', 0.0)
+                    
+                    h_end = daily_data.get('h_end', 0.0)
+                    m_end = daily_data.get('m_end', 0.0)
+                    
+                    h_diff = (h_end or 0.0) - (h_start or 0.0)
+                    m_diff = (m_end or 0.0) - (m_start or 0.0)
+                    
+                    day_total_gb += max(0, h_diff)
+                    day_total_gb += max(0, m_diff)
+                
                 summary.append({
                     'date': target_date.strftime('%Y-%m-%d'),
-                    'total_gb': round(total_gb, 2)
+                    'total_gb': round(day_total_gb, 2)
                 })
-
-        # اضافه کردن مصرف دقیق امروز به لیست
-        summary.append({
-            'date': now_in_tehran.date().strftime('%Y-%m-%d'),
-            'total_gb': round(total_today_gb, 2)
-        })
-        
-        # مرتب‌سازی نهایی بر اساس تاریخ
-        summary.sort(key=lambda x: x['date'])
+                
         return summary
-
+        
     def update_config_name(self, uuid_id: int, new_name: str) -> bool:
         """نام نمایشی یک کانفیگ (UUID) را در دیتابیس تغییر می‌دهد."""
         if not new_name or len(new_name) < 2:
