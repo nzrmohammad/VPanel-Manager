@@ -1187,11 +1187,14 @@ def _handle_request_service(call: types.CallbackQuery):
     msg_id = call.message.message_id
 
     # اطلاع‌رسانی به کاربر
-    _safe_edit(uid, msg_id, "✅ درخواست شما برای مدیران ارسال شد. لطفاً منتظر بمانید تا با شما تماس بگیرند.", reply_markup=None)
+    _safe_edit(uid, msg_id, escape_markdown("✅ درخواست شما برای مدیران ارسال شد. لطفاً منتظر بمانید تا با شما تماس بگیرند."), reply_markup=None)
 
     # ساخت پیام برای ادمین‌ها
     user_name = escape_markdown(user_info.first_name)
     admin_message = [f"👤 *درخواست سرویس جدید*\n\n*کاربر:* {user_name} \\(`{uid}`\\)"]
+    if user_info.username:
+        admin_message.append(f"*یوزرنیم:* @{escape_markdown(user_info.username)}")
+
 
     # بررسی اینکه آیا کاربر معرف داشته یا نه
     referrer_info = db.get_referrer_info(uid)

@@ -243,7 +243,6 @@ class DatabaseManager:
             ).fetchall()
 
             if not today_snapshots:
-                logger.info(f"DAILY_USAGE_V5 (uuid_id: {uuid_id}): No snapshots today. Usage is 0.")
                 return {'hiddify': 0.0, 'marzban': 0.0}
 
             yesterday_last_snapshot = c.execute(
@@ -868,64 +867,58 @@ class DatabaseManager:
                 usage_map[row['uuid']] = {'hiddify': max(0, h_usage), 'marzban': max(0, m_usage)}
         return usage_map
 
-
     def get_daily_usage_summary(self, days: int = 7) -> List[Dict[str, Any]]:
         """
         (نسخه نهایی و کامل شده) مجموع مصرف روزانه تمام کاربران را برای نمودار داشبورد ادمین، با مدیریت صحیح ریست شدن حجم، محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
-        start_date_utc = (now_in_tehran - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
-
-        # ۱. یک دیکشنری برای نگهداری مجموع مصرف هر روز می‌سازیم
-        daily_totals = {
-            (now_in_tehran.date() - timedelta(days=i)): {'h': 0.0, 'm': 0.0}
-            for i in range(days)
-        }
-
-        with self._conn() as c:
-            # ۲. تمام اسنپ‌شات‌های دوره مورد نظر را بهینه دریافت می‌کنیم
-            all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
-            all_snapshots = c.execute(all_snapshots_query, (start_date_utc,)).fetchall()
-
-            snapshots_by_user = {}
-            for snap in all_snapshots:
-                snapshots_by_user.setdefault(snap['uuid_id'], []).append(snap)
-
-            # ۳. برای هر کاربر، مصرف روزانه را جداگانه محاسبه می‌کنیم
-            for uuid_id, user_snaps in snapshots_by_user.items():
-                # نقطه شروع محاسبه، آخرین رکورد قبل از این دوره است
-                last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, start_date_utc)).fetchone()
-                
-                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before else 0.0
-                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before else 0.0
-
-                # ۴. با حلقه روی اسنپ‌شات‌ها، مصرف هر روز را محاسبه و جمع می‌زنیم
-                for snap in user_snaps:
-                    snap_date_local = snap['taken_at'].astimezone(tehran_tz).date()
-                    
-                    current_h = snap['hiddify_usage_gb'] or 0.0
-                    current_m = snap['marzban_usage_gb'] or 0.0
-
-                    # اگر مصرف فعلی کمتر از قبلی بود (ریست)، مصرف از صفر شروع می‌شود
-                    h_diff = current_h if current_h < last_h else current_h - last_h
-                    m_diff = current_m if current_m < last_m else current_m - last_m
-                    
-                    if snap_date_local in daily_totals:
-                        daily_totals[snap_date_local]['h'] += h_diff
-                        daily_totals[snap_date_local]['m'] += m_diff
-                    
-                    last_h, last_m = current_h, current_m
-
-        # ۵. نتیجه نهایی را برای ارسال به نمودار آماده می‌کنیم
         summary = []
-        for dt, totals in sorted(daily_totals.items()):
-            total_gb = totals['h'] + totals['m']
-            summary.append({
-                'date': dt.strftime('%Y-%m-%d'),
-                'total_gb': round(total_gb, 2)
-            })
 
+        # 🔥 تغییر اصلی: محاسبه مصرف امروز با استفاده از تابع دقیق‌تر
+        try:
+            all_daily_usages_today = self.get_all_daily_usage_since_midnight()
+            total_today_gb = sum(sum(usages.values()) for usages in all_daily_usages_today.values())
+        except Exception as e:
+            logger.error(f"Could not calculate today's usage for summary chart: {e}")
+            total_today_gb = 0.0
+
+        # محاسبه برای روزهای گذشته (از دیروز تا ۶ روز قبل)
+        for i in range(1, days):
+            target_date = now_in_tehran.date() - timedelta(days=i)
+            day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+            day_end_utc = day_start_utc + timedelta(days=1)
+            
+            # این کوئری برای روزهای گذشته به درستی کار می‌کند
+            query = """
+                SELECT
+                    SUM(COALESCE(h_diff, 0)) as total_h,
+                    SUM(COALESCE(m_diff, 0)) as total_m
+                FROM (
+                    SELECT
+                        MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_diff,
+                        MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_diff
+                    FROM usage_snapshots
+                    WHERE taken_at >= ? AND taken_at < ?
+                    GROUP BY uuid_id
+                )
+            """
+            with self._conn() as c:
+                row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
+                total_gb = (row['total_h'] if row and row['total_h'] else 0) + (row['total_m'] if row and row['total_m'] else 0)
+                summary.append({
+                    'date': target_date.strftime('%Y-%m-%d'),
+                    'total_gb': round(total_gb, 2)
+                })
+
+        # اضافه کردن مصرف دقیق امروز به لیست
+        summary.append({
+            'date': now_in_tehran.date().strftime('%Y-%m-%d'),
+            'total_gb': round(total_today_gb, 2)
+        })
+        
+        # مرتب‌سازی نهایی بر اساس تاریخ
+        summary.sort(key=lambda x: x['date'])
         return summary
 
     def update_config_name(self, uuid_id: int, new_name: str) -> bool:
