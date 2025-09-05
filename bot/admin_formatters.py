@@ -875,3 +875,41 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+def fmt_scheduled_tasks(tasks: list) -> str:
+    """(نسخه نهایی) لیست تسک‌های زمان‌بندی شده را به یک پیام خوانا برای ادمین تبدیل می‌کند."""
+    
+    if not tasks:
+        return "هیچ تسک زمان‌بندی شده‌ای برای نمایش وجود ندارد."
+
+    lines = ["⏰ *لیست فرآیندهای خودکار ربات*", "`──────────────────`"]
+    
+    icon_map = {
+        'camera-lens': '📸',
+        'alarm-warning': '⚠️',
+        'send-plane-2': '✈️',
+        'cake-2': '🎂',
+        'database-2': '🗂️',
+        'calendar-event': '🗓️', # گزارش هفتگی
+        'medal': '🎖️',         # دستاوردها
+        'trophy': '🏆',         # قرعه‌کشی
+        'refresh': '🔄',         # همگام‌سازی
+        'delete-bin': '🗑️'         # پاکسازی
+    }
+
+    for task in tasks:
+        icon_key_parts = task.get('icon', '').replace('ri-', '').split('-')
+        icon_key = '-'.join(icon_key_parts[:2]) if len(icon_key_parts) > 1 else icon_key_parts[0]
+        
+        icon = icon_map.get(icon_key, '⚙️') 
+        
+        title = escape_markdown(task.get('title', 'تسک ناشناس'))
+        interval = escape_markdown(task.get('interval', 'نامشخص'))
+        description = escape_markdown(task.get('description', 'بدون توضیحات.'))
+        
+        lines.append(f"{icon} *{title}*")
+        lines.append(f"  زمان‌بندی : {interval}")
+        lines.append(f"  توضیحات : {description}")
+        lines.append("") # ایجاد یک خط خالی برای جداسازی بهتر
+
+    return "\n".join(lines)

@@ -10,13 +10,14 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
 from ..utils import _safe_edit, escape_markdown, load_service_plans, parse_volume_string
 from ..hiddify_api_handler import HiddifyAPIHandler
 from ..marzban_api_handler import MarzbanAPIHandler
 from ..config import WELCOME_MESSAGE_DELAY_HOURS
+from webapp.services import get_schedule_info_service
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -351,6 +352,23 @@ def handle_quick_dashboard(call, params):
     except Exception as e:
         logger.error(f"Failed to generate quick dashboard: {e}", exc_info=True)
         _safe_edit(uid, msg_id, "❌ خطا در تولید داشبورد", reply_markup=menu.admin_panel())
+
+def handle_show_scheduled_tasks(call, params):
+    """لیست تسک‌های زمان‌بندی شده را به ادمین نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    try:
+        tasks = get_schedule_info_service()
+        text = fmt_scheduled_tasks(tasks)
+        
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
+        
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
+        
+    except Exception as e:
+        logger.error(f"Failed to show scheduled tasks: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, "❌ خطایی در دریافت اطلاعات تسک‌ها رخ داد.", reply_markup=menu.admin_panel())
 
 def handle_test_report_command(message: types.Message):
     """Handles the /test_report <user_id> command for admins, checking user settings."""

@@ -242,7 +242,7 @@ class Menu:
         btn4 = types.InlineKeyboardButton("📊 گزارش‌ها و آمار", callback_data="admin:reports_menu")
         btn5 = types.InlineKeyboardButton("📣 پیام همگانی", callback_data="admin:broadcast")
         btn6 = types.InlineKeyboardButton("💾 پشتیبان‌گیری", callback_data="admin:backup_menu")
-        btn7 = types.InlineKeyboardButton("🖥️ وضعیت سیستم", callback_data="admin:system_status_menu")
+        btn7 = types.InlineKeyboardButton("⏰ کارهای زمان‌بندی شده", callback_data="admin:scheduled_tasks")
         btn8 = types.InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back")
         btn9 = types.InlineKeyboardButton("🗂️ مدیریت پلن‌ها", callback_data="admin:plan_manage")
         btn10 = types.InlineKeyboardButton("⚙️ مدیریت پنل‌ها", callback_data="admin:panel_manage")

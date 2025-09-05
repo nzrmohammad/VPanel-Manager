@@ -682,6 +682,7 @@ class SchedulerManager:
         schedule.every().sunday.at("22:00", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)
+        schedule.every().friday.at("21:00", self.tz_str).do(self._run_lucky_lottery)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements)

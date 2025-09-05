@@ -23,54 +23,38 @@ class DatabaseManager:
         return conn
 
     def _init_db(self) -> None:
-        # START OF DEBUGGING CODE
         print("DEBUG: _init_db function has been called.")
         logger.critical("CRITICAL_DEBUG: _init_db function has been called.")
-        # END OF DEBUGGING CODE
         with self.write_conn() as c:
             try:
-                # START OF DEBUGGING CODE
                 logger.critical("CRITICAL_DEBUG: Inside the 'try' block of _init_db.")
-                # END OF DEBUGGING CODE
                 def add_column_if_not_exists(table, column_name, column_definition):
                     cursor = c.execute(f"PRAGMA table_info({table});")
                     columns = [row['name'] for row in cursor.fetchall()]
                     
-                    # START OF DEBUGGING CODE
                     logger.critical(f"CRITICAL_DEBUG: Columns found in table '{table}': {columns}")
-                    # END OF DEBUGGING CODE
 
                     if column_name not in columns:
                         try:
-                            # START OF DEBUGGING CODE
                             logger.critical(f"CRITICAL_DEBUG: Column '{column_name}' NOT FOUND. Attempting to add it now...")
-                            # END OF DEBUGGING CODE
                             c.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_definition};")
-                            # START OF DEBUGGING CODE
                             logger.critical(f"CRITICAL_DEBUG: SUCCESSFULLY ADDED column '{column_name}' to table '{table}'.")
-                            # END OF DEBUGGING CODE
                         except sqlite3.OperationalError as e:
-                            # START OF DEBUGGING CODE
                             logger.critical(f"CRITICAL_DEBUG: FAILED to add column '{column_name}'. Error: {e}")
-                            # END OF DEBUGGING CODE
                             if "duplicate column name" in str(e):
                                 logger.warning(f"Column '{column_name}' already exists in {table}. Ignoring.")
                             else:
                                 raise e
                 
-                # ... (بقیه ستون‌ها)
                 add_column_if_not_exists("users", "referral_code", "TEXT UNIQUE")
                 add_column_if_not_exists("users", "referred_by_user_id", "INTEGER")
                 add_column_if_not_exists("users", "referral_reward_applied", "INTEGER DEFAULT 0")
-                # ... (بقیه ستون‌ها)
-
+                add_column_if_not_exists("users", "achievement_points", "INTEGER DEFAULT 0")
 
                 logger.info("Database schema migration check complete.")
 
             except Exception as e:
-                # START OF DEBUGGING CODE
                 logger.critical(f"CRITICAL_DEBUG: An exception occurred in _init_db: {e}", exc_info=True)
-                # END OF DEBUGGING CODE
                 if "no such table" not in str(e):
                     logger.error(f"Failed to update database schema: {e}")
 

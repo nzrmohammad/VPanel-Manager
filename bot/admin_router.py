@@ -120,6 +120,7 @@ ADMIN_CALLBACK_HANDLERS = {
     # Menus
     "panel": _handle_show_panel,
     "quick_dashboard": reporting.handle_quick_dashboard,
+    "scheduled_tasks": reporting.handle_show_scheduled_tasks,
     "management_menu": _handle_management_menu,
     "manage_panel": _handle_panel_management_menu,
     "select_server": _handle_server_selection,
