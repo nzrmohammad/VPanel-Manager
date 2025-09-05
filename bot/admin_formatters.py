@@ -232,11 +232,9 @@ def fmt_users_list(users: list, list_type: str, page: int) -> str:
         'inactive': "⏳ کاربران غیرفعال (۱ تا ۷ روز)",
         'never_connected': "🚫 کاربران هرگز متصل نشده"
     }
-    # ✨ تغییر اصلی: تمام متن‌ها escape می‌شوند
     title = escape_markdown(title_map.get(list_type, "لیست کاربران"))
 
     if not users:
-        # ✨ تغییر اصلی: متن مربوط به خالی بودن لیست نیز escape می‌شود
         return f"*{title}*\n\n{escape_markdown('هیچ کاربری در این دسته یافت نشد.')}"
 
     header_text = f"*{title}*"
@@ -286,7 +284,7 @@ def fmt_online_users_list(users: list, page: int) -> str:
     title = "⚡️ کاربران آنلاین \\(۳ دقیقه اخیر\\)"
 
     if not users:
-        return f"*{title}*\n\nهیچ کاربری در این لحظه آنلاین نیست."
+        return f"*{title}*\n\nهیچ کاربری در این لحظه آنلاین نیست\\."
 
     header_text = f"*{title}*"
     if len(users) > PAGE_SIZE:
@@ -696,7 +694,6 @@ def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
     header_text = f"*{escape_markdown(title)}*"
     if len(users) > PAGE_SIZE:
         total_pages = (len(users) + PAGE_SIZE - 1) // PAGE_SIZE
-        # تمام بخش‌های این متن escape شده‌اند تا خطای parse از بین برود
         pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {len(users)}\\)"
         header_text += f"\n{pagination_text}"
 
@@ -719,7 +716,6 @@ def fmt_panel_users_list(users: list, panel_name: str, page: int) -> str:
 
 
 def fmt_payments_report_list(payments: list, page: int) -> str:
-    # عنوان گزارش اصلاح شد
     title = "گزارش تمام پرداخت‌های ثبت‌شده"
 
     if not payments:
@@ -735,12 +731,9 @@ def fmt_payments_report_list(payments: list, page: int) -> str:
     paginated_payments = payments[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
 
     for i, payment in enumerate(paginated_payments, start=page * PAGE_SIZE + 1):
-        # نام کاربر از کلید صحیح خوانده می‌شود
         name = escape_markdown(payment.get('config_name', 'کاربر ناشناس'))
-        # تاریخ با زمان کامل نمایش داده می‌شود
         shamsi_datetime = to_shamsi(payment.get('payment_date'), include_time=True)
         
-        # فرمت نمایش هر ردیف اصلاح شد
         line = f"`{i}.` *{name} *\\(💳 {shamsi_datetime}\\)"
         lines.append(line)
 

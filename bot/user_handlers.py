@@ -1117,7 +1117,7 @@ def _show_achievements_page(call: types.CallbackQuery):
 
 def _handle_connection_doctor(call: types.CallbackQuery):
     """
-    وضعیت سرویس کاربر و سرورها را بررسی کرده و یک گزارش کامل ارائه می‌دهد.
+    (نسخه بهبود یافته) وضعیت سرویس کاربر و سرورها را بررسی کرده و یک گزارش کامل و دقیق‌تر ارائه می‌دهد.
     """
     uid = call.from_user.id
     msg_id = call.message.message_id
@@ -1146,16 +1146,50 @@ def _handle_connection_doctor(call: types.CallbackQuery):
         else:
             report_lines.append(f"🚨 وضعیت سرور «{panel_name}»: *آفلاین یا دارای اختلال*")
 
-    recent_users = db.count_recently_active_users()
-    
+    try:
+        all_users = combined_handler.get_all_users_combined()
+        now_utc = datetime.now(pytz.utc)
+        online_deadline = now_utc - timedelta(minutes=3)
+        
+        online_hiddify_count = 0
+        online_marzban_fr_count = 0
+        online_marzban_tr_count = 0
+
+        for user in all_users:
+            last_online = user.get('last_online')
+            if not last_online or not isinstance(last_online, datetime):
+                continue
+            
+            last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
+
+            if last_online_aware > online_deadline:
+                breakdown = user.get('breakdown', {})
+                h_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+                m_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'marzban'), None)
+
+                if h_online and (not m_online or h_online >= m_online):
+                    online_hiddify_count += 1
+                elif m_online:
+                    db_record = db.get_user_uuid_record(user.get('uuid'))
+                    if db_record:
+                        if db_record.get('has_access_fr'):
+                            online_marzban_fr_count += 1
+                        if db_record.get('has_access_tr'):
+                            online_marzban_tr_count += 1
+    except Exception as e:
+        logger.error(f"Error calculating online users for connection doctor: {e}", exc_info=True)
+        online_hiddify_count = 'N/A'
+        online_marzban_fr_count = 'N/A'
+        online_marzban_tr_count = 'N/A'
+
+
     report_lines.extend([
         "`──────────────────`",
         "📈 *تحلیل هوشمند بار سرور \\(۱۵ دقیقه اخیر\\):*",
-        f" `•` *{recent_users.get('hiddify', 0)}* کاربر از سرور آلمان 🇩🇪",
-        f" `•` *{recent_users.get('marzban_fr', 0)}* کاربر از سرور فرانسه 🇫🇷",
-        f" `•` *{recent_users.get('marzban_tr', 0)}* کاربر از سرور ترکیه 🇹🇷"
+        f" `•` *{online_hiddify_count}* کاربر آنلاین در سرور آلمان 🇩🇪",
+        f" `•` *{online_marzban_fr_count}* کاربر آنلاین در سرور فرانسه 🇫🇷",
+        f" `•` *{online_marzban_tr_count}* کاربر آنلاین در سرور ترکیه 🇹🇷"
     ])
-    # <<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>
     
     suggestion_text = "اگر اکانت و سرورها فعال هستند اما همچنان با کندی مواجه‌اید، لطفاً یک بار اتصال خود را قطع و وصل کرده و به سرور دیگری متصل شوید. در صورت ادامه مشکل، با پشتیبانی تماس بگیرید."
     report_lines.extend([
@@ -1166,6 +1200,7 @@ def _handle_connection_doctor(call: types.CallbackQuery):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به منوی اصلی", callback_data="back"))
     _safe_edit(uid, msg_id, "\n".join(report_lines), reply_markup=kb)
+
 
 def _handle_request_service(call: types.CallbackQuery):
     """درخواست کاربر جدید را به ادمین‌ها اطلاع می‌دهد."""

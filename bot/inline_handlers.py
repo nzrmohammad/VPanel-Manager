@@ -142,6 +142,33 @@ def handle_user_inline_query(inline_query: types.InlineQuery):
                         reply_markup=kb
                     ))
 
+        elif query in ["referral", "دعوت", "معرفی"] and user_uuids:
+            bot_username = bot.get_me().username
+            referral_code = db.get_or_create_referral_code(user_id)
+            referral_link = f"https://t.me/{bot_username}?start={referral_code}"
+            
+            # متنی که همراه با لینک ارسال می‌شود
+            message_text = (
+                f"🤝 *به جمع ما بپیوند\\!* 🤝\n\n"
+                f"از طریق لینک زیر در ربات عضو شو و پس از اولین خرید، هر دوی ما هدیه دریافت خواهیم کرد\\."
+            )
+            
+            # دکمه‌ای که کاربر جدید را به ربات هدایت می‌کند
+            kb = InlineKeyboardMarkup().add(
+                InlineKeyboardButton("🚀 شروع و دریافت هدیه", url=referral_link)
+            )
+
+            results.append(types.InlineQueryResultArticle(
+                id='send_referral_link',
+                title="🤝 دعوت از دوستان",
+                description="برای ارسال لینک معرفی خود در چت کلیک کنید.",
+                input_message_content=types.InputTextMessageContent(
+                    message_text=message_text,
+                    parse_mode="MarkdownV2"
+                ),
+                reply_markup=kb
+            ))
+
         if not user_uuids and not query:
              results.append(types.InlineQueryResultArticle(
                 id='no_account',

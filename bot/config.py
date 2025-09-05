@@ -30,7 +30,7 @@ ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY")
 DATABASE_PATH = "bot_data.db"
 TELEGRAM_FILE_SIZE_LIMIT_BYTES = 50 * 1024 * 1024
 api_cache = TTLCache(maxsize=2, ttl=60)
-API_TIMEOUT = 15
+API_TIMEOUT = 45
 API_RETRY_COUNT = 3
 
 TEHRAN_TZ = pytz.timezone("Asia/Tehran")
