@@ -202,6 +202,7 @@
   "btn_achievements": "Achievements",
   "fmt_your_points": "Your Points:",
   "loyalty_message_line1": "💎 You have renewed your service {payment_count} times.",
+  "loyalty_message_line2": "Only {renewals_left} more renewals until your next gift ({gb_reward} GB data + {days_reward} days credit)!",
   "loyalty_message_line2_v2": "Only {renewals_left} more renewals until your next gift ({gb_reward} GB data + {days_reward} days credit)!",
   "doctor_checking_status": "🩺 Checking service and server status, please wait a moment...",
   "doctor_report_title": "Connection Doctor Report:",
