@@ -608,7 +608,7 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
 
         text_lines.append(f"{escape_markdown(line1_formatted)}\n{loyalty_message}")
         
-    text_lines.append("\n`──────────────────`")
+    text_lines.append("`──────────────────`")
     text_lines.append(f"💡 {escape_markdown(get_string('main_menu_tip', lang_code))}")
     
     text = "\n".join(text_lines)

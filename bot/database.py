@@ -1762,7 +1762,7 @@ class DatabaseManager:
 
     def get_weekly_top_consumers_report(self) -> dict:
         """
-        (نسخه اصلاح شده) گزارشی از پرمصرف‌ترین کاربران هفته و هر روز هفته را با محاسبه دقیق مصرف برمی‌گرداند.
+        (نسخه نهایی و اصلاح شده) گزارشی از پرمصرف‌ترین کاربران هفته و هر روز هفته را با محاسبه دقیق مصرف بر اساس شناسه کاربری تلگرام (user_id) برمی‌گرداند تا از شمارش تکراری جلوگیری شود.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         today_jalali = jdatetime.datetime.now(tz=tehran_tz)
@@ -1770,12 +1770,13 @@ class DatabaseManager:
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
         report = {'top_10_overall': [], 'top_daily': {}}
-        all_uuids = {row['id']: row['name'] for row in self.get_all_user_uuids()}
-
-        weekly_usage_map = {uuid_id: 0.0 for uuid_id in all_uuids.keys()}
-        daily_usage_map = {i: {} for i in range(7)}
+        
+        # ابتدا مصرف را بر اساس uuid_id جمع‌آوری می‌کنیم
+        weekly_usage_by_uuid = {}
+        daily_usage_by_uuid = {i: {} for i in range(7)}
 
         with self.write_conn() as c:
+            # دریافت تمام اسنپ‌شات‌های هفته
             all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
             all_week_snapshots = c.execute(all_snapshots_query, (week_start_utc,)).fetchall()
 
@@ -1786,34 +1787,62 @@ class DatabaseManager:
             for uuid_id, user_snaps in snapshots_by_user.items():
                 last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
 
-                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before else 0.0
-                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before else 0.0
+                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
 
                 for snap in user_snaps:
                     h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
                     m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
                     total_diff = h_diff + m_diff
 
-                    weekly_usage_map[uuid_id] += total_diff
+                    weekly_usage_by_uuid.setdefault(uuid_id, 0.0)
+                    weekly_usage_by_uuid[uuid_id] += total_diff
 
                     snap_date_local = snap['taken_at'].astimezone(tehran_tz)
                     day_of_week_jalali = (jdatetime.datetime.fromgregorian(datetime=snap_date_local).weekday() + 1) % 7
-                    daily_usage_map[day_of_week_jalali].setdefault(uuid_id, 0.0)
-                    daily_usage_map[day_of_week_jalali][uuid_id] += total_diff
+                    daily_usage_by_uuid[day_of_week_jalali].setdefault(uuid_id, 0.0)
+                    daily_usage_by_uuid[day_of_week_jalali][uuid_id] += total_diff
 
                     last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
 
-        sorted_weekly = sorted(weekly_usage_map.items(), key=lambda item: item[1], reverse=True)
-        for uuid_id, total_usage in sorted_weekly[:10]:
-            if total_usage > 0.01:
-                report['top_10_overall'].append({'name': all_uuids.get(uuid_id, 'ناشناس'), 'total_usage': total_usage})
+        # حالا مصرف را بر اساس user_id تجمیع می‌کنیم
+        user_id_map = {row['id']: row['user_id'] for row in self.get_all_user_uuids()}
+        user_info_map = {user['user_id']: user for user in self.get_all_bot_users()}
+        
+        weekly_usage_by_user_id = {}
+        for uuid_id, total_usage in weekly_usage_by_uuid.items():
+            user_id = user_id_map.get(uuid_id)
+            if user_id:
+                weekly_usage_by_user_id.setdefault(user_id, 0.0)
+                weekly_usage_by_user_id[user_id] += total_usage
 
-        for day_index, daily_data in daily_usage_map.items():
+        # ساخت گزارش نهایی بر اساس user_id
+        sorted_weekly_by_user_id = sorted(weekly_usage_by_user_id.items(), key=lambda item: item[1], reverse=True)
+        for user_id, total_usage in sorted_weekly_by_user_id[:10]:
+            if total_usage > 0.01:
+                user_info = user_info_map.get(user_id)
+                user_name = user_info.get('first_name', 'کاربر ناشناس') if user_info else 'کاربر ناشناس'
+                report['top_10_overall'].append({'name': user_name, 'total_usage': total_usage})
+
+        for day_index, daily_data in daily_usage_by_uuid.items():
             if not daily_data: continue
-            top_user_id = max(daily_data, key=daily_data.get)
-            top_usage = daily_data[top_user_id]
+            
+            daily_usage_by_user_id = {}
+            for uuid_id, usage in daily_data.items():
+                user_id = user_id_map.get(uuid_id)
+                if user_id:
+                    daily_usage_by_user_id.setdefault(user_id, 0.0)
+                    daily_usage_by_user_id[user_id] += usage
+
+            if not daily_usage_by_user_id: continue
+            
+            top_user_id = max(daily_usage_by_user_id, key=daily_usage_by_user_id.get)
+            top_usage = daily_usage_by_user_id[top_user_id]
+            
             if top_usage > 0.01:
-                report['top_daily'][day_index] = {'name': all_uuids.get(top_user_id, 'ناشناس'), 'usage': top_usage}
+                top_user_info = user_info_map.get(top_user_id)
+                top_user_name = top_user_info.get('first_name', 'کاربر ناشناس') if top_user_info else 'کاربر ناشناس'
+                report['top_daily'][day_index] = {'name': top_user_name, 'usage': top_usage}
 
         return report
 
