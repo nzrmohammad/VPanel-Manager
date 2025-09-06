@@ -157,7 +157,7 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
         report_lines.extend([
             separator,
             f"📝 *یادداشت ادمین:*",
-            f"_{esc(db_user['admin_note'])}_"
+            f"{esc(db_user['admin_note'])}"
         ])
 
     return "\n".join(report_lines)
