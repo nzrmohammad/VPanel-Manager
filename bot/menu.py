@@ -14,21 +14,21 @@ class Menu:
         btn_quick_stats = types.InlineKeyboardButton(f"{EMOJIS['lightning']} {get_string('quick_stats', lang_code)}", callback_data="quick_stats")
         btn_services = types.InlineKeyboardButton(f"🛒 {get_string('view_plans', lang_code)}", callback_data="view_plans")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
-        btn_doctor = types.InlineKeyboardButton(f"🩺 پزشک اتصال", callback_data="connection_doctor")
+        btn_doctor = types.InlineKeyboardButton(f"🩺 {get_string('btn_connection_doctor', lang_code)}", callback_data="connection_doctor")
         btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
         btn_user_account = types.InlineKeyboardButton(f"👤 {get_string('user_account_page_title', lang_code)}", callback_data="user_account")
-        btn_referral = types.InlineKeyboardButton("👥 دعوت از دوستان", callback_data="referral:info")
-        btn_achievements = types.InlineKeyboardButton(f"🏆 دستاوردها", callback_data="achievements")
+        btn_referral = types.InlineKeyboardButton(f"👥 {get_string('btn_referrals', lang_code)}", callback_data="referral:info")
+        btn_achievements = types.InlineKeyboardButton(f"🏆 {get_string('btn_achievements', lang_code)}", callback_data="achievements")
         btn_settings = types.InlineKeyboardButton(f"⚙️ {get_string('settings', lang_code)}", callback_data="settings")
         btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
-        kb.add(btn_manage_account, btn_quick_stats) # ردیف ۱: اصلی‌ترین‌ها
-        kb.add(btn_services, btn_support)           # ردیف ۲: خرید و پشتیبانی
-        kb.add(btn_doctor, btn_tutorials)           # ردیف ۳: ابزارها
-        kb.add(btn_user_account, btn_referral)      # ردیف ۴: پروفایل و دعوت
-        kb.add(btn_achievements, btn_settings)      # ردیف ۵: جوایز و تنظیمات
-        kb.add(btn_birthday, btn_web_login)         # ردیف ۶: سایر
+        kb.add(btn_manage_account, btn_quick_stats)
+        kb.add(btn_services, btn_support)
+        kb.add(btn_doctor, btn_tutorials)
+        kb.add(btn_user_account, btn_referral)
+        kb.add(btn_achievements, btn_settings)
+        kb.add(btn_birthday, btn_web_login)
 
         if is_admin:
             kb.add(types.InlineKeyboardButton(f"{EMOJIS['crown']} پنل مدیریت", callback_data="admin:panel"))
@@ -204,27 +204,29 @@ class Menu:
     def settings(self, settings_dict: dict, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         
-        daily_text = f"📊 {get_string('daily_report', lang_code)} {'✅' if settings_dict.get('daily_reports', True) else '❌'}"
-        weekly_text = f"📅 {get_string('weekly_report', lang_code)} {'✅' if settings_dict.get('weekly_reports', True) else '❌'}"
+        def get_status_emoji(key):
+            return '✅' if settings_dict.get(key, True) else '❌'
+
+        daily_text = f"📊 {get_string('daily_report', lang_code)} {get_status_emoji('daily_reports')}"
+        weekly_text = f"📅 {get_string('weekly_report', lang_code)} {get_status_emoji('weekly_reports')}"
         kb.add(
             types.InlineKeyboardButton(daily_text, callback_data="toggle_daily_reports"),
             types.InlineKeyboardButton(weekly_text, callback_data="toggle_weekly_reports")
         )
 
-        expiry_text = f"⏰ {get_string('expiry_warning', lang_code)} {'✅' if settings_dict.get('expiry_warnings', True) else '❌'}"
-        auto_delete_text = f"🗑️ {get_string('auto_delete_reports', lang_code)} {'✅' if settings_dict.get('auto_delete_reports', True) else '❌'}"
+        expiry_text = f"⏰ {get_string('expiry_warning', lang_code)} {get_status_emoji('expiry_warnings')}"
+        data_warning_text = f"🪫 {get_string('data_warning', lang_code)} {get_status_emoji('data_warnings')}"
         kb.add(
             types.InlineKeyboardButton(expiry_text, callback_data="toggle_expiry_warnings"),
-            types.InlineKeyboardButton(auto_delete_text, callback_data="toggle_auto_delete_reports")
+            types.InlineKeyboardButton(data_warning_text, callback_data="toggle_data_warnings")
         )
         
-        hiddify_text = f"🪫 {get_string('data_warning_de', lang_code)} {'✅' if settings_dict.get('data_warning_hiddify', True) else '❌'}"
-        marzban_text = f"🪫 {get_string('data_warning_fr_tr', lang_code)} {'✅' if settings_dict.get('data_warning_marzban', True) else '❌'}"
-        kb.add(types.InlineKeyboardButton(hiddify_text, callback_data="toggle_data_warning_hiddify"),
-            types.InlineKeyboardButton(marzban_text, callback_data="toggle_data_warning_marzban"))
-
-        info_config_text = f"ℹ️ {get_string('info_config', lang_code)} {'✅' if settings_dict.get('show_info_config', True) else '❌'}"
-        kb.add(types.InlineKeyboardButton(info_config_text, callback_data="toggle_show_info_config"))
+        achievement_text = f"🏆 {get_string('achievement_alerts', lang_code)} {get_status_emoji('achievement_alerts')}"
+        promo_text = f"🎁 {get_string('promotional_alerts', lang_code)} {get_status_emoji('promotional_alerts')}"
+        kb.add(
+            types.InlineKeyboardButton(achievement_text, callback_data="toggle_achievement_alerts"),
+            types.InlineKeyboardButton(promo_text, callback_data="toggle_promotional_alerts")
+        )
 
         kb.add(types.InlineKeyboardButton(f"🌐 {get_string('change_language', lang_code)}", callback_data="change_language"))
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))

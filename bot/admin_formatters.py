@@ -172,7 +172,8 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
     lines.append("\n`──────────────────`")
     lines.append("🔥 *قهرمان هر روز هفته:*")
 
-    day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+    day_names = ["🗓️ شنبه", "🗒️ یکشنبه", "🗓️ دوشنبه", "🗒️ سه‌شنبه", "🗓️ چهارشنبه", "🗒️ پنجشنبه", "🎉 جمعه"]
+
     if not report_data.get('top_daily'):
         lines.append("_هنوز داده‌ای برای نمایش قهرمان روزانه وجود ندارد._")
     else:
@@ -182,7 +183,7 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
                 usage_str = format_daily_usage(top_user['usage'])
                 lines.append(f"*{escape_markdown(day_name)}:* {escape_markdown(top_user['name'])} \\({escape_markdown(usage_str)}\\)")
             else:
-                lines.append(f"*{escape_markdown(day_name)}:* _مصرفی ثبت نشده_")
+                lines.append(f"*{escape_markdown(day_name)}:* _{escape_markdown('مصرفی ثبت نشده')}_")
     
     return "\n".join(lines)
 

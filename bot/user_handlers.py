@@ -557,11 +557,17 @@ def _show_quick_stats(call: types.CallbackQuery):
     _safe_edit(uid, call.message.message_id, text, reply_markup=reply_markup)
 
 def _show_settings(call: types.CallbackQuery):
+    """
+    Displays the settings menu with the user's current language preference.
+    """
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
     settings_data = db.get_user_settings(uid)
-    text = f'*{escape_markdown(get_string("settings_title", lang_code))}*'
-    _safe_edit(uid, call.message.message_id, text, reply_markup=menu.settings(settings_data, lang_code=lang_code))
+    
+    title_text = f'*{escape_markdown(get_string("settings_title", lang_code))}*'
+    reply_markup = menu.settings(settings_data, lang_code=lang_code)
+    
+    _safe_edit(uid, call.message.message_id, text=title_text, reply_markup=reply_markup)
 
 
 def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None, original_msg_id: int = None):
@@ -576,16 +582,32 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
     text_lines = [
         f"*{escape_markdown(get_string('main_menu_title', lang_code))}*",
         "`-----------------`",
-        f"💰 {escape_markdown('امتیاز شما :')} *{user_points}*"
+        f"💰 {escape_markdown(get_string('fmt_your_points', lang_code))} *{user_points}*"
     ]
     
     loyalty_data = get_loyalty_progress_message(uid)
-    if loyalty_data:
-        loyalty_message = (
-            f"{escape_markdown(f'💎 شما تاکنون {loyalty_data['payment_count']} بار سرویس خود را تمدید کرده‌اید.')}\n"
-            f"{escape_markdown('فقط')} *{escape_markdown(str(loyalty_data['renewals_left']))} {escape_markdown('تمدید دیگر')}* {escape_markdown(f'تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!')}"
+    if loyalty_data:        
+        line1_template = get_string('loyalty_message_line1', lang_code)
+        line1_formatted = line1_template.format(payment_count=loyalty_data['payment_count'])
+        
+        line2_template = get_string('loyalty_message_line2', lang_code)
+        renewals_left_str = str(loyalty_data['renewals_left'])
+        
+        line2_formatted = line2_template.format(
+            renewals_left=renewals_left_str,
+            gb_reward=loyalty_data['gb_reward'],
+            days_reward=loyalty_data['days_reward']
         )
-        text_lines.append(loyalty_message)
+        
+        line2_escaped = escape_markdown(line2_formatted)
+        
+        loyalty_message = line2_escaped.replace(
+            escape_markdown(renewals_left_str), 
+            f"*{escape_markdown(renewals_left_str)}*"
+        )
+
+        text_lines.append(f"{escape_markdown(line1_formatted)}\n{loyalty_message}")
+        
     text_lines.append("\n`──────────────────`")
     text_lines.append(f"💡 {escape_markdown(get_string('main_menu_tip', lang_code))}")
     
@@ -1129,31 +1151,24 @@ def _confirm_and_execute_transfer(call: types.CallbackQuery):
 
 
 def _show_achievements_page(call: types.CallbackQuery):
-    """صفحه دستاوردها را به صورت حرفه‌ای برای کاربر نمایش می‌دهد."""
-    uid = call.from_user.id
-    msg_id = call.message.message_id
+    uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     
     user_badges = db.get_user_achievements(uid)
-    
     unlocked_lines = []
     
     for code in user_badges:
-        badge_data = ACHIEVEMENTS.get(code)
-        if badge_data:
-            unlocked_lines.append(f"{badge_data['icon']} *{escape_markdown(badge_data['name'])}*\n{escape_markdown(badge_data['description'])}")
+        badge_data = ACHIEVEMENTS.get(code, {})
+        unlocked_lines.append(f"{badge_data.get('icon', '🎖️')} *{escape_markdown(badge_data.get('name', code))}*\n{escape_markdown(badge_data.get('description', '...'))}")
 
-    title = "🏆 *دستاوردها و نشان‌های افتخار*"
+    title = f"*{escape_markdown(get_string('achievements_page_title', lang_code))}*"
     
     if not unlocked_lines:
-        intro_text = (
-            "در این بخش نشان‌هایی که با فعالیت در سرویس کسب می‌کنید، نمایش داده می‌شوند.\n\n"
-            "با کسب هر نشان، مقداری *امتیاز* دریافت می‌کنید که می‌توانید از آن در «فروشگاه دستاوردها» برای خرید حجم و روز اضافه استفاده کنید.\n\n"
-            "برخی از این نشان‌ها مخفی هستند و پس از کسب کردن، برای شما آشکار خواهند شد. به فعالیت خود ادامه دهید و همه آن‌ها را کشف کنید!"
-        )
+        intro_text = get_string("achievements_intro", lang_code)
         final_text = f"{title}\n\n{escape_markdown(intro_text)}"
     else:
-        unlocked_section = "✅ *نشان‌های کسب‌شده:*\n" + "\n\n".join(unlocked_lines)
+        unlocked_section_title = get_string("achievements_unlocked_section", lang_code)
+        unlocked_section = f"*{escape_markdown(unlocked_section_title)}*\n" + "\n\n".join(unlocked_lines)
         final_text = f"{title}\n\n{unlocked_section}"
     
     kb = types.InlineKeyboardMarkup()
@@ -1164,88 +1179,88 @@ def _show_achievements_page(call: types.CallbackQuery):
 
 def _handle_connection_doctor(call: types.CallbackQuery):
     """
-    (نسخه بهبود یافته) وضعیت سرویس کاربر و سرورها را بررسی کرده و یک گزارش کامل و دقیق‌تر ارائه می‌دهد.
+    (نسخه نهایی و امن‌شده) وضعیت سرویس کاربر و سرورها را با escape کردن صحیح تمام کاراکترها بررسی می‌کند.
     """
     uid = call.from_user.id
     msg_id = call.message.message_id
-    
-    _safe_edit(uid, msg_id, escape_markdown("🩺 در حال بررسی وضعیت سرویس و سرورها، لطفاً چند لحظه صبر کنید..."), reply_markup=None)
+    lang_code = db.get_user_language(uid)
 
-    report_lines = ["🩺 *گزارش پزشک اتصال:*", "`──────────────────`"]
+    _safe_edit(uid, msg_id, escape_markdown(get_string("doctor_checking_status", lang_code)), reply_markup=None)
+    
+    report_lines = [
+        f"*{escape_markdown(get_string('doctor_report_title', lang_code))}*",
+        "`──────────────────`"
+    ]
     
     user_uuids = db.uuids(uid)
     if not user_uuids:
-        _safe_edit(uid, msg_id, "شما هنوز اکانتی ثبت نکرده‌اید!", reply_markup=menu.main(uid in ADMIN_IDS, db.get_user_language(uid)))
+        _go_back_to_main(call=call)
         return
         
     user_info = combined_handler.get_combined_user_info(user_uuids[0]['uuid'])
+    account_status_label = escape_markdown(get_string('doctor_account_status_label', lang_code))
+    
     if user_info and user_info.get('is_active') and (user_info.get('expire') is None or user_info.get('expire') >= 0):
-        report_lines.append("✅ وضعیت اکانت شما: *فعال*")
+        status_text = f"*{escape_markdown(get_string('fmt_status_active', lang_code))}*"
+        report_lines.append(f"✅ {account_status_label} {status_text}")
     else:
-        report_lines.append("❌ وضعیت اکانت شما: *غیرفعال یا منقضی شده*")
+        status_text = f"*{escape_markdown(get_string('fmt_status_inactive', lang_code))}*"
+        report_lines.append(f"❌ {account_status_label} {status_text}")
 
     active_panels = db.get_active_panels()
     for panel in active_panels:
-        panel_name = escape_markdown(panel.get('name', 'پنل ناشناس'))
+        panel_name = escape_markdown(panel.get('name', '...'))
+        server_status_label = escape_markdown(get_string('doctor_server_status_label', lang_code).format(panel_name=panel_name))
+        
         handler = HiddifyAPIHandler(panel) if panel['panel_type'] == 'hiddify' else MarzbanAPIHandler(panel)
         if handler.check_connection():
-            report_lines.append(f"✅ وضعیت سرور «{panel_name}»: *آنلاین و پایدار*")
+            status_text = f"*{escape_markdown(get_string('server_status_online', lang_code))}*"
+            report_lines.append(f"✅ {server_status_label} {status_text}")
         else:
-            report_lines.append(f"🚨 وضعیت سرور «{panel_name}»: *آفلاین یا دارای اختلال*")
+            status_text = f"*{escape_markdown(get_string('server_status_offline', lang_code))}*"
+            report_lines.append(f"🚨 {server_status_label} {status_text}")
 
+    online_hiddify_count, online_marzban_fr_count, online_marzban_tr_count = 'N/A', 'N/A', 'N/A'
     try:
         all_users = combined_handler.get_all_users_combined()
         now_utc = datetime.now(pytz.utc)
-        online_deadline = now_utc - timedelta(minutes=3)
-        
-        online_hiddify_count = 0
-        online_marzban_fr_count = 0
-        online_marzban_tr_count = 0
-
+        online_deadline = now_utc - timedelta(minutes=15)
+        online_hiddify_count, online_marzban_fr_count, online_marzban_tr_count = 0, 0, 0
         for user in all_users:
             last_online = user.get('last_online')
-            if not last_online or not isinstance(last_online, datetime):
-                continue
-            
+            if not last_online or not isinstance(last_online, datetime): continue
             last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
-
             if last_online_aware > online_deadline:
                 breakdown = user.get('breakdown', {})
                 h_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'hiddify'), None)
                 m_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'marzban'), None)
-
-                if h_online and (not m_online or h_online >= m_online):
-                    online_hiddify_count += 1
+                if h_online and (not m_online or h_online >= m_online): online_hiddify_count += 1
                 elif m_online:
                     db_record = db.get_user_uuid_record(user.get('uuid'))
                     if db_record:
-                        if db_record.get('has_access_fr'):
-                            online_marzban_fr_count += 1
-                        if db_record.get('has_access_tr'):
-                            online_marzban_tr_count += 1
+                        if db_record.get('has_access_fr'): online_marzban_fr_count += 1
+                        if db_record.get('has_access_tr'): online_marzban_tr_count += 1
     except Exception as e:
         logger.error(f"Error calculating online users for connection doctor: {e}", exc_info=True)
-        online_hiddify_count = 'N/A'
-        online_marzban_fr_count = 'N/A'
-        online_marzban_tr_count = 'N/A'
-
-
+    
+    analysis_title = escape_markdown(get_string('doctor_analysis_title_v2', lang_code))
+    line_template = get_string('doctor_online_users_line_v2', lang_code)
+    
     report_lines.extend([
         "`──────────────────`",
-        "📈 *تحلیل هوشمند بار سرور \\(۱۵ دقیقه اخیر\\):*",
-        f" `•` *{online_hiddify_count}* کاربر آنلاین در سرور آلمان 🇩🇪",
-        f" `•` *{online_marzban_fr_count}* کاربر آنلاین در سرور فرانسه 🇫🇷",
-        f" `•` *{online_marzban_tr_count}* کاربر آنلاین در سرور ترکیه 🇹🇷"
+        f"📈 *{analysis_title}*",
+        escape_markdown(line_template.format(count=online_hiddify_count, server_name="آلمان 🇩🇪")),
+        escape_markdown(line_template.format(count=online_marzban_fr_count, server_name="فرانسه 🇫🇷")),
+        escape_markdown(line_template.format(count=online_marzban_tr_count, server_name="ترکیه 🇹🇷"))
     ])
     
-    suggestion_text = "اگر اکانت و سرورها فعال هستند اما همچنان با کندی مواجه‌اید، لطفاً یک بار اتصال خود را قطع و وصل کرده و به سرور دیگری متصل شوید. در صورت ادامه مشکل، با پشتیبانی تماس بگیرید."
     report_lines.extend([
         "`──────────────────`",
-        f"💡 *پیشنهاد:*\n{escape_markdown(suggestion_text)}"
+        f"💡 *{escape_markdown(get_string('doctor_suggestion_title', lang_code))}*\n{escape_markdown(get_string('doctor_suggestion_body', lang_code))}"
     ])
     
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به منوی اصلی", callback_data="back"))
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
     _safe_edit(uid, msg_id, "\n".join(report_lines), reply_markup=kb)
 
 
@@ -1417,15 +1432,13 @@ def register_user_handlers(b: telebot.TeleBot):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def handle_language_selection(call: types.CallbackQuery):
+        """
+        Handles language selection and ensures the user is returned to the settings menu.
+        """
         uid, lang_code = call.from_user.id, call.data.split(':')[1]
         db.set_user_language(uid, lang_code)
         bot.answer_callback_query(call.id, get_string("lang_selected", lang_code))
 
-        if db.uuids(uid):
-            _go_back_to_main(call=call)
-        else:
-            raw_text = get_string("start_prompt", lang_code)
-            formatted_text = _build_formatted_prompt(raw_text)
-            
-            _safe_edit(uid, call.message.message_id, formatted_text)
-            bot.register_next_step_handler_by_chat_id(uid, process_uuid_step_after_lang, original_msg_id=call.message.message_id)
+        # FIX: Always show the settings menu again after changing the language.
+        # This provides a better user experience as they remain in the same context.
+        _show_settings(call)

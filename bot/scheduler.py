@@ -363,15 +363,16 @@ class SchedulerManager:
             if user_uuids:
                 first_uuid = user_uuids[0]['uuid']
                 if combined_handler.modify_user_on_all_panels(first_uuid, add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS):
-                    gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
-                                    f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
-                                    f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
-                                    f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
-                                    f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
-                    if self._send_warning_message(user_id, gift_message):
-                        # FIX: Log the gift in the new table
-                        with db._conn() as c:
-                            c.execute("INSERT INTO birthday_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
+                    user_settings = db.get_user_settings(user_id)
+                    if user_settings.get('promotional_alerts', True):
+                        gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
+                                        f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
+                                        f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
+                                        f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
+                                        f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
+                        if self._send_warning_message(user_id, gift_message):
+                            with db._conn() as c:
+                                c.execute("INSERT INTO birthday_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
 
     def _weekly_report(self, target_user_id: int = None) -> None:
         now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(self.tz)).strftime("%Y/%m/%d - %H:%M")
@@ -411,19 +412,56 @@ class SchedulerManager:
                 logger.error(f"SCHEDULER (Weekly): Failure for user {user_id}: {e}", exc_info=True)
 
     def _send_weekly_admin_summary(self) -> None:
-        """گزارش هفتگی پرمصرف‌ترین کاربران را برای ادمین‌ها ارسال می‌کند."""
-        logger.info("SCHEDULER: Sending weekly admin summary report.")
+        """گزارش هفتگی پرمصرف‌ترین کاربران را برای ادمین‌ها ارسال می‌کند و به ۱۰ نفر اول پیام تبریک/انگیزشی می‌فرستد."""
+        logger.info("SCHEDULER: Sending weekly admin summary report and top user notifications.")
         try:
             report_data = db.get_weekly_top_consumers_report()
             report_text = fmt_weekly_admin_summary(report_data)
 
+            # ارسال گزارش به ادمین‌ها
             for admin_id in ADMIN_IDS:
                 try:
                     self.bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
                 except Exception as e:
                     logger.error(f"Failed to send weekly admin summary to {admin_id}: {e}")
+
+            # --- START: EXPANDED NOTIFICATIONS - Send messages to top 10 users ---
+            top_users = report_data.get('top_10_overall', [])
+            if top_users:
+                all_bot_users_with_uuids = db.get_all_bot_users_with_uuids()
+                user_map = {user['config_name']: user['user_id'] for user in all_bot_users_with_uuids}
+
+                # ارسال پیام به ۱۰ نفر اول
+                for i, user in enumerate(top_users):
+                    rank = i + 1
+                    user_name = user.get('name')
+                    usage = user.get('total_usage', 0)
+                    
+                    user_id = user_map.get(user_name)
+
+                    if user_id:
+                        lang_code = db.get_user_language(user_id)
+                        
+                        # انتخاب کلید پیام بر اساس رتبه
+                        if 1 <= rank <= 3:
+                            message_key = f"weekly_top_user_rank_{rank}"
+                        else: # Ranks 4 to 10
+                            message_key = "weekly_top_user_rank_4_to_10"
+                        
+                        fun_message_template = get_string(message_key, lang_code)
+                        
+                        final_message = fun_message_template.format(
+                            user_name=escape_markdown(user_name),
+                            usage=escape_markdown(f"{usage:.2f} GB"),
+                            rank=rank # Pass the rank for the message
+                        )
+                        
+                        self._send_warning_message(user_id, final_message)
+                        time.sleep(0.5)
+            # --- END: EXPANDED NOTIFICATIONS ---
+
         except Exception as e:
-            logger.error(f"Failed to generate weekly admin summary: {e}", exc_info=True)
+            logger.error(f"Failed to generate or process weekly admin summary: {e}", exc_info=True)
 
     def _check_achievements_and_anniversary(self) -> None:
         """
@@ -529,6 +567,10 @@ class SchedulerManager:
 
     def _notify_user_achievement(self, user_id: int, badge_code: str):
         """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""
+        user_settings = db.get_user_settings(user_id)
+        if not user_settings.get('achievement_alerts', True):
+            return
+        
         badge = ACHIEVEMENTS.get(badge_code)
         if not badge: return
 
@@ -705,7 +747,9 @@ class SchedulerManager:
                     add_days=gift_days
                 )
                 if success:
-                    self._send_warning_message(user_row['user_id'], escape_markdown(message_template))
+                    user_settings = db.get_user_settings(user_row['user_id'])
+                    if user_settings.get('promotional_alerts', True):
+                        self._send_warning_message(user_row['user_id'], escape_markdown(message_template))
                     successful_gifts += 1
                     time.sleep(0.2)
             except Exception as e:

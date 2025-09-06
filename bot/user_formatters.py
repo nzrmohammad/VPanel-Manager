@@ -622,8 +622,7 @@ def fmt_smart_list_inline_result(users: list, title: str) -> tuple[str, str]:
     
     return "\n".join(lines), "MarkdownV2"
 
-def fmt_referral_page(user_id: int, bot_username: str) -> str:
-    """صفحه اطلاعات سیستم معرفی کاربران را فرمت‌بندی می‌کند."""
+def fmt_referral_page(user_id: int, bot_username: str, lang_code: str) -> str:
     from .config import REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS
     
     referral_code = db.get_or_create_referral_code(user_id)
@@ -634,25 +633,25 @@ def fmt_referral_page(user_id: int, bot_username: str) -> str:
     pending_referrals = [u for u in referred_users if not u['referral_reward_applied']]
 
     lines = [
-        f"👥 *{escape_markdown('سیستم دعوت از دوستان')}*",
+        f"*{escape_markdown(get_string('referral_page_title', lang_code))}*",
         "`──────────────────`",
-        escape_markdown(f"با معرفی دوستان خود به ربات، پس از اولین خرید آن‌ها، هر دوی شما {REFERRAL_REWARD_GB} گیگابایت حجم و {REFERRAL_REWARD_DAYS} روز اعتبار هدیه خواهید گرفت."),
+        escape_markdown(get_string('referral_intro', lang_code).format(gb=REFERRAL_REWARD_GB, days=REFERRAL_REWARD_DAYS)),
         "\n",
-        f"🔗 *{escape_markdown('لینک دعوت شما:')}*",
+        f"🔗 *{escape_markdown(get_string('referral_link_title', lang_code))}*",
         f"`{escape_markdown(referral_link)}`",
         "\n",
-        f"🏆 *{escape_markdown('وضعیت دعوت‌های شما:')}*",
-        f" `•` *{escape_markdown('معرفی‌های موفق:')}* {len(successful_referrals)} نفر",
-        f" `•` *{escape_markdown('در انتظار خرید:')}* {len(pending_referrals)} نفر"
+        f"🏆 *{escape_markdown(get_string('referral_status_title', lang_code))}*",
+        f" {get_string('referral_successful_count', lang_code)} *{len(successful_referrals)} {get_string('referral_unit_person', lang_code)}*",
+        f" {get_string('referral_pending_count', lang_code)} *{len(pending_referrals)} {get_string('referral_unit_person', lang_code)}*"
     ]
 
     if successful_referrals:
-        lines.append(f"\n✅ *{escape_markdown('لیست معرفی‌های موفق:')}*")
+        lines.append(f"\n✅ *{escape_markdown(get_string('referral_successful_list_title', lang_code))}*")
         for user in successful_referrals:
             lines.append(f" `•` {escape_markdown(user['first_name'])}")
             
     if pending_referrals:
-        lines.append(f"\n⏳ *{escape_markdown('لیست کاربران در انتظار خرید:')}*")
+        lines.append(f"\n⏳ *{escape_markdown(get_string('referral_pending_list_title', lang_code))}*")
         for user in pending_referrals:
             lines.append(f" `•` {escape_markdown(user['first_name'])}")
 

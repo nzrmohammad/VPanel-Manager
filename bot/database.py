@@ -51,6 +51,9 @@ class DatabaseManager:
                 add_column_if_not_exists("users", "referral_reward_applied", "INTEGER DEFAULT 0")
                 add_column_if_not_exists("users", "achievement_points", "INTEGER DEFAULT 0")
 
+                add_column_if_not_exists("users", "achievement_alerts", "INTEGER DEFAULT 1")
+                add_column_if_not_exists("users", "promotional_alerts", "INTEGER DEFAULT 1")
+
                 logger.info("Database schema migration check complete.")
 
             except Exception as e:
@@ -77,7 +80,9 @@ class DatabaseManager:
                     referral_code TEXT UNIQUE,
                     referred_by_user_id INTEGER,
                     referral_reward_applied INTEGER DEFAULT 0,
-                    achievement_points INTEGER DEFAULT 0        
+                    achievement_points INTEGER DEFAULT 0,
+                    achievement_alerts INTEGER DEFAULT 1,
+                    promotional_alerts INTEGER DEFAULT 1              
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -450,27 +455,34 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self.write_conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config, auto_delete_reports FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
+                data_warnings = bool(row['data_warning_hiddify']) and bool(row['data_warning_marzban'])
                 return {
                     'daily_reports': bool(row['daily_reports']), 
                     'weekly_reports': bool(row['weekly_reports']),
                     'expiry_warnings': bool(row['expiry_warnings']),
-                    'data_warning_hiddify': bool(row['data_warning_hiddify']),
-                    'data_warning_marzban': bool(row['data_warning_marzban']),
+                    'data_warnings': data_warnings,
                     'show_info_config': bool(row['show_info_config']),
-                    'auto_delete_reports': bool(row['auto_delete_reports'])
+                    'auto_delete_reports': bool(row['auto_delete_reports']),
+                    'achievement_alerts': bool(row.get('achievement_alerts', 1)),
+                    'promotional_alerts': bool(row.get('promotional_alerts', 1))  
                 }
             return {
                 'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True, 
-                'data_warning_hiddify': True, 'data_warning_marzban': True,
-                'show_info_config': True, 'auto_delete_reports': True
+                'data_warnings': True, 'show_info_config': True, 'auto_delete_reports': True,
+                'achievement_alerts': True, 'promotional_alerts': True
             }
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
-            if setting not in ['daily_reports', 'weekly_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban', 'show_info_config', 'auto_delete_reports']: return
+        valid_settings = ['daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config', 'auto_delete_reports', 'achievement_alerts', 'promotional_alerts']
+        
+        if setting in valid_settings:
             with self.write_conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
+        elif setting == 'data_warnings':
+            with self.write_conn() as c:
+                c.execute(f"UPDATE users SET data_warning_hiddify=?, data_warning_marzban=? WHERE user_id=?", (int(value), int(value), user_id))
 
     def add_uuid(self, user_id: int, uuid_str: str, name: str) -> any:
             uuid_str = uuid_str.lower()
