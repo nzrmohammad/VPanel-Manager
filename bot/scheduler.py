@@ -9,7 +9,7 @@ from telebot import apihelper, TeleBot, types
 
 from . import combined_handler
 from .database import db
-from .utils import escape_markdown, format_daily_usage, load_json_file
+from .utils import escape_markdown, format_daily_usage, load_json_file, find_best_plan_upgrade
 from .menu import menu
 from .admin_formatters import fmt_admin_report, fmt_online_users_list, fmt_weekly_admin_summary, fmt_achievement_leaderboard, fmt_lottery_participants_list, fmt_daily_achievements_report
 from .user_formatters import fmt_user_report, fmt_user_weekly_report
@@ -168,12 +168,38 @@ class SchedulerManager:
                             if self.bot.send_message(user_id_in_telegram, renewal_text, parse_mode="MarkdownV2", reply_markup=kb):
                                 db.set_renewal_reminder_sent(uuid_id_in_db)
 
-                        # 3. ارسال هشدار انقضای اکانت
+                        # 3. ارسال هشدار انقضای اکانت (نسخه هوشمند چند پلنی)
                         if user_settings.get('expiry_warnings') and expire_days is not None and 1 < expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
                             if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
-                                msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
-                                if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
-                                    db.log_warning(uuid_id_in_db, 'expiry')
+                                last_30_days_usage = db.get_total_usage_in_last_n_days(uuid_id_in_db, 30)
+                                current_limit = info.get('usage_limit_GB', 0)
+
+                                recommended_plans = {}
+                                if current_limit > 0 and (last_30_days_usage / current_limit) > 0.8:
+                                    all_plans = load_json_file('plans.json')
+                                    recommended_plans = find_best_plan_upgrade(last_30_days_usage, current_limit, all_plans)
+
+                                if recommended_plans:
+                                    msg_template = (
+                                        f"🔔 *تمدید هوشمند سرویس* 🔔\n\n"
+                                        f"سلام {escape_markdown(user_name.split('(')[0].strip())} عزیز!\n"
+                                        f"سرویس شما تا *{escape_markdown(str(expire_days))}* روز دیگر منقضی می‌شود.\n\n"
+                                        f"ما بر اساس مصرف شما در این دوره، گزینه‌های زیر را برای تمدید پیشنهاد می‌کنیم تا بهترین تجربه را داشته باشید:"
+                                    )
+                                    kb = types.InlineKeyboardMarkup(row_width=1)
+                                    for plan_type, plan_data in recommended_plans.items():
+                                        btn_text = f"🚀 {plan_data.get('name', '')} - {'{:,.0f}'.format(plan_data.get('price', 0))} تومان"
+                                        kb.add(types.InlineKeyboardButton(btn_text, callback_data=f"show_plans:{plan_type}"))
+
+                                    kb.add(types.InlineKeyboardButton(" Rمشاهده تمام سرویس‌ها", callback_data="view_plans"))
+
+                                    if self.bot.send_message(user_id_in_telegram, msg_template, parse_mode="MarkdownV2", reply_markup=kb):
+                                        db.log_warning(uuid_id_in_db, 'expiry')
+                                else:
+                                    # اگر مصرف کم بود، پیام عادی ارسال می‌شود
+                                    msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
+                                    if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
+                                        db.log_warning(uuid_id_in_db, 'expiry')
 
                         # 4. ارسال هشدار اتمام حجم
                         server_map = {'hiddify': {'name': 'آلمان 🇩🇪', 'setting': 'data_warning_hiddify'}, 'marzban': {'name': 'فرانسه/ترکیه 🇫🇷🇹🇷', 'setting': 'data_warning_fr_tr'}}

@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from .utils import load_json_file, parse_volume_string
 import logging
 import pytz
 import jdatetime
@@ -1863,5 +1864,73 @@ class DatabaseManager:
             with self.write_conn() as c:
                 rows = c.execute(query, (today_midnight_utc,)).fetchall()
                 return [dict(r) for r in rows]
+
+    def get_weekly_usage_by_time_of_day(self, uuid_id: int) -> dict:
+            """مصرف هفتگی کاربر را به تفکیک بازه‌های زمانی روز محاسبه می‌کند."""
+            tehran_tz = pytz.timezone("Asia/Tehran")
+            today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+            days_since_saturday = (today_jalali.weekday() + 1) % 7
+            week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+
+            with self.write_conn() as c:
+                query = "SELECT hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC"
+                snapshots = c.execute(query, (uuid_id, week_start_utc)).fetchall()
+                
+                # دیکشنری برای نگهداری مصرف در بازه‌های مختلف
+                time_of_day_usage = {"morning": 0.0, "afternoon": 0.0, "evening": 0.0, "night": 0.0}
+                
+                prev_snap = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
+                last_h = prev_snap['hiddify_usage_gb'] if prev_snap and prev_snap['hiddify_usage_gb'] else 0.0
+                last_m = prev_snap['marzban_usage_gb'] if prev_snap and prev_snap['marzban_usage_gb'] else 0.0
+
+                for snap in snapshots:
+                    h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
+                    m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
+                    diff = h_diff + m_diff
+                    
+                    snap_time_tehran = snap['taken_at'].astimezone(tehran_tz)
+                    hour = snap_time_tehran.hour
+
+                    # دسته‌بندی مصرف بر اساس ساعت
+                    if 6 <= hour < 12:
+                        time_of_day_usage["morning"] += diff
+                    elif 12 <= hour < 18:
+                        time_of_day_usage["afternoon"] += diff
+                    elif 18 <= hour < 22:
+                        time_of_day_usage["evening"] += diff
+                    else: # 22:00 to 05:59
+                        time_of_day_usage["night"] += diff
+                    
+                    last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
+                
+                return time_of_day_usage
+
+    def get_user_latest_plan_price(self, uuid_id: int) -> Optional[int]:
+        """
+        با مقایسه حجم فعلی کاربر با پلن‌های موجود، قیمت پلن فعلی او را تخمین می‌زند.
+        """
+        user_uuid_record = self.uuid_by_id(0, uuid_id) # This needs a user_id, but it's not used in the query. Let's find a better way.
+        if not user_uuid_record:
+            # Let's get the uuid string first
+            uuid_row = self._conn().execute("SELECT uuid FROM user_uuids WHERE id = ?", (uuid_id,)).fetchone()
+            if not uuid_row: return None
+            uuid_str = uuid_row['uuid']
+        else:
+            uuid_str = user_uuid_record.get('uuid')
+
+        if not uuid_str: return None
+
+        from bot.combined_handler import get_combined_user_info # Local import
+        user_info = get_combined_user_info(uuid_str)
+        if not user_info: return None
+
+        current_limit_gb = user_info.get('usage_limit_GB', -1)
+        all_plans = load_json_file('plans.json')
+
+        for plan in all_plans:
+            plan_total_volume = parse_volume_string(plan.get('total_volume') or '0')
+            if plan_total_volume == int(current_limit_gb):
+                return plan.get('price')
+        return None
 
 db = DatabaseManager()

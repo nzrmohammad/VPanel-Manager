@@ -548,3 +548,29 @@ def get_loyalty_progress_message(user_id: int) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error generating loyalty progress data for user_id {user_id}: {e}")
         return None
+    
+def find_best_plan_upgrade(current_usage_gb: float, current_limit_gb: float, all_plans: list) -> Dict[str, Any]:
+    """
+    بر اساس مصرف فعلی، بهترین پلن بعدی را از هر دسته برای ارتقا پیدا می‌کند.
+    """
+    if not all_plans:
+        return {}
+
+    recommendations = {}
+    plan_types = ['combined', 'germany', 'france', 'turkey']
+
+    for p_type in plan_types:
+        # ۱. پیدا کردن پلن‌های مناسب از این دسته
+        suitable_upgrades = []
+        for plan in all_plans:
+            if plan.get('type') == p_type:
+                plan_total_volume = parse_volume_string(plan.get('total_volume') or plan.get('volume_de') or plan.get('volume_fr') or plan.get('volume_tr') or '0')
+                if plan_total_volume > current_usage_gb and plan_total_volume > current_limit_gb:
+                    suitable_upgrades.append((plan, plan_total_volume))
+        
+        # ۲. اگر پلن مناسبی پیدا شد، نزدیک‌ترین گزینه را انتخاب کن
+        if suitable_upgrades:
+            suitable_upgrades.sort(key=lambda x: x[1])
+            recommendations[p_type] = suitable_upgrades[0][0]
+            
+    return recommendations

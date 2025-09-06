@@ -1,4 +1,5 @@
 import logging
+import jdatetime
 from .config import EMOJIS, PAGE_SIZE
 from .database import db
 from . import combined_handler
@@ -213,27 +214,25 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
     return final_report
 
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
-    """Formats the detailed weekly usage report for a user with daily breakdown by panel."""
+    """Formats the detailed weekly usage report for a user with daily breakdown and personalized insights."""
     if not user_infos:
         return ""
 
     accounts_reports = []
     separator = '`──────────────────`'
+    day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
 
     for info in user_infos:
         uuid = info.get("uuid")
-        if not uuid:
-            continue
+        if not uuid: continue
             
         uuid_id = db.get_uuid_id_by_uuid(uuid)
         user_record = db.get_user_uuid_record(uuid)
-        if not uuid_id or not user_record:
-            continue
+        if not uuid_id or not user_record: continue
 
         has_access_de = user_record.get('has_access_de', False)
         has_access_fr = user_record.get('has_access_fr', False)
         has_access_tr = user_record.get('has_access_tr', False)
-
         name = info.get("name", get_string('unknown_user', lang_code))
         header = get_string("fmt_report_account_header", lang_code).format(name=name)
         
@@ -247,23 +246,18 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             if item['total_usage'] > 0.001:
                 has_usage_data = True
                 date_shamsi = to_shamsi(item['date'])
-                
                 usage_formatted = format_daily_usage(item['total_usage'])
                 account_lines.append(f"\n در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
-                
                 daily_breakdown_parts = []
                 if has_access_de and item['hiddify_usage'] > 0.001:
                     daily_breakdown_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(item['hiddify_usage']))}")
-                
                 marzban_flags = []
                 if has_access_fr: marzban_flags.append("🇫🇷")
                 if has_access_tr: marzban_flags.append("🇹🇷")
                 if marzban_flags and item['marzban_usage'] > 0.001:
                     daily_breakdown_parts.append(f"{''.join(marzban_flags)} {escape_markdown(format_daily_usage(item['marzban_usage']))}")
-                
                 if daily_breakdown_parts:
-                    breakdown_str = f" \\({', '.join(daily_breakdown_parts)}\\)"
-                    account_lines.append(f" {breakdown_str}")
+                    account_lines.append(f" \\({', '.join(daily_breakdown_parts)}\\)")
         
         if not has_usage_data:
             account_lines.append(f"\n_{escape_markdown('در این هفته مصرفی برای این اکانت ثبت نشده است.')}_")
@@ -272,11 +266,37 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         footer_template = get_string("weekly_usage_header", lang_code)
         final_footer_line = f"{footer_template} {usage_footer_str}"
         account_lines.append(f'\n\n⚡️ *{escape_markdown(final_footer_line)}*')
-        
+
+        if current_week_usage > 0.1:
+            busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
+            busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
+
+            total_hiddify = sum(d['hiddify_usage'] for d in daily_history)
+            total_marzban = sum(d['marzban_usage'] for d in daily_history)
+            most_used_server = "آلمان 🇩🇪" if total_hiddify >= total_marzban else "فرانسه/ترکیه 🇫🇷🇹🇷"
+            
+            time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
+            busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get)
+            
+            period_map = {
+                "morning": "صبح ☀️",
+                "afternoon": "بعد از ظهر 🏙️",
+                "evening": "عصر 🌆",
+                "night": "شب 🦉"
+            }
+            busiest_period_name = period_map.get(busiest_period_key, "ساعات مختلف")
+
+            summary_text = (
+                f"\n\nسلام {escape_markdown(name.split('(')[0].strip())}!\n"
+                f"این هفته *{escape_markdown(format_daily_usage(current_week_usage))}* مصرف داشتی. "
+                f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی. "
+                f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی!"
+            )
+            account_lines.append(summary_text)
+
         accounts_reports.append("\n".join(account_lines))
 
     final_report = f"\n{separator}\n".join(accounts_reports)
-    
     return final_report
 
 def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> str:
