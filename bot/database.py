@@ -326,10 +326,9 @@ class DatabaseManager:
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
         with self._conn() as c:
-            # --- محاسبه هفتگی Hiddify (تجمعی) ---
             hiddify_start_row = c.execute("SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
             hiddify_end_row = c.execute("SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
-            
+
             total_h_usage = 0.0
             if hiddify_end_row and hiddify_end_row['hiddify_usage_gb'] is not None:
                 start_h = hiddify_start_row['hiddify_usage_gb'] if hiddify_start_row and hiddify_start_row['hiddify_usage_gb'] is not None else 0
@@ -337,18 +336,16 @@ class DatabaseManager:
                 if end_h >= start_h:
                     total_h_usage = end_h - start_h
 
-            # --- ✨ شروع اصلاحیه: محاسبه هفتگی Marzban مشابه Hiddify ---
             marzban_start_row = c.execute("SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
             marzban_end_row = c.execute("SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
-            
+
             total_m_usage = 0.0
             if marzban_end_row and marzban_end_row['marzban_usage_gb'] is not None:
                 start_m = marzban_start_row['marzban_usage_gb'] if marzban_start_row and marzban_start_row['marzban_usage_gb'] is not None else 0
                 end_m = marzban_end_row['marzban_usage_gb']
                 if end_m >= start_m:
                     total_m_usage = end_m - start_m
-            # --- ✨ پایان اصلاحیه ---
-                
+
             return {'hiddify': total_h_usage, 'marzban': total_m_usage}
 
     
@@ -1755,7 +1752,7 @@ class DatabaseManager:
 
         report = {'top_10_overall': [], 'top_daily': {}}
         all_uuids = {row['id']: row['name'] for row in self.get_all_user_uuids()}
-        
+
         weekly_usage_map = {uuid_id: 0.0 for uuid_id in all_uuids.keys()}
         daily_usage_map = {i: {} for i in range(7)}
 
@@ -1766,10 +1763,10 @@ class DatabaseManager:
             snapshots_by_user = {}
             for snap in all_week_snapshots:
                 snapshots_by_user.setdefault(snap['uuid_id'], []).append(snap)
-            
+
             for uuid_id, user_snaps in snapshots_by_user.items():
                 last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
-                
+
                 last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before else 0.0
                 last_m = last_snap_before['marzban_usage_gb'] if last_snap_before else 0.0
 
@@ -1777,9 +1774,9 @@ class DatabaseManager:
                     h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
                     m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
                     total_diff = h_diff + m_diff
-                    
+
                     weekly_usage_map[uuid_id] += total_diff
-                    
+
                     snap_date_local = snap['taken_at'].astimezone(tehran_tz)
                     day_of_week_jalali = (jdatetime.datetime.fromgregorian(datetime=snap_date_local).weekday() + 1) % 7
                     daily_usage_map[day_of_week_jalali].setdefault(uuid_id, 0.0)
@@ -1798,7 +1795,7 @@ class DatabaseManager:
             top_usage = daily_data[top_user_id]
             if top_usage > 0.01:
                 report['top_daily'][day_index] = {'name': all_uuids.get(top_user_id, 'ناشناس'), 'usage': top_usage}
-                
+
         return report
 
     def add_achievement_points(self, user_id: int, points: int):
@@ -1846,5 +1843,25 @@ class DatabaseManager:
             deleted_count = cursor.rowcount
             logger.info(f"ADMIN ACTION: Deleted {deleted_count} daily snapshots for all users.")
             return deleted_count
+
+    def get_daily_achievements(self) -> list[dict]:
+            """کاربرانی که امروز دستاوردی کسب کرده‌اند را به همراه جزئیات برمی‌گرداند."""
+            tehran_tz = pytz.timezone("Asia/Tehran")
+            today_midnight_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+            today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
+
+            query = """
+                SELECT
+                    u.user_id,
+                    u.first_name,
+                    ua.badge_code
+                FROM user_achievements ua
+                JOIN users u ON ua.user_id = u.user_id
+                WHERE ua.awarded_at >= ?
+                ORDER BY u.user_id;
+            """
+            with self.write_conn() as c:
+                rows = c.execute(query, (today_midnight_utc,)).fetchall()
+                return [dict(r) for r in rows]
 
 db = DatabaseManager()

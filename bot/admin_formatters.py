@@ -1,7 +1,7 @@
 import pytz
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from .config import EMOJIS, PAGE_SIZE
+from .config import EMOJIS, PAGE_SIZE, ACHIEVEMENTS
 from .database import db
 from .utils import (
     format_daily_usage, escape_markdown,
@@ -478,10 +478,8 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
     paginated_payments = payments[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
 
     for i, payment in enumerate(paginated_payments, start=page * PAGE_SIZE + 1):
-        # از کلید config_name برای نمایش نام استفاده می‌کنیم
         name = escape_markdown(payment.get('config_name', user_name))
         shamsi_datetime = to_shamsi(payment.get('payment_date'), include_time=True)
-        # فرمت نمایش بهبود یافت
         lines.append(f"`{i}.` *{name}*\n` `💳 `تاریخ ثبت:` `{shamsi_datetime}`")
 
     return "\n".join(lines)
@@ -624,8 +622,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             report_lines.append("\n" + "─" * 15 + f"\n*🚨 {escape_markdown('هشدارهای ارسال شده به ادمین')}*")
             report_lines.extend(admin_warnings)
             
-    # --- END: NEW WARNINGS REPORT SECTION ---
-
     return "\n".join(report_lines)
 
 def fmt_top_consumers(users: list, page: int) -> str:
@@ -904,5 +900,39 @@ def fmt_scheduled_tasks(tasks: list) -> str:
         lines.append(f"  زمان‌بندی : {interval}")
         lines.append(f"  توضیحات : {description}")
         lines.append("") # ایجاد یک خط خالی برای جداسازی بهتر
+
+    return "\n".join(lines)
+
+
+def fmt_daily_achievements_report(daily_achievements: list) -> str:
+    """گزارش روزانه دستاوردهای کسب شده توسط کاربران را برای ادمین فرمت‌بندی می‌کند."""
+    if not daily_achievements:
+        return "🎖️ *گزارش دستاوردهای امروز*\n\nامروز هیچ کاربری دستاورد جدیدی کسب نکرده است."
+
+    lines = ["🎖️ *گزارش دستاوردهای امروز*"]
+    lines.append("`──────────────────`")
+    
+    users_achievements = {}
+    for achievement in daily_achievements:
+        user_id = achievement['user_id']
+        if user_id not in users_achievements:
+            users_achievements[user_id] = {
+                'first_name': escape_markdown(achievement.get('first_name', 'کاربر ناشناس')),
+                'badges': []
+            }
+        users_achievements[user_id]['badges'].append(achievement['badge_code'])
+
+    for user_id, data in users_achievements.items():
+        lines.append(f"👤 *{data['first_name']}* (`{user_id}`):")
+        
+        total_points_today = 0
+        for badge_code in data['badges']:
+            badge_info = ACHIEVEMENTS.get(badge_code, {})
+            points = badge_info.get('points', 0)
+            total_points_today += points
+            lines.append(f"  `•` {badge_info.get('icon', '🎖️')} {escape_markdown(badge_info.get('name', badge_code))} \\( +{points} امتیاز \\)")
+        
+        lines.append(f"  💰 *مجموع امتیاز امروز: {total_points_today}*")
+        lines.append("") 
 
     return "\n".join(lines)

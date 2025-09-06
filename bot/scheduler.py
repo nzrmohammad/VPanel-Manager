@@ -11,7 +11,7 @@ from . import combined_handler
 from .database import db
 from .utils import escape_markdown, format_daily_usage, load_json_file
 from .menu import menu
-from .admin_formatters import fmt_admin_report, fmt_online_users_list, fmt_weekly_admin_summary, fmt_achievement_leaderboard, fmt_lottery_participants_list
+from .admin_formatters import fmt_admin_report, fmt_online_users_list, fmt_weekly_admin_summary, fmt_achievement_leaderboard, fmt_lottery_participants_list, fmt_daily_achievements_report
 from .user_formatters import fmt_user_report, fmt_user_weekly_report
 from .config import (
     DAILY_REPORT_TIME,
@@ -223,7 +223,8 @@ class SchedulerManager:
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_gregorian = datetime.now(tehran_tz)
         
-        if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6:
+        # اگر جمعه بود، فقط برای کاربران عادی از ارسال گزارش روزانه صرف‌نظر کن
+        if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6 and user_id not in ADMIN_IDS:
             logger.info("SCHEDULER (Nightly): Friday, skipping daily for weekly report.")
             return
 
@@ -656,6 +657,21 @@ class SchedulerManager:
         
         logger.info(f"Successfully sent {event_details['name']} gift to {successful_gifts} users.")
 
+    def _send_daily_achievements_report(self) -> None:
+        """گزارش روزانه دستاوردهای کسب شده را برای ادمین‌ها ارسال می‌کند."""
+        logger.info("SCHEDULER: Sending daily achievements report.")
+        try:
+            daily_achievements = db.get_daily_achievements()
+            report_text = fmt_daily_achievements_report(daily_achievements)
+
+            for admin_id in ADMIN_IDS:
+                try:
+                    self.bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
+                except Exception as e:
+                    logger.error(f"Failed to send daily achievements report to {admin_id}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to generate daily achievements report: {e}", exc_info=True)
+
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
         if datetime.now(self.tz).day == 1:
@@ -679,6 +695,7 @@ class SchedulerManager:
         schedule.every(1).hours.at(":01").do(self._hourly_snapshots)
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
+        schedule.every().day.at("23:50", self.tz_str).do(self._send_daily_achievements_report)
         schedule.every().sunday.at("22:00", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)

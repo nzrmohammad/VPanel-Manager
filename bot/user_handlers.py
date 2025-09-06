@@ -1098,7 +1098,7 @@ def _show_achievements_page(call: types.CallbackQuery):
     for code in user_badges:
         badge_data = ACHIEVEMENTS.get(code)
         if badge_data:
-            unlocked_lines.append(f"{badge_data['icon']} *{escape_markdown(badge_data['name'])}*\n_{escape_markdown(badge_data['description'])}_")
+            unlocked_lines.append(f"{badge_data['icon']} *{escape_markdown(badge_data['name'])}*\n{escape_markdown(badge_data['description'])}")
 
     title = "🏆 *دستاوردها و نشان‌های افتخار*"
     
