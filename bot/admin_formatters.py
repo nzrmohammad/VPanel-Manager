@@ -153,6 +153,13 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
         f"🔑 شناسه یکتا : `{esc(info.get('uuid', 'N/A'))}`"
     ])
 
+    if db_user and db_user.get('admin_note'):
+        report_lines.extend([
+            separator,
+            f"📝 *یادداشت ادمین:*",
+            f"_{esc(db_user['admin_note'])}_"
+        ])
+
     return "\n".join(report_lines)
 
 def fmt_weekly_admin_summary(report_data: dict) -> str:

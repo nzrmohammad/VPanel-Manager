@@ -192,7 +192,7 @@ class SchedulerManager:
                                         btn_text = f"🚀 {plan_data.get('name', '')} - {'{:,.0f}'.format(plan_data.get('price', 0))} تومان"
                                         kb.add(types.InlineKeyboardButton(btn_text, callback_data=f"show_plans:{plan_type}"))
 
-                                    kb.add(types.InlineKeyboardButton(" Rمشاهده تمام سرویس‌ها", callback_data="view_plans"))
+                                    kb.add(types.InlineKeyboardButton("مشاهده تمام سرویس‌ها", callback_data="view_plans"))
 
                                     if self.bot.send_message(user_id_in_telegram, msg_template, parse_mode="MarkdownV2", reply_markup=kb):
                                         db.log_warning(uuid_id_in_db, 'expiry')

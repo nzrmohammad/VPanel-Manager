@@ -632,6 +632,10 @@ def fmt_referral_page(user_id: int, bot_username: str, lang_code: str) -> str:
     successful_referrals = [u for u in referred_users if u['referral_reward_applied']]
     pending_referrals = [u for u in referred_users if not u['referral_reward_applied']]
 
+    unit_person = get_string('unit_person', lang_code)
+    successful_count_str = f"*{len(successful_referrals)} {escape_markdown(unit_person)}*"
+    pending_count_str = f"*{len(pending_referrals)} {escape_markdown(unit_person)}*"
+
     lines = [
         f"*{escape_markdown(get_string('referral_page_title', lang_code))}*",
         "`──────────────────`",
@@ -641,8 +645,8 @@ def fmt_referral_page(user_id: int, bot_username: str, lang_code: str) -> str:
         f"`{escape_markdown(referral_link)}`",
         "\n",
         f"🏆 *{escape_markdown(get_string('referral_status_title', lang_code))}*",
-        f" {get_string('referral_successful_count', lang_code)} *{len(successful_referrals)} {get_string('referral_unit_person', lang_code)}*",
-        f" {get_string('referral_pending_count', lang_code)} *{len(pending_referrals)} {get_string('referral_unit_person', lang_code)}*"
+        f" {get_string('referral_successful_count', lang_code)} {successful_count_str}",
+        f" {get_string('referral_pending_count', lang_code)} {pending_count_str}"
     ]
 
     if successful_referrals:

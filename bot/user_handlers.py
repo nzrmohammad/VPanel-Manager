@@ -1209,8 +1209,10 @@ def _handle_connection_doctor(call: types.CallbackQuery):
 
     active_panels = db.get_active_panels()
     for panel in active_panels:
-        panel_name = escape_markdown(panel.get('name', '...'))
-        server_status_label = escape_markdown(get_string('doctor_server_status_label', lang_code).format(panel_name=panel_name))
+        # FIX: Format the string BEFORE escaping it
+        panel_name_raw = panel.get('name', '...')
+        server_status_template = get_string('doctor_server_status_label', lang_code)
+        server_status_label = escape_markdown(server_status_template.format(panel_name=panel_name_raw))
         
         handler = HiddifyAPIHandler(panel) if panel['panel_type'] == 'hiddify' else MarzbanAPIHandler(panel)
         if handler.check_connection():
@@ -1220,6 +1222,7 @@ def _handle_connection_doctor(call: types.CallbackQuery):
             status_text = f"*{escape_markdown(get_string('server_status_offline', lang_code))}*"
             report_lines.append(f"🚨 {server_status_label} {status_text}")
 
+    # The rest of the function remains the same...
     online_hiddify_count, online_marzban_fr_count, online_marzban_tr_count = 'N/A', 'N/A', 'N/A'
     try:
         all_users = combined_handler.get_all_users_combined()
@@ -1242,9 +1245,9 @@ def _handle_connection_doctor(call: types.CallbackQuery):
                         if db_record.get('has_access_tr'): online_marzban_tr_count += 1
     except Exception as e:
         logger.error(f"Error calculating online users for connection doctor: {e}", exc_info=True)
-    
-    analysis_title = escape_markdown(get_string('doctor_analysis_title_v2', lang_code))
-    line_template = get_string('doctor_online_users_line_v2', lang_code)
+
+    analysis_title = escape_markdown(get_string('doctor_analysis_title', lang_code))
+    line_template = get_string('doctor_online_users_line', lang_code)
     
     report_lines.extend([
         "`──────────────────`",
@@ -1338,13 +1341,14 @@ def handle_shop_callbacks(call: types.CallbackQuery):
 def handle_referral_callbacks(call: types.CallbackQuery):
     """تمام callback های مربوط به سیستم معرفی کاربران را مدیریت می‌کند."""
     uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
+    lang_code = db.get_user_language(uid)
 
     if data == "referral:info":
         bot_username = bot.get_me().username
-        text = fmt_referral_page(uid, bot_username)
+        text = fmt_referral_page(uid, bot_username, lang_code)
 
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data="back"))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
 
         _safe_edit(uid, msg_id, text, reply_markup=kb)
 
