@@ -1,7 +1,6 @@
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from .utils import load_json_file, parse_volume_string
 import logging
 import pytz
 import jdatetime
@@ -211,6 +210,13 @@ class DatabaseManager:
                     given_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(user_id, gift_year)
                 );
+                CREATE TABLE IF NOT EXISTS anniversary_gift_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    gift_year INTEGER NOT NULL,
+                    given_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, gift_year)
+                );            
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
                 CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
@@ -1909,6 +1915,7 @@ class DatabaseManager:
         """
         با مقایسه حجم فعلی کاربر با پلن‌های موجود، قیمت پلن فعلی او را تخمین می‌زند.
         """
+        from .utils import load_json_file, parse_volume_string
         user_uuid_record = self.uuid_by_id(0, uuid_id) # This needs a user_id, but it's not used in the query. Let's find a better way.
         if not user_uuid_record:
             # Let's get the uuid string first

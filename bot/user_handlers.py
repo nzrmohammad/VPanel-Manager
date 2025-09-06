@@ -9,7 +9,7 @@ from .database import db
 from . import combined_handler
 from .menu import menu
 from .utils import validate_uuid, escape_markdown, _safe_edit, get_loyalty_progress_message
-from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history, fmt_referral_page
+from .user_formatters import fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats, fmt_user_payment_history, fmt_registered_birthday_info, fmt_user_usage_history, fmt_referral_page, fmt_user_account_page
 from .utils import load_service_plans
 from .language import get_string
 import urllib.parse
@@ -70,7 +70,8 @@ def handle_user_callbacks(call: types.CallbackQuery):
         "web_login": _handle_web_login_request,
         "achievements": _show_achievements_page,
         "request_service": _handle_request_service,
-        "connection_doctor": _handle_connection_doctor
+        "connection_doctor": _handle_connection_doctor,
+        "user_account": _show_user_account_page
     }
     
     handler = USER_CALLBACK_MAP.get(data)
@@ -79,6 +80,13 @@ def handle_user_callbacks(call: types.CallbackQuery):
         handler(call)
         return
     
+    elif data == "show_features_guide":
+        _show_features_guide(call)
+        return
+    elif data == "back_to_start_menu":
+        _show_initial_menu(uid=call.from_user.id, msg_id=call.message.message_id)
+        return
+
     # Handling for patterned callbacks
     if data.startswith("acc_"):
         uuid_id = int(data.split("_")[1])
@@ -319,7 +327,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
         _, os_type, app_name = data.split(":")
         _send_tutorial_link(call, os_type, app_name)
         return
-
 
     if data.startswith("share_confirm:"):
         parts = data.split(":")
@@ -579,6 +586,8 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
             f"{escape_markdown('فقط')} *{escape_markdown(str(loyalty_data['renewals_left']))} {escape_markdown('تمدید دیگر')}* {escape_markdown(f'تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!')}"
         )
         text_lines.append(loyalty_message)
+    text_lines.append("\n`──────────────────`")
+    text_lines.append(f"💡 {escape_markdown(get_string('main_menu_tip', lang_code))}")
     
     text = "\n".join(text_lines)
 
@@ -589,11 +598,31 @@ def _go_back_to_main(call: types.CallbackQuery = None, message: types.Message = 
     else:
         bot.send_message(uid, text, reply_markup=reply_markup, parse_mode="MarkdownV2")
 
+def _show_initial_menu(uid: int, msg_id: int = None):
+    """
+    منوی خوشامدگویی اولیه را برای کاربران جدید نمایش می‌دهد یا ویرایش می‌کند.
+    """
+    lang_code = db.get_user_language(uid)
+    welcome_text = (
+        "<b>Welcome!</b> 👋\n\n"
+        "Please choose one of the options below to get started:"
+    )
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton(f"💳 {get_string('btn_have_service', lang_code)}", callback_data="add"),
+        types.InlineKeyboardButton(f"🚀 {get_string('btn_request_service', lang_code)}", callback_data="request_service")
+    )
+    kb.add(types.InlineKeyboardButton(get_string('btn_features_guide', lang_code), callback_data="show_features_guide"))
+
+    if msg_id:
+        _safe_edit(uid, msg_id, welcome_text, reply_markup=kb, parse_mode="HTML")
+    else:
+        bot.send_message(uid, welcome_text, reply_markup=kb, parse_mode="HTML")
 
 def _handle_birthday_gift_request(call: types.CallbackQuery):
     global bot 
     uid = call.from_user.id
-    msg_id = call.message.message_id  # <--- message_id را اینجا ذخیره می‌کنیم
+    msg_id = call.message.message_id 
     lang_code = db.get_user_language(uid)
     user_data = db.user(uid)
     
@@ -839,21 +868,35 @@ def _start_traffic_transfer(call: types.CallbackQuery):
 
 def _ask_for_transfer_panel(uid: int, msg_id: int, uuid_id: int):
     """مرحله دوم: از کاربر می‌پرسد از کدام سرور قصد انتقال دارد."""
-    prompt = (
-        f"*{escape_markdown('💸 انتقال ترافیک به کاربر دیگر')}*\n"
-        f"`──────────────────`\n"
-        f"{escape_markdown('لطفاً انتخاب کنید که می‌خواهید از حجم کدام سرور به دوست خود انتقال دهید:')}"
+    from .config import MIN_TRANSFER_GB, MAX_TRANSFER_GB, TRANSFER_COOLDOWN_DAYS
+    lang_code = db.get_user_language(uid)
+
+    title = get_string("transfer_traffic_title", lang_code)
+    rules_title = get_string("transfer_rules_title", lang_code)
+    min_rule = get_string("min_transfer_rule", lang_code).format(min_gb=MIN_TRANSFER_GB)
+    max_rule = get_string("max_transfer_rule", lang_code).format(max_gb=MAX_TRANSFER_GB)
+    cooldown_rule = get_string("cooldown_rule", lang_code).format(days=TRANSFER_COOLDOWN_DAYS)
+    select_prompt = get_string("select_server_prompt", lang_code)
+
+    body = get_string("transfer_traffic_body", lang_code).format(
+        rules_title=rules_title,
+        min_transfer_rule=min_rule,
+        max_transfer_rule=max_rule,
+        cooldown_rule=cooldown_rule,
+        select_server_prompt=select_prompt
     )
-    
+
+    prompt = f"{title}\n`──────────────────`\n{body}"
+
     user_uuid_record = db.uuid_by_id(uid, uuid_id)
     kb = types.InlineKeyboardMarkup(row_width=1)
     if user_uuid_record.get('has_access_de'):
-        kb.add(types.InlineKeyboardButton("از سرور آلمان 🇩🇪", callback_data=f"transfer_panel_hiddify_{uuid_id}"))
+        kb.add(types.InlineKeyboardButton(f"{get_string('server_de', lang_code)} 🇩🇪", callback_data=f"transfer_panel_hiddify_{uuid_id}"))
     if user_uuid_record.get('has_access_fr') or user_uuid_record.get('has_access_tr'):
-        kb.add(types.InlineKeyboardButton("از سرور فرانسه/ترکیه 🇫🇷🇹🇷", callback_data=f"transfer_panel_marzban_{uuid_id}"))
-    
-    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(uid))}", callback_data=f"acc_{uuid_id}"))
-    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+        kb.add(types.InlineKeyboardButton(f"{get_string('server_fr', lang_code)}/ترکیه 🇫🇷🇹🇷", callback_data=f"transfer_panel_marzban_{uuid_id}"))
+
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data=f"acc_{uuid_id}"))
+    _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
 
 
 def _ask_for_transfer_amount(call: types.CallbackQuery):
@@ -1103,7 +1146,11 @@ def _show_achievements_page(call: types.CallbackQuery):
     title = "🏆 *دستاوردها و نشان‌های افتخار*"
     
     if not unlocked_lines:
-        intro_text = "در این بخش نشان‌هایی که با فعالیت در سرویس کسب می‌کنید، نمایش داده می‌شوند. برخی از این نشان‌ها مخفی هستند و پس از کسب کردن، برای شما آشکار خواهند شد. به فعالیت خود ادامه دهید و همه آن‌ها را کشف کنید!"
+        intro_text = (
+            "در این بخش نشان‌هایی که با فعالیت در سرویس کسب می‌کنید، نمایش داده می‌شوند.\n\n"
+            "با کسب هر نشان، مقداری *امتیاز* دریافت می‌کنید که می‌توانید از آن در «فروشگاه دستاوردها» برای خرید حجم و روز اضافه استفاده کنید.\n\n"
+            "برخی از این نشان‌ها مخفی هستند و پس از کسب کردن، برای شما آشکار خواهند شد. به فعالیت خود ادامه دهید و همه آن‌ها را کشف کنید!"
+        )
         final_text = f"{title}\n\n{escape_markdown(intro_text)}"
     else:
         unlocked_section = "✅ *نشان‌های کسب‌شده:*\n" + "\n\n".join(unlocked_lines)
@@ -1286,12 +1333,42 @@ def handle_referral_callbacks(call: types.CallbackQuery):
 
         _safe_edit(uid, msg_id, text, reply_markup=kb)
 
+def _show_features_guide(call: types.CallbackQuery):
+    """یک پیام راهنمای کلی درباره امکانات ربات نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    lang_code = db.get_user_language(uid)
+
+    guide_title = get_string("features_guide_title", lang_code)
+    guide_body = get_string("features_guide_body", lang_code)
+    guide_text = f"{guide_title}\n\n{guide_body}"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back_to_start_menu"))
+
+    _safe_edit(uid, msg_id, escape_markdown(guide_text), reply_markup=kb)
+
+# In bot/user_handlers.py
+
+def _show_user_account_page(call: types.CallbackQuery):
+    """صفحه کامل حساب کاربری را نمایش می‌دهد."""
+    uid = call.from_user.id
+    msg_id = call.message.message_id
+    lang_code = db.get_user_language(uid)
+    
+    text = fmt_user_account_page(uid, lang_code)
+    
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
+    
+    _safe_edit(uid, msg_id, text, reply_markup=kb)
+
 # =============================================================================
 # Main Registration Function
 # =============================================================================
 def register_user_handlers(b: telebot.TeleBot):
     """Registers all the message and callback handlers for user interactions."""
-    global bot; bot = b
+    global bot
+    bot = b
 
     @bot.message_handler(commands=['start'])
     def cmd_start(message: types.Message):
@@ -1310,15 +1387,8 @@ def register_user_handlers(b: telebot.TeleBot):
             # اگر کاربر از قبل اکانت دارد، مستقیم به منوی اصلی برود
             _go_back_to_main(message=message)
         else:
-            # اگر کاربر جدید است، منوی انتخاب را نمایش بده
-            lang_code = db.get_user_language(uid)
-            welcome_text = get_string("welcome_new_user", lang_code) # یک کلید جدید در فایل زبان
-            kb = types.InlineKeyboardMarkup(row_width=1)
-            kb.add(
-                types.InlineKeyboardButton(f"💳 {get_string('btn_have_service', lang_code)}", callback_data="add"),
-                types.InlineKeyboardButton(f"🚀 {get_string('btn_request_service', lang_code)}", callback_data="request_service")
-            )
-            bot.send_message(uid, welcome_text, reply_markup=kb, parse_mode="HTML") # استفاده از HTML برای خوانایی بهتر
+            # اگر کاربر جدید است، از تابع کمکی برای نمایش منو استفاده می‌کنیم
+            _show_initial_menu(uid=uid)
 
     def process_uuid_step_after_lang(message: types.Message, original_msg_id: int):
         uid, uuid_str = message.chat.id, message.text.strip().lower()

@@ -316,7 +316,12 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
     title = f'*{escape_markdown(formatted_title)}*'
     
     lines = [title]
-    
+
+    if plan_type == "combined":
+        lines.append(escape_markdown(get_string('plan_guide_combined', lang_code)))
+    elif plan_type in ["germany", "france", "turkey"]:
+        lines.append(escape_markdown(get_string('plan_guide_dedicated', lang_code)))
+
     separator = "`────────────────────`"
     
     for plan in plans_to_show:
@@ -651,4 +656,39 @@ def fmt_referral_page(user_id: int, bot_username: str) -> str:
         for user in pending_referrals:
             lines.append(f" `•` {escape_markdown(user['first_name'])}")
 
+    return "\n".join(lines)
+
+def fmt_user_account_page(user_id: int, lang_code: str) -> str:
+    """اطلاعات شخصی‌سازی شده حساب کاربری را برای نمایش در ربات فرمت‌بندی می‌کند."""
+    user_info = db.user(user_id)
+    user_uuids = db.uuids(user_id)
+
+    if not user_info or not user_uuids:
+        return get_string("err_acc_not_found", lang_code)
+
+    first_uuid_record = user_uuids[0]
+
+    # دریافت اطلاعات
+    referrals_count = len(db.get_referred_users(user_id))
+    payments_count = len(db.get_user_payment_history(first_uuid_record['id']))
+    user_group = get_string("group_vip", lang_code) if first_uuid_record.get('is_vip') else get_string("group_normal", lang_code)
+    registration_date = to_shamsi(first_uuid_record.get('created_at'), include_time=False)
+
+    # ساخت متن نهایی
+    lines = [
+        f"*{escape_markdown(get_string('user_account_page_title', lang_code))}*",
+        "`──────────────────`",
+        f"*{escape_markdown(get_string('personal_info_title', lang_code))}*",
+        f"`•` {escape_markdown(get_string('label_name', lang_code))}: *{escape_markdown(user_info.get('first_name', ''))}*",
+        f"`•` {escape_markdown(get_string('label_user_id', lang_code))}: `{user_id}`",
+        f"`•` {escape_markdown(get_string('label_referral_code', lang_code))}: `{escape_markdown(user_info.get('referral_code', 'N/A'))}`",
+        f"`•` {escape_markdown(get_string('label_registration_date', lang_code))}: *{escape_markdown(registration_date)}*",
+        f"`•` {escape_markdown(get_string('label_user_group', lang_code))}: *{escape_markdown(user_group)}*",
+        "",
+        f"*{escape_markdown(get_string('account_stats_title', lang_code))}*",
+        f"`•` {escape_markdown(get_string('label_services_purchased', lang_code))}: *{len(user_uuids)} {escape_markdown(get_string('unit_count', lang_code))}*",
+        f"`•` {escape_markdown(get_string('label_paid_invoices', lang_code))}: *{payments_count} {escape_markdown(get_string('unit_count', lang_code))}*",
+        f"`•` {escape_markdown(get_string('label_referrals', lang_code))}: *{referrals_count} {escape_markdown(get_string('unit_person', lang_code))}*",
+    ]
+    
     return "\n".join(lines)

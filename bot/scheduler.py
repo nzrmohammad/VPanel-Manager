@@ -6,6 +6,7 @@ import schedule
 import pytz
 import jdatetime
 from telebot import apihelper, TeleBot, types
+from .language import get_string
 
 from . import combined_handler
 from .database import db
@@ -424,7 +425,7 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"Failed to generate weekly admin summary: {e}", exc_info=True)
 
-    def _check_achievements(self) -> None:
+    def _check_achievements_and_anniversary(self) -> None:
         """
         شرایط دریافت دستاوردها را برای تمام کاربران بررسی کرده و امتیاز اهدا می‌کند.
         """
@@ -432,7 +433,6 @@ class SchedulerManager:
         all_user_ids = list(db.get_all_user_ids())
 
         import random
-        # حداکثر به ۳ کاربر یا به تعداد کل کاربران (اگر کمتر از ۳ نفر بودند) نشان خوش‌شانس می‌دهد
         lucky_users = random.sample(all_user_ids, k=min(3, len(all_user_ids)))
 
         for user_id in all_user_ids:
@@ -447,6 +447,9 @@ class SchedulerManager:
                 first_uuid_creation_date = first_uuid_record['created_at']
                 if first_uuid_creation_date.tzinfo is None:
                     first_uuid_creation_date = pytz.utc.localize(first_uuid_creation_date)
+
+                days_since_creation = (datetime.now(pytz.utc) - first_uuid_creation_date).days
+                current_year = datetime.now(pytz.utc).year
 
                 # --- ۱. بررسی نشان "کهنه‌کار" ---
                 if (datetime.now(pytz.utc) - first_uuid_creation_date).days >= 365:
@@ -495,6 +498,31 @@ class SchedulerManager:
                 if user_id in lucky_users:
                     if db.add_achievement(user_id, 'lucky_one'):
                         self._notify_user_achievement(user_id, 'lucky_one')
+
+                # --- START: منطق جدید برای هدیه سالگرد ---
+                if days_since_creation >= 365:
+                    with db._conn() as c:
+                        already_given = c.execute(
+                            "SELECT 1 FROM anniversary_gift_log WHERE user_id = ? AND gift_year = ?",
+                            (user_id, current_year)
+                        ).fetchone()
+
+                if not already_given:
+                    anniversary_gift_gb = 20
+                    anniversary_gift_days = 10
+
+                    if combined_handler.modify_user_on_all_panels(first_uuid_record['uuid'], add_gb=anniversary_gift_gb, add_days=anniversary_gift_days):
+                        lang_code = db.get_user_language(user_id)
+                        title = get_string("anniversary_gift_title", lang_code)
+                        body = get_string("anniversary_gift_body", lang_code).format(
+                            gift_gb=anniversary_gift_gb,
+                            gift_days=anniversary_gift_days
+                        )
+                        anniversary_message = f"{title}\n\n{body}"
+
+                        self._send_warning_message(user_id, anniversary_message)
+                        with db._conn() as c:
+                            c.execute("INSERT INTO anniversary_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
 
             except Exception as e:
                 logger.error(f"Error checking achievements for user_id {user_id}: {e}")
@@ -595,6 +623,8 @@ class SchedulerManager:
             message = (
                 f"🍀 *گزارش هفتگی خوش‌شانسی شما*\n\n"
                 f"شما در این ماه *{badge_count}* بار نشان خوش‌شانس دریافت کرده‌اید و در قرعه‌کشی شرکت داده خواهید شد.\n\n"
+                f"*{escape_markdown('قرعه‌کشی ماهانه چیست؟')}*\n"
+                f"_{escape_markdown('در اولین جمعه هر ماه شمسی، بین تمام کاربرانی که شرایط لازم را داشته باشند، قرعه‌کشی شده و به برنده امتیاز ویژه اهدا می‌شود.')}_\n\n"
                 f"با آرزوی موفقیت!"
             )
             self._send_warning_message(user_id, message)
@@ -728,7 +758,7 @@ class SchedulerManager:
         schedule.every().friday.at("21:00", self.tz_str).do(self._run_lucky_lottery)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
-        schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements)
+        schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements_and_anniversary)
         schedule.every().day.at("00:15", self.tz_str).do(self._check_for_special_occasions)
         schedule.every(12).hours.do(self._sync_users_with_panels)
         schedule.every(8).hours.do(self._cleanup_old_reports)

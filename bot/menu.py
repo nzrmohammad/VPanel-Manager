@@ -9,26 +9,26 @@ class Menu:
     # =============================================================================
     def main(self, is_admin: bool, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
-        kb.add(
-            types.InlineKeyboardButton(f"{EMOJIS['key']} {get_string('manage_account', lang_code)}", callback_data="manage"),
-            types.InlineKeyboardButton(f"{EMOJIS['lightning']} {get_string('quick_stats', lang_code)}", callback_data="quick_stats")
-        )
-
-        btn_services = types.InlineKeyboardButton(f"{EMOJIS['money']} {get_string('view_plans', lang_code)}", callback_data="view_plans")
-        btn_settings = types.InlineKeyboardButton(f"{EMOJIS['bell']} {get_string('settings', lang_code)}", callback_data="settings")
-        btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
+        
+        btn_manage_account = types.InlineKeyboardButton(f"{EMOJIS['key']} {get_string('manage_account', lang_code)}", callback_data="manage")
+        btn_quick_stats = types.InlineKeyboardButton(f"{EMOJIS['lightning']} {get_string('quick_stats', lang_code)}", callback_data="quick_stats")
+        btn_services = types.InlineKeyboardButton(f"🛒 {get_string('view_plans', lang_code)}", callback_data="view_plans")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
         btn_doctor = types.InlineKeyboardButton(f"🩺 پزشک اتصال", callback_data="connection_doctor")
         btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
+        btn_user_account = types.InlineKeyboardButton(f"👤 {get_string('user_account_page_title', lang_code)}", callback_data="user_account")
         btn_referral = types.InlineKeyboardButton("👥 دعوت از دوستان", callback_data="referral:info")
         btn_achievements = types.InlineKeyboardButton(f"🏆 دستاوردها", callback_data="achievements")
+        btn_settings = types.InlineKeyboardButton(f"⚙️ {get_string('settings', lang_code)}", callback_data="settings")
+        btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
-        kb.add(btn_settings, btn_services)
-        kb.add(btn_birthday, btn_support)
-        kb.add(btn_referral, btn_achievements)
-        kb.add(btn_doctor, btn_tutorials)
-        kb.add(btn_web_login)
+        kb.add(btn_manage_account, btn_quick_stats) # ردیف ۱: اصلی‌ترین‌ها
+        kb.add(btn_services, btn_support)           # ردیف ۲: خرید و پشتیبانی
+        kb.add(btn_doctor, btn_tutorials)           # ردیف ۳: ابزارها
+        kb.add(btn_user_account, btn_referral)      # ردیف ۴: پروفایل و دعوت
+        kb.add(btn_achievements, btn_settings)      # ردیف ۵: جوایز و تنظیمات
+        kb.add(btn_birthday, btn_web_login)         # ردیف ۶: سایر
 
         if is_admin:
             kb.add(types.InlineKeyboardButton(f"{EMOJIS['crown']} پنل مدیریت", callback_data="admin:panel"))
