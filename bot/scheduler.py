@@ -493,7 +493,7 @@ class SchedulerManager:
                 if (datetime.now(pytz.utc) - first_uuid_creation_date).days >= 365:
                     if db.add_achievement(user_id, 'veteran'):
                         self._notify_user_achievement(user_id, 'veteran')
-                    
+
                 # --- ۲. بررسی نشان "حامی وفادار" ---
                 payment_count = len(db.get_user_payment_history(uuid_id))
                 if payment_count > 5:
@@ -518,13 +518,13 @@ class SchedulerManager:
                 if monthly_usage > 200:
                     if db.add_achievement(user_id, 'pro_consumer'):
                         self._notify_user_achievement(user_id, 'pro_consumer')
-                    
+
                 if monthly_usage > 10:
                     night_stats = db.get_night_usage_stats_in_last_n_days(uuid_id, 30)
                     if night_stats['total'] > 0 and (night_stats['night'] / night_stats['total']) > 0.5:
                         if db.add_achievement(user_id, 'night_owl'):
                             self._notify_user_achievement(user_id, 'night_owl')
-                
+
                 # --- ۶. بررسی دستاورد ترکیبی "اسطوره" ---
                 user_badges = db.get_user_achievements(user_id)
                 required_for_legend = {'veteran', 'loyal_supporter', 'pro_consumer'}

@@ -43,30 +43,30 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
     # خط ۱ (اصلاح شده): کاراکترهای ( و ) با \\ escape شده‌اند
     header = f"👤 نام : {name} {loyalty_icon} \\({status_text_overall} \\| {payment_count} پرداخت\\)"
 
-    
+
     report_lines = [header]
     separator = "`──────────────────`"
-    
+
     # --- بخش تفکیک پنل‌ها ---
     breakdown = info.get('breakdown', {})
-    
+
     # NEW: Get user record from db if not passed
     if not db_user and info.get('uuid'):
         user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
         if user_telegram_id:
             db_user = db.user(user_telegram_id)
-            
+
     # NEW: Get has_access flags from the full user_uuids record
     user_uuid_record = db.get_user_uuid_record(info.get('uuid', '')) if info.get('uuid') else None
 
     def create_panel_block(panel_display_name: str, panel_data: dict, panel_type: str):
         is_panel_active = panel_data.get('is_active', False)
         status_text_panel = "✅" if is_panel_active else "❌"
-        
+
         limit_gb = panel_data.get('usage_limit_GB', 0)
         usage_gb = panel_data.get('current_usage_GB', 0)
         remaining_gb = max(0, limit_gb - usage_gb)
-        
+
         daily_usage_gb = 0
         if info.get('uuid'):
             daily_usage_dict = db.get_usage_since_midnight_by_uuid(info['uuid'])
@@ -136,17 +136,17 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                             details.append(f"v{esc(parsed['version'])}")
                         if parsed.get('os'):
                             details.append(esc(parsed['os']))
-                        
+
                         details_str = f" \\({', '.join(details)}\\)" if details else ""
                         last_seen_str = esc(to_shamsi(agent['last_seen'], include_time=True))
-                        
+
                         report_lines.append(f"` `└─ {icon} *{client_name}*{details_str} \\(_{last_seen_str}_\\)")
 
 
     # --- بخش فوتر ---
     expire_days = info.get("expire")
     expire_label = f"{int(expire_days)} روز" if expire_days is not None and expire_days >= 0 else "منقضی شده"
-    
+
     report_lines.extend([
         separator,
         f"📅 انقضا : {expire_label}",
