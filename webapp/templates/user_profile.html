@@ -171,13 +171,36 @@
                             <span class="slider"></span>
                         </label>
                     </div>
-                        <div class="switch-group">
-                        <label for="data_warnings">هشدار اتمام حجم</label>
+
+                    {% if user.has_access_de %}
+                    <div class="switch-group">
+                        <label for="data_warning_de">هشدار اتمام حجم آلمان 🇩🇪</label>
                         <label class="switch">
-                            <input type="checkbox" id="data_warnings" name="data_warnings" {% if settings.data_warnings %}checked{% endif %}>
+                            <input type="checkbox" id="data_warning_de" name="data_warning_de" {% if settings.data_warning_de %}checked{% endif %}>
                             <span class="slider"></span>
                         </label>
                     </div>
+                    {% endif %}
+                    
+                    {% if user.has_access_fr %}
+                    <div class="switch-group">
+                        <label for="data_warning_fr">هشدار اتمام حجم فرانسه 🇫🇷</label>
+                        <label class="switch">
+                            <input type="checkbox" id="data_warning_fr" name="data_warning_fr" {% if settings.data_warning_fr %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    {% endif %}
+
+                    {% if user.has_access_tr %}
+                    <div class="switch-group">
+                        <label for="data_warning_tr">هشدار اتمام حجم ترکیه 🇹🇷</label>
+                        <label class="switch">
+                            <input type="checkbox" id="data_warning_tr" name="data_warning_tr" {% if settings.data_warning_tr %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    {% endif %}
                     <div class="switch-group">
                         <label for="achievement_alerts">اعلان دستاوردها</label>
                         <label class="switch">

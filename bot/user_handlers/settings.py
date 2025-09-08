@@ -1,4 +1,3 @@
-# bot/user_handlers/settings.py
 import logging
 from telebot import types
 
@@ -29,14 +28,23 @@ def language_selection_menu() -> types.InlineKeyboardMarkup:
 
 
 def show_settings(call: types.CallbackQuery):
-    """منوی تنظیمات را با توجه به زبان فعلی کاربر نمایش می‌دهد."""
+    """منوی تنظیمات را با توجه به زبان و دسترسی‌های کاربر نمایش می‌دهد."""
     uid = call.from_user.id
     msg_id = call.message.message_id
     lang_code = db.get_user_language(uid)
     settings_data = db.get_user_settings(uid)
     
+    user_uuids = db.uuids(uid)
+    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
+    if user_uuids:
+        first_uuid_record = db.uuid_by_id(uid, user_uuids[0]['id'])
+        if first_uuid_record:
+            access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
+            access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
+            access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
+    
     title_text = f'*{escape_markdown(get_string("settings_title", lang_code))}*'
-    reply_markup = menu.settings(settings_data, lang_code=lang_code)
+    reply_markup = menu.settings(settings_data, lang_code=lang_code, access=access_rights)
     
     _safe_edit(uid, msg_id, text=title_text, reply_markup=reply_markup)
 
@@ -50,16 +58,17 @@ def handle_toggle_setting(call: types.CallbackQuery):
     setting_key = call.data.replace("toggle_", "")
     current_settings = db.get_user_settings(uid)
     
-    # مقدار فعلی را برعکس کرده و در دیتابیس ذخیره می‌کنیم
-    new_value = not current_settings.get(setting_key, True)
-    db.update_user_setting(uid, setting_key, new_value)
+    if setting_key == "data_warning_fr_tr":
+        current_status = current_settings.get('data_warning_fr', True) and current_settings.get('data_warning_tr', True)
+        new_value = not current_status
+        db.update_user_setting(uid, 'data_warning_fr', new_value)
+        db.update_user_setting(uid, 'data_warning_tr', new_value)
+    else:
+        new_value = not current_settings.get(setting_key, True)
+        db.update_user_setting(uid, setting_key, new_value)
     
-    # منوی تنظیمات را با اطلاعات جدید به‌روزرسانی می‌کنیم
     text = f'*{escape_markdown(get_string("settings_updated", lang_code))}*'
-    updated_settings = db.get_user_settings(uid)
-    reply_markup = menu.settings(updated_settings, lang_code=lang_code)
-    
-    _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
+    show_settings(call)
 
 
 def handle_change_language_request(call: types.CallbackQuery):
@@ -80,10 +89,8 @@ def handle_language_selection(call: types.CallbackQuery):
     db.set_user_language(uid, lang_code)
     bot.answer_callback_query(call.id, get_string("lang_selected", lang_code))
 
-    # اگر کاربر اکانتی ثبت نکرده باشد، یعنی کاربر جدید است
     if not db.uuids(uid):
-        from .various import show_initial_menu # Import locally to avoid circular dependency
+        from .various import show_initial_menu 
         show_initial_menu(uid=uid, msg_id=call.message.message_id)
     else:
-        # در غیر این صورت، به منوی تنظیمات بازمی‌گردد
         show_settings(call)

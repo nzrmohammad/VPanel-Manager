@@ -155,7 +155,6 @@ class UserService:
             
             recommended_plan, actual_usage = UserService.recommend_plan(current_usage)
             
-            # --- START: FIX FOR LOYALTY MESSAGE ---
             loyalty_data = get_loyalty_progress_message(user_id) if user_id else None
             loyalty_message = None
             if loyalty_data:
@@ -164,7 +163,6 @@ class UserService:
                     f"فقط <b>{loyalty_data['renewals_left']} تمدید دیگر</b> "
                     f"تا دریافت هدیه بعدی ({loyalty_data['gb_reward']} گیگابایت حجم + {loyalty_data['days_reward']} روز اعتبار) باقی مانده است!"
                 )
-            # --- END: FIX FOR LOYALTY MESSAGE ---
 
             achievements = db.get_user_achievements(user_id) if user_id else []
 
@@ -191,7 +189,10 @@ class UserService:
                 "recommended_plan": recommended_plan,
                 "actual_last_30_days_usage": actual_usage,
                 "loyalty_progress_message": loyalty_message, # This is now a formatted string
-                "achievements": achievements
+                "achievements": achievements,
+                "has_access_de": uuid_record.get('has_access_de', False),
+                "has_access_fr": uuid_record.get('has_access_fr', False),
+                "has_access_tr": uuid_record.get('has_access_tr', False),
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)
@@ -221,14 +222,19 @@ class UserService:
                     except ValueError:
                         logger.warning(f"فرمت تاریخ تولد نامعتبر: {birthday_str}")
             
-            settings_keys = [
-                'daily_reports', 'expiry_warnings', 
-                'data_warnings', 'weekly_reports'
-                'achievement_alerts', 'promotional_alerts'
-            ]
-            for setting in settings_keys:
-                value = setting in form_data
-                db.update_user_setting(user_id, setting, value)
+            settings_keys = {
+                'daily_reports': 'daily_reports',
+                'weekly_reports': 'weekly_reports',
+                'expiry_warnings': 'expiry_warnings',
+                'data_warning_de': 'data_warning_de',
+                'data_warning_fr': 'data_warning_fr',
+                'data_warning_tr': 'data_warning_tr',
+                'achievement_alerts': 'achievement_alerts',
+                'promotional_alerts': 'promotional_alerts'
+            }
+            for form_key, db_key in settings_keys.items():
+                value = form_key in form_data
+                db.update_user_setting(user_id, db_key, value)
 
             return True, "تغییرات با موفقیت ذخیره شد."
         except Exception as e:

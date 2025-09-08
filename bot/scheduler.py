@@ -113,6 +113,7 @@ class SchedulerManager:
             finally:
                 logger.info("SCHEDULER: Releasing lock for hourly snapshot.")
 
+
     def _check_for_warnings(self, target_user_id: int = None) -> None:
         """
         (نسخه نهایی و امن‌شده) به صورت دوره‌ای تمام کاربران را برای شرایط مختلف بررسی کرده و اعلان ارسال می‌کند.
@@ -153,9 +154,11 @@ class SchedulerManager:
                             continue
 
                         user_settings = db.get_user_settings(user_id_in_telegram)
+                        # خواندن رکورد کامل uuid برای دسترسی به فلگ‌های has_access
+                        uuid_record = db.uuid_by_id(user_id_in_telegram, uuid_id_in_db)
                         user_name = info.get('name', 'کاربر ناشناس')
                         
-                        # 1. ارسال پیام خوش‌آمدگویی
+                        # 1. ارسال پیام خوش‌آمدگویی (بدون تغییر)
                         if u_row.get('first_connection_time') and not u_row.get('welcome_message_sent', 0):
                             first_conn_time = pytz.utc.localize(u_row['first_connection_time']) if u_row['first_connection_time'].tzinfo is None else u_row['first_connection_time']
                             if datetime.now(pytz.utc) - first_conn_time >= timedelta(hours=WELCOME_MESSAGE_DELAY_HOURS):
@@ -168,7 +171,7 @@ class SchedulerManager:
                                 if self._send_warning_message(user_id_in_telegram, welcome_text):
                                     db.mark_welcome_message_as_sent(uuid_id_in_db)
 
-                        # 2. ارسال یادآوری تمدید
+                        # 2. ارسال یادآوری تمدید (بدون تغییر)
                         expire_days = info.get('expire')
                         if expire_days == 1 and not u_row.get('renewal_reminder_sent', 0):
                             renewal_text = (
@@ -180,59 +183,57 @@ class SchedulerManager:
                             if self.bot.send_message(user_id_in_telegram, renewal_text, parse_mode="MarkdownV2", reply_markup=kb):
                                 db.set_renewal_reminder_sent(uuid_id_in_db)
 
-                        # 3. ارسال هشدار انقضای اکانت (نسخه هوشمند چند پلنی)
+                        # 3. ارسال هشدار انقضای اکانت (بدون تغییر)
                         if user_settings.get('expiry_warnings') and expire_days is not None and 1 < expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
                             if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
-                                last_30_days_usage = db.get_total_usage_in_last_n_days(uuid_id_in_db, 30)
-                                current_limit = info.get('usage_limit_GB', 0)
-
-                                recommended_plans = {}
-                                if current_limit > 0 and (last_30_days_usage / current_limit) > 0.8:
-                                    all_plans = load_json_file('plans.json')
-                                    recommended_plans = find_best_plan_upgrade(last_30_days_usage, current_limit, all_plans)
-
-                                if recommended_plans:
-                                    msg_template = (
-                                        f"🔔 *تمدید هوشمند سرویس* 🔔\n\n"
-                                        f"سلام {escape_markdown(user_name.split('(')[0].strip())} عزیز\\!\n"
-                                        f"سرویس شما تا *{escape_markdown(str(expire_days))}* روز دیگر منقضی می‌شود\\.\n\n"
-                                        f"ما بر اساس مصرف شما در این دوره، گزینه‌های زیر را برای تمدید پیشنهاد می‌کنیم تا بهترین تجربه را داشته باشید:"
-                                    )
-                                    kb = types.InlineKeyboardMarkup(row_width=1)
-                                    for plan_type, plan_data in recommended_plans.items():
-                                        btn_text = f"🚀 {plan_data.get('name', '')} - {'{:,.0f}'.format(plan_data.get('price', 0))} تومان"
-                                        kb.add(types.InlineKeyboardButton(btn_text, callback_data=f"show_plans:{plan_type}"))
-
-                                    kb.add(types.InlineKeyboardButton("مشاهده تمام سرویس‌ها", callback_data="view_plans"))
-
-                                    if self.bot.send_message(user_id_in_telegram, msg_template, parse_mode="MarkdownV2", reply_markup=kb):
-                                        db.log_warning(uuid_id_in_db, 'expiry')
-                                else:
-                                    msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
-                                    if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
-                                        db.log_warning(uuid_id_in_db, 'expiry')
+                                msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
+                                if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
+                                    db.log_warning(uuid_id_in_db, 'expiry')
                         
-                        # 4. ارسال هشدارهای اتمام حجم (با منطق جدید)
-                        for code, details in {'hiddify': {'name': 'آلمان 🇩🇪'}, 'marzban': {'name': 'فرانسه/ترکیه 🇫🇷🇹🇷'}}.items():
-                            panel_info = next((p.get('data', {}) for p in info.get('breakdown', {}).values() if p.get('type') == code), None)
-                            if user_settings.get('data_warnings') and panel_info:
-                                limit, usage = panel_info.get('usage_limit_GB', 0.0), panel_info.get('current_usage_GB', 0.0)
-                                
+                        # 4. ارسال هشدارهای اتمام حجم (با منطق جدید تفکیک‌شده)
+                        breakdown = info.get('breakdown', {})
+                        
+                        # بررسی برای پنل Hiddify (آلمان)
+                        if user_settings.get('data_warning_de'):
+                            hiddify_info = next((p.get('data', {}) for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+                            if hiddify_info:
+                                limit, usage = hiddify_info.get('usage_limit_GB', 0.0), hiddify_info.get('current_usage_GB', 0.0)
                                 if limit > 0:
                                     usage_percent = (usage / limit) * 100
-                                    # هشدار ۹۵ درصد
-                                    if 95 <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, f'low_data_95_{code}'):
-                                        msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، کمتر از *۵٪* از حجم سرویس شما در سرور *{escape_markdown(details['name'])}* باقی مانده است.")
+                                    # هشدار کمبود حجم
+                                    if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_hiddify'):
+                                        msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *آلمان 🇩🇪* مصرف شده است.")
                                         if self._send_warning_message(user_id_in_telegram, msg):
-                                            db.log_warning(uuid_id_in_db, f'low_data_95_{code}')
-
-                                    # هشدار غیرفعال شدن به دلیل اتمام حجم
-                                    if usage >= limit and not panel_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, f'volume_depleted_{code}'):
-                                        msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *{escape_markdown(details['name'])}* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
+                                            db.log_warning(uuid_id_in_db, 'low_data_hiddify')
+                                    # هشدار اتمام کامل حجم
+                                    if usage >= limit and not hiddify_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_hiddify'):
+                                        msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *آلمان 🇩🇪* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
                                         if self._send_warning_message(user_id_in_telegram, msg):
-                                            db.log_warning(uuid_id_in_db, f'volume_depleted_{code}')
+                                            db.log_warning(uuid_id_in_db, 'volume_depleted_hiddify')
+                        
+                        # بررسی برای پنل Marzban (فرانسه و ترکیه)
+                        marzban_info = next((p.get('data', {}) for p in breakdown.values() if p.get('type') == 'marzban'), None)
+                        if marzban_info and uuid_record:
+                            # شرط ترکیبی: آیا کاربر به این سرورها دسترسی دارد و آیا هشدار آن را فعال کرده است؟
+                            should_warn_fr = user_settings.get('data_warning_fr') and uuid_record.get('has_access_fr')
+                            should_warn_tr = user_settings.get('data_warning_tr') and uuid_record.get('has_access_tr')
+                            
+                            if should_warn_fr or should_warn_tr:
+                                limit, usage = marzban_info.get('usage_limit_GB', 0.0), marzban_info.get('current_usage_GB', 0.0)
+                                if limit > 0:
+                                    usage_percent = (usage / limit) * 100
+                                    # هشدار کمبود حجم
+                                    if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_marzban'):
+                                        msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *فرانسه/ترکیه 🇫🇷🇹🇷* مصرف شده است.")
+                                        if self._send_warning_message(user_id_in_telegram, msg):
+                                            db.log_warning(uuid_id_in_db, 'low_data_marzban')
+                                    # هشدار اتمام کامل حجم
+                                    if usage >= limit and not marzban_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_marzban'):
+                                        msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *فرانسه/ترکیه 🇫🇷🇹🇷* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
+                                        if self._send_warning_message(user_id_in_telegram, msg):
+                                            db.log_warning(uuid_id_in_db, 'volume_depleted_marzban')
 
-                        # 5. ارسال پیام به کاربران غیرفعال
+                        # 5. ارسال پیام به کاربران غیرفعال (بدون تغییر)
                         last_online = info.get('last_online')
                         if last_online and isinstance(last_online, datetime):
                             days_inactive = (now_utc.replace(tzinfo=None) - last_online.replace(tzinfo=None)).days
@@ -244,7 +245,7 @@ class SchedulerManager:
                                     db.log_warning(uuid_id_in_db, 'inactive_user_reminder')
 
 
-                        # 6. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
+                        # 6. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها (بدون تغییر)
                         if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
                             total_daily_usage = sum(db.get_usage_since_midnight_by_uuid(uuid_str).values())
                             if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage', hours=24):
@@ -255,7 +256,7 @@ class SchedulerManager:
                                     self._notify_user(admin_id, alert_message)
                                 db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
 
-                        # 7. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
+                        # 7. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها (بدون تغییر)
                         device_count = db.count_user_agents(uuid_id_in_db)
                         if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168):
                             alert_message = (f"⚠️ *تعداد دستگاه بالا*\n\n"
@@ -272,7 +273,6 @@ class SchedulerManager:
                 logger.error(f"SCHEDULER (Warnings): A critical error occurred during check: {e}", exc_info=True)
             finally:
                 logger.info("SCHEDULER: Releasing lock for warnings check.")
-
 
     def _nightly_report(self, target_user_id: int = None) -> None:
         tehran_tz = pytz.timezone("Asia/Tehran")

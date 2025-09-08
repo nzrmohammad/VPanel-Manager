@@ -202,35 +202,77 @@ class Menu:
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('btn_back_to_os', lang_code)}", callback_data="tutorials"))
         return kb
 
-    def settings(self, settings_dict: dict, lang_code: str) -> types.InlineKeyboardMarkup:
-        kb = types.InlineKeyboardMarkup(row_width=2)
+    # bot/menu.py
+
+    def settings(self, settings_dict: dict, lang_code: str, access: dict) -> types.InlineKeyboardMarkup:
+        """
+        منوی تنظیمات را با دسته‌بندی‌های مشخص و ظاهری تمیز نمایش می‌دهد.
+        """
+        kb = types.InlineKeyboardMarkup()
         
         def get_status_emoji(key):
             return '✅' if settings_dict.get(key, True) else '❌'
 
-        daily_text = f"📊 {get_string('daily_report', lang_code)} {get_status_emoji('daily_reports')}"
-        weekly_text = f"📅 {get_string('weekly_report', lang_code)} {get_status_emoji('weekly_reports')}"
-        kb.add(
-            types.InlineKeyboardButton(daily_text, callback_data="toggle_daily_reports"),
-            types.InlineKeyboardButton(weekly_text, callback_data="toggle_weekly_reports")
+        # --- بخش گزارش‌ها ---
+        # تیتر در یک ردیف کامل
+        kb.add(types.InlineKeyboardButton("🗓️ گزارش‌های دوره‌ای", callback_data="noop"))
+        kb.row(
+            types.InlineKeyboardButton(
+                f"📊 روزانه {get_status_emoji('daily_reports')}",
+                callback_data="toggle_daily_reports"
+            ),
+            types.InlineKeyboardButton(
+                f"📅 هفتگی {get_status_emoji('weekly_reports')}",
+                callback_data="toggle_weekly_reports"
+            )
         )
 
-        expiry_text = f"⏰ {get_string('expiry_warning', lang_code)} {get_status_emoji('expiry_warnings')}"
-        data_warning_text = f"🪫 {get_string('data_warning', lang_code)} {get_status_emoji('data_warnings')}"
+        # --- بخش هشدار حجم ---
+        kb.add(types.InlineKeyboardButton(f"\u200f🪫 هشدار اتمام حجم", callback_data="noop"))        
+        data_warning_buttons = []
+        if access.get('has_access_de'):
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"{get_status_emoji('data_warning_de')} 🇩🇪", callback_data="toggle_data_warning_de")
+            )
+        if access.get('has_access_fr'):
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"{get_status_emoji('data_warning_fr')} 🇫🇷", callback_data="toggle_data_warning_fr")
+            )
+        if access.get('has_access_tr'):
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"{get_status_emoji('data_warning_tr')} 🇹🇷", callback_data="toggle_data_warning_tr")
+            )
+        
+        if data_warning_buttons:
+            kb.row(*data_warning_buttons)
+
+        # --- بخش اعلان‌های عمومی ---
+        kb.add(types.InlineKeyboardButton("📢 اطلاع‌رسانی‌های عمومی", callback_data="noop"))
+        kb.row(
+            types.InlineKeyboardButton(
+                f"🏆 دستاوردها {get_status_emoji('achievement_alerts')}",
+                callback_data="toggle_achievement_alerts"
+            ),
+            types.InlineKeyboardButton(
+                f"🎁 هدایا و تخفیف‌ها {get_status_emoji('promotional_alerts')}",
+                callback_data="toggle_promotional_alerts"
+            )
+        )
+
+        # --- بخش سایر هشدارها ---
         kb.add(
-            types.InlineKeyboardButton(expiry_text, callback_data="toggle_expiry_warnings"),
-            types.InlineKeyboardButton(data_warning_text, callback_data="toggle_data_warnings")
+            types.InlineKeyboardButton(
+                f"⏰ انقضای سرویس {get_status_emoji('expiry_warnings')}",
+                callback_data="toggle_expiry_warnings"
+            )
+        )
+
+        # --- دکمه‌های کنترلی نهایی ---
+        kb.add(
+            types.InlineKeyboardButton(f"🌐 {get_string('change_language', lang_code)}", callback_data="change_language"),
+            types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
         )
         
-        achievement_text = f"🏆 {get_string('achievement_alerts', lang_code)} {get_status_emoji('achievement_alerts')}"
-        promo_text = f"🎁 {get_string('promotional_alerts', lang_code)} {get_status_emoji('promotional_alerts')}"
-        kb.add(
-            types.InlineKeyboardButton(achievement_text, callback_data="toggle_achievement_alerts"),
-            types.InlineKeyboardButton(promo_text, callback_data="toggle_promotional_alerts")
-        )
-
-        kb.add(types.InlineKeyboardButton(f"🌐 {get_string('change_language', lang_code)}", callback_data="change_language"))
-        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
         return kb
 
     # =============================================================================

@@ -23,43 +23,29 @@ class DatabaseManager:
         return conn
 
     def _init_db(self) -> None:
-        print("DEBUG: _init_db function has been called.")
-        logger.critical("CRITICAL_DEBUG: _init_db function has been called.")
         with self.write_conn() as c:
             try:
-                logger.critical("CRITICAL_DEBUG: Inside the 'try' block of _init_db.")
-                def add_column_if_not_exists(table, column_name, column_definition):
-                    cursor = c.execute(f"PRAGMA table_info({table});")
-                    columns = [row['name'] for row in cursor.fetchall()]
-                    
-                    logger.critical(f"CRITICAL_DEBUG: Columns found in table '{table}': {columns}")
-
-                    if column_name not in columns:
-                        try:
-                            logger.critical(f"CRITICAL_DEBUG: Column '{column_name}' NOT FOUND. Attempting to add it now...")
-                            c.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_definition};")
-                            logger.critical(f"CRITICAL_DEBUG: SUCCESSFULLY ADDED column '{column_name}' to table '{table}'.")
-                        except sqlite3.OperationalError as e:
-                            logger.critical(f"CRITICAL_DEBUG: FAILED to add column '{column_name}'. Error: {e}")
-                            if "duplicate column name" in str(e):
-                                logger.warning(f"Column '{column_name}' already exists in {table}. Ignoring.")
-                            else:
-                                raise e
+                # --- START: Migration Logic ---
+                cursor = c.execute("PRAGMA table_info(users);")
+                columns = [row['name'] for row in cursor.fetchall()]
                 
-                add_column_if_not_exists("users", "referral_code", "TEXT UNIQUE")
-                add_column_if_not_exists("users", "referred_by_user_id", "INTEGER")
-                add_column_if_not_exists("users", "referral_reward_applied", "INTEGER DEFAULT 0")
-                add_column_if_not_exists("users", "achievement_points", "INTEGER DEFAULT 0")
+                # Rename old columns if they exist
+                if 'data_warning_hiddify' in columns and 'data_warning_de' not in columns:
+                    c.execute("ALTER TABLE users RENAME COLUMN data_warning_hiddify TO data_warning_de;")
+                    logger.info("MIGRATED: Renamed column 'data_warning_hiddify' to 'data_warning_de'.")
 
-                add_column_if_not_exists("users", "achievement_alerts", "INTEGER DEFAULT 1")
-                add_column_if_not_exists("users", "promotional_alerts", "INTEGER DEFAULT 1")
+                if 'data_warning_marzban' in columns and 'data_warning_fr' not in columns:
+                    c.execute("ALTER TABLE users RENAME COLUMN data_warning_marzban TO data_warning_fr;")
+                    logger.info("MIGRATED: Renamed column 'data_warning_marzban' to 'data_warning_fr'.")
 
-                logger.info("Database schema migration check complete.")
+                # Add the new column for Turkey
+                if 'data_warning_tr' not in columns:
+                    c.execute("ALTER TABLE users ADD COLUMN data_warning_tr INTEGER DEFAULT 1;")
+                    logger.info("MIGRATED: Added column 'data_warning_tr' to users table.")
+                # --- END: Migration Logic ---
 
             except Exception as e:
-                logger.critical(f"CRITICAL_DEBUG: An exception occurred in _init_db: {e}", exc_info=True)
-                if "no such table" not in str(e):
-                    logger.error(f"Failed to update database schema: {e}")
+                logger.error(f"An error occurred during database migration check: {e}")
 
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -70,8 +56,9 @@ class DatabaseManager:
                     last_name TEXT,
                     daily_reports INTEGER DEFAULT 1,
                     expiry_warnings INTEGER DEFAULT 1,
-                    data_warning_hiddify INTEGER DEFAULT 1,
-                    data_warning_marzban INTEGER DEFAULT 1,
+                    data_warning_de INTEGER DEFAULT 1,
+                    data_warning_fr INTEGER DEFAULT 1,
+                    data_warning_tr INTEGER DEFAULT 1,
                     show_info_config INTEGER DEFAULT 1,        
                     admin_note TEXT,
                     lang_code TEXT,
@@ -230,14 +217,12 @@ class DatabaseManager:
         logger.info("SQLite schema is fresh and ready.")
 
     def write_conn(self):
-        """A context manager for safe write access to the database."""
         class WriteConnection:
             def __init__(self, db_manager_instance):
                 self.db_manager = db_manager_instance
 
             def __enter__(self):
                 db_lock.acquire()
-                # از این به بعد از مسیر فایل دیتابیس که به آن داده شده استفاده می‌کند
                 self.conn = sqlite3.connect(self.db_manager.path, detect_types=sqlite3.PARSE_DECLTYPES)
                 self.conn.execute("PRAGMA journal_mode=WAL")
                 self.conn.execute("PRAGMA foreign_keys = ON;")
@@ -250,8 +235,6 @@ class DatabaseManager:
                         self.conn.commit()
                     self.conn.close()
                 db_lock.release()
-
-        # در اینجا نمونه کلاس اصلی را به کلاس داخلی پاس می‌دهیم
         return WriteConnection(self)
 
     def add_usage_snapshot(self, uuid_id: int, hiddify_usage: float, marzban_usage: float) -> None:
@@ -452,10 +435,7 @@ class DatabaseManager:
         """
         with self.write_conn() as c:
             existing_user = c.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone()
-            
-            # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
             logger.info(f"DB: Checking user {user_id}. Exists before this operation: {bool(existing_user)}")
-            # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
 
             c.execute(
                 "INSERT INTO users(user_id, username, first_name, last_name) VALUES(?,?,?,?) "
@@ -466,37 +446,42 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self.write_conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
-                achievement_alerts = bool(row['achievement_alerts']) if 'achievement_alerts' in row.keys() else True
-                promotional_alerts = bool(row['promotional_alerts']) if 'promotional_alerts' in row.keys() else True
-                
-                data_warnings = bool(row['data_warning_hiddify']) and bool(row['data_warning_marzban'])
+                row_dict = dict(row)
                 return {
-                    'daily_reports': bool(row['daily_reports']), 
-                    'weekly_reports': bool(row['weekly_reports']),
-                    'expiry_warnings': bool(row['expiry_warnings']),
-                    'data_warnings': data_warnings,
-                    'show_info_config': bool(row['show_info_config']),
-                    'auto_delete_reports': bool(row['auto_delete_reports']),
-                    'achievement_alerts': achievement_alerts,
-                    'promotional_alerts': promotional_alerts
+                    'daily_reports': bool(row_dict.get('daily_reports', True)), 
+                    'weekly_reports': bool(row_dict.get('weekly_reports', True)),
+                    'expiry_warnings': bool(row_dict.get('expiry_warnings', True)),
+                    'data_warning_de': bool(row_dict.get('data_warning_de', True)),
+                    'data_warning_fr': bool(row_dict.get('data_warning_fr', True)),
+                    'data_warning_tr': bool(row_dict.get('data_warning_tr', True)),
+                    'show_info_config': bool(row_dict.get('show_info_config', True)),
+                    'auto_delete_reports': bool(row_dict.get('auto_delete_reports', False)),
+                    'achievement_alerts': bool(row_dict.get('achievement_alerts', True)),
+                    'promotional_alerts': bool(row_dict.get('promotional_alerts', True))
                 }
             return {
                 'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True, 
-                'data_warnings': True, 'show_info_config': True, 'auto_delete_reports': True,
+                'data_warning_de': True, 'data_warning_fr': True, 'data_warning_tr': True,
+                'show_info_config': True, 'auto_delete_reports': False,
                 'achievement_alerts': True, 'promotional_alerts': True
             }
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
-        valid_settings = ['daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config', 'auto_delete_reports', 'achievement_alerts', 'promotional_alerts']
+        valid_settings = [
+            'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config', 
+            'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
+            'data_warning_de', 'data_warning_fr', 'data_warning_tr'
+        ]
         
         if setting in valid_settings:
             with self.write_conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
-        elif setting == 'data_warnings':
-            with self.write_conn() as c:
-                c.execute(f"UPDATE users SET data_warning_hiddify=?, data_warning_marzban=? WHERE user_id=?", (int(value), int(value), user_id))
+        else:
+            logger.warning(f"Attempted to update an invalid setting '{setting}' for user {user_id}.")
+
+
 
     def add_uuid(self, user_id: int, uuid_str: str, name: str) -> any:
             uuid_str = uuid_str.lower()
