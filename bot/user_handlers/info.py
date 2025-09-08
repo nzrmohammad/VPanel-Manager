@@ -317,49 +317,113 @@ def handle_show_card_details(call: types.CallbackQuery):
     _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
 
 # =============================================================================
-# 5. Connection Doctor
+# 5. Connection Doctor & Periodic Usage
 # =============================================================================
 
-def handle_connection_doctor(call: types.CallbackQuery):
-    """وضعیت سرویس کاربر و سرورها را بررسی می‌کند."""
-    uid, msg_id = call.from_user.id, call.message.message_id
-    lang_code = db.get_user_language(uid)
+def handle_periodic_usage_menu(call: types.CallbackQuery):
+    """منوی انتخاب سرور برای مشاهده مصرف بازه‌ای را نمایش می‌دهد."""
+    uid, msg_id, lang_code = call.from_user.id, call.message.message_id, db.get_user_language(call.from_user.id)
+    uuid_id = int(call.data.split("_")[2])
+    row = db.uuid_by_id(uid, uuid_id)
+    if row:
+        text = get_string("prompt_select_server_stats", lang_code)
+        reply_markup = menu.server_selection_menu(
+            uuid_id,
+            show_germany=bool(row.get('has_access_de')),
+            show_france=bool(row.get('has_access_fr')),
+            show_turkey=bool(row.get('has_access_tr')),
+            lang_code=lang_code
+        )
+        _safe_edit(uid, msg_id, text, reply_markup=reply_markup, parse_mode=None)
 
+
+def show_panel_periodic_usage(call: types.CallbackQuery):
+    """آمار مصرف بازه‌ای برای یک پنل خاص را نمایش می‌دهد."""
+    uid, msg_id, lang_code = call.from_user.id, call.message.message_id, db.get_user_language(call.from_user.id)
+    parts = call.data.split("_")
+    panel_code, uuid_id = parts[1], int(parts[2])
+    if db.uuid_by_id(uid, uuid_id):
+        panel_db_name = f"{panel_code}_usage_gb"
+        panel_display_name = get_string('server_de' if panel_code == "hiddify" else 'server_fr', lang_code)
+        stats = db.get_panel_usage_in_intervals(uuid_id, panel_db_name)
+        text = fmt_panel_quick_stats(panel_display_name, stats, lang_code=lang_code)
+        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data=f"win_select_{uuid_id}"))
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+
+def handle_connection_doctor(call: types.CallbackQuery):
+    """
+    (نسخه نهایی و اصلاح شده)
+    وضعیت سرویس کاربر و سرورها را به همراه آمار دقیق کاربران آنلاین نمایش می‌دهد.
+    """
+    uid, msg_id, lang_code = call.from_user.id, call.message.message_id, db.get_user_language(call.from_user.id)
     _safe_edit(uid, msg_id, escape_markdown(get_string("doctor_checking_status", lang_code)), reply_markup=None)
     
-    report_lines = [f"*{escape_markdown(get_string('doctor_report_title', lang_code))}*", "`──────────────────`"]
+    report = [f"*{escape_markdown(get_string('doctor_report_title', lang_code))}*", "`──────────────────`"]
     
     user_uuids = db.uuids(uid)
     if not user_uuids:
-        # اگر کاربر اکانتی نداشت، به منوی اصلی برگردان
         from ..user_router import go_back_to_main
         go_back_to_main(call=call)
         return
         
     user_info = combined_handler.get_combined_user_info(user_uuids[0]['uuid'])
     account_status_label = escape_markdown(get_string('doctor_account_status_label', lang_code))
-    
     is_ok = user_info and user_info.get('is_active') and (user_info.get('expire') is None or user_info.get('expire') >= 0)
     status_text = f"*{escape_markdown(get_string('fmt_status_active' if is_ok else 'fmt_status_inactive', lang_code))}*"
-    report_lines.append(f"✅ {account_status_label} {status_text}")
+    report.append(f"✅ {account_status_label} {status_text}")
 
     active_panels = db.get_active_panels()
     for panel in active_panels:
         panel_name_raw = panel.get('name', '...')
-        server_status_template = get_string('doctor_server_status_label', lang_code)
-        server_status_label = escape_markdown(server_status_template.format(panel_name=panel_name_raw))
+        server_status_label = escape_markdown(get_string('doctor_server_status_label', lang_code).format(panel_name=panel_name_raw))
         
         handler_class = HiddifyAPIHandler if panel['panel_type'] == 'hiddify' else MarzbanAPIHandler
         handler = handler_class(panel)
-        
         is_online = handler.check_connection()
         status_text = f"*{escape_markdown(get_string('server_status_online' if is_online else 'server_status_offline', lang_code))}*"
-        report_lines.append(f"{'✅' if is_online else '🚨'} {server_status_label} {status_text}")
+        report.append(f"{'✅' if is_online else '🚨'} {server_status_label} {status_text}")
+    
+    try:
+        online_counts = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0}
+        all_users = combined_handler.get_all_users_combined()
+        now_utc_naive = datetime.utcnow()
+        online_deadline = now_utc_naive - timedelta(minutes=15)
 
-    report_lines.extend([
+        for user in all_users:
+            last_online = user.get('last_online')
+            if not last_online or not isinstance(last_online, datetime):
+                continue
+            
+            last_online_naive = last_online.replace(tzinfo=None)
+
+            if last_online_naive > online_deadline:
+                db_record = db.get_user_uuid_record(user.get('uuid'))
+                if db_record:
+                    if db_record.get('has_access_de'):
+                        online_counts['hiddify'] += 1
+                    if db_record.get('has_access_fr'):
+                        online_counts['marzban_fr'] += 1
+                    if db_record.get('has_access_tr'):
+                        online_counts['marzban_tr'] += 1
+        
+        analysis_title = escape_markdown(get_string('doctor_analysis_title', lang_code))
+        line_template = get_string('doctor_online_users_line', lang_code)
+        
+        report.extend([
+            "`──────────────────`",
+            f"📈 *{analysis_title}*",
+            escape_markdown(line_template.format(count=online_counts['hiddify'], server_name="آلمان 🇩🇪")),
+            escape_markdown(line_template.format(count=online_counts['marzban_fr'], server_name="فرانسه 🇫🇷")),
+            escape_markdown(line_template.format(count=online_counts['marzban_tr'], server_name="ترکیه 🇹🇷"))
+        ])
+    except Exception as e:
+        logger.error(f"Error getting activity stats for doctor: {e}", exc_info=True)
+
+    report.extend([
         "`──────────────────`",
         f"💡 *{escape_markdown(get_string('doctor_suggestion_title', lang_code))}*\n{escape_markdown(get_string('doctor_suggestion_body', lang_code))}"
     ])
     
     kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
-    _safe_edit(uid, msg_id, "\n".join(report_lines), reply_markup=kb)
+    _safe_edit(uid, msg_id, "\n".join(report), reply_markup=kb)
