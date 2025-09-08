@@ -837,7 +837,7 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
     title = "📱 *لیست کامل دستگاه‌های متصل*"
 
     if not devices:
-        return f"{title}\n\n_هیچ دستگاهی برای نمایش یافت نشد_\\."
+        return f"{title}\n\nهیچ دستگاهی برای نمایش یافت نشد\\."
 
     # --- 1. Group devices by user ---
     users_devices = {}
@@ -879,7 +879,7 @@ def fmt_connected_devices_list(devices: list, page: int) -> str:
         lines.append(f"👤 *{user_name}*")
         
         if not user['devices']:
-             lines.append("` `└─ ▫️ _دستگاهی یافت نشد_")
+             lines.append("` `└─ ▫️ دستگاهی یافت نشد")
         else:
             for device in user['devices'][:6]: 
                 # --- START: New Emoji Logic ---

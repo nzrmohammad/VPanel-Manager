@@ -137,6 +137,8 @@ class SchedulerManager:
                     logger.warning("SCHEDULER (Warnings): Could not fetch any user data from panels. Aborting check.")
                     return
 
+                now_utc = datetime.now(pytz.utc)
+
                 # حالا در لیست کاربران دیتابیس ربات حلقه می‌زنیم
                 for u_row in active_uuids_list:
                     try:
@@ -209,39 +211,56 @@ class SchedulerManager:
                                     msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
                                     if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
                                         db.log_warning(uuid_id_in_db, 'expiry')
-
-                        # 4. ارسال هشدار اتمام حجم
-                        server_map = {'hiddify': {'name': 'آلمان 🇩🇪', 'setting': 'data_warning_hiddify'}, 'marzban': {'name': 'فرانسه/ترکیه 🇫🇷🇹🇷', 'setting': 'data_warning_fr_tr'}}
-                        for code, details in server_map.items():
-                            panel_info = next((p.get('data', {}) for p in info.get('breakdown', {}).values() if p.get('type') == code), None)
-                            if user_settings.get(details['setting']) and panel_info:
-                                limit, usage = panel_info.get('usage_limit_GB', 0.0), panel_info.get('current_usage_GB', 0.0)
-                                if limit > 0 and (usage / limit * 100) >= WARNING_USAGE_THRESHOLD:
-                                    warning_type = f'low_data_{code}'
-                                    if not db.has_recent_warning(uuid_id_in_db, warning_type):
-                                        msg_template = (f"{EMOJIS['warning']} *هشدار اتمام حجم*\n\nکاربر گرامی، حجم اکانت *{{user_name}}* شما در سرور *{{server_name}}* رو به اتمام است\\.\n"
-                                                        f"\\- حجم باقیمانده: *{{remaining_gb}} GB*")
-                                        if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, server_name=details['name'], remaining_gb=f"{max(0, limit - usage):.2f}"):
-                                            db.log_warning(uuid_id_in_db, warning_type)
                         
-                        # 5. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
+                        # 4. ارسال هشدارهای اتمام حجم (با منطق جدید)
+                        for code, details in {'hiddify': {'name': 'آلمان 🇩🇪'}, 'marzban': {'name': 'فرانسه/ترکیه 🇫🇷🇹🇷'}}.items():
+                            panel_info = next((p.get('data', {}) for p in info.get('breakdown', {}).values() if p.get('type') == code), None)
+                            if user_settings.get('data_warnings') and panel_info:
+                                limit, usage = panel_info.get('usage_limit_GB', 0.0), panel_info.get('current_usage_GB', 0.0)
+                                
+                                if limit > 0:
+                                    usage_percent = (usage / limit) * 100
+                                    # هشدار ۹۵ درصد
+                                    if 95 <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, f'low_data_95_{code}'):
+                                        msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، کمتر از *۵٪* از حجم سرویس شما در سرور *{escape_markdown(details['name'])}* باقی مانده است.")
+                                        if self._send_warning_message(user_id_in_telegram, msg):
+                                            db.log_warning(uuid_id_in_db, f'low_data_95_{code}')
+
+                                    # هشدار غیرفعال شدن به دلیل اتمام حجم
+                                    if usage >= limit and not panel_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, f'volume_depleted_{code}'):
+                                        msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *{escape_markdown(details['name'])}* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
+                                        if self._send_warning_message(user_id_in_telegram, msg):
+                                            db.log_warning(uuid_id_in_db, f'volume_depleted_{code}')
+
+                        # 5. ارسال پیام به کاربران غیرفعال
+                        last_online = info.get('last_online')
+                        if last_online and isinstance(last_online, datetime):
+                            days_inactive = (now_utc.replace(tzinfo=None) - last_online.replace(tzinfo=None)).days
+                            if 4 <= days_inactive <= 7 and not db.has_recent_warning(uuid_id_in_db, 'inactive_user_reminder', hours=168):
+                                msg = ("حس میکنم نیاز به راهنمایی داری\\!\n\n"
+                                    "چند روز از آخرین اتصالت میگذره، به نظر میاد نتونستی به اکانت وصل بشی\\. "
+                                    "اگه روش اتصال رو نمیدونی و یا اشتراک برات کار نکرد، با پشتیبانی در ارتباط باش تا برات حلش کنیم\\.")
+                                if self._send_warning_message(user_id_in_telegram, msg):
+                                    db.log_warning(uuid_id_in_db, 'inactive_user_reminder')
+
+
+                        # 6. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
                         if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
                             total_daily_usage = sum(db.get_usage_since_midnight_by_uuid(uuid_str).values())
                             if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage', hours=24):
-                                # ✅ اصلاح اصلی اینجاست: علامت " به ابتدای f-string اضافه شد
                                 alert_message = (f"⚠️ *مصرف غیرعادی روزانه*\n\nکاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
-                                                 f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
-                                                 f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
+                                                f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
+                                                f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
                                 for admin_id in ADMIN_IDS:
                                     self._notify_user(admin_id, alert_message)
                                 db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
 
-                        # 6. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
+                        # 7. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
                         device_count = db.count_user_agents(uuid_id_in_db)
                         if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168):
                             alert_message = (f"⚠️ *تعداد دستگاه بالا*\n\n"
-                                             f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
-                                             f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
+                                            f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
+                                            f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
                             for admin_id in ADMIN_IDS:
                                 self._notify_user(admin_id, alert_message)
                             db.log_warning(uuid_id_in_db, 'too_many_devices')

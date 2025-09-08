@@ -202,14 +202,15 @@ def show_achievements_page(call: types.CallbackQuery):
     ]
 
     title = f"*{escape_markdown(get_string('achievements_page_title', lang_code))}*"
-    
+    raw_intro = get_string("achievements_intro", lang_code)
+    escaped_intro = escape_markdown(raw_intro).replace('\\*امتیاز\\*', '*امتیاز*')
+
     if not unlocked_lines:
-        intro_text = get_string("achievements_intro", lang_code)
-        final_text = f"{title}\n\n{escape_markdown(intro_text)}"
+        final_text = f"{title}\n\n{escaped_intro}"
     else:
         unlocked_section_title = get_string("achievements_unlocked_section", lang_code)
         unlocked_section = f"*{escape_markdown(unlocked_section_title)}*\n" + "\n\n".join(unlocked_lines)
-        final_text = f"{title}\n\n{unlocked_section}"
+        final_text = f"{title}\n\n{escaped_intro}\n\n{unlocked_section}"
     
     kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
     _safe_edit(uid, msg_id, final_text, reply_markup=kb)
