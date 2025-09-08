@@ -39,6 +39,7 @@
         color: var(--text-secondary);
         margin-top: 0.3rem;
         display: block;
+        line-height: 1.6;
     }
     .form-control {
         width: 100%;
@@ -157,23 +158,37 @@
                         </label>
                     </div>
                     <div class="switch-group">
+                        <label for="weekly_reports">دریافت گزارش مصرف هفتگی</label>
+                        <label class="switch">
+                            <input type="checkbox" id="weekly_reports" name="weekly_reports" {% if settings.weekly_reports %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-group">
                         <label for="expiry_warnings">دریافت هشدار نزدیک شدن به انقضا</label>
                         <label class="switch">
                             <input type="checkbox" id="expiry_warnings" name="expiry_warnings" {% if settings.expiry_warnings %}checked{% endif %}>
                             <span class="slider"></span>
                         </label>
                     </div>
-                    <div class="switch-group">
-                        <label for="data_warning_hiddify">هشدار اتمام حجم (آلمان 🇩🇪)</label>
+                        <div class="switch-group">
+                        <label for="data_warnings">هشدار اتمام حجم</label>
                         <label class="switch">
-                            <input type="checkbox" id="data_warning_hiddify" name="data_warning_hiddify" {% if settings.data_warning_hiddify %}checked{% endif %}>
+                            <input type="checkbox" id="data_warnings" name="data_warnings" {% if settings.data_warnings %}checked{% endif %}>
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div class="switch-group">
-                        <label for="data_warning_marzban">هشدار اتمام حجم (فرانسه 🇫🇷)</label>
+                        <label for="achievement_alerts">اعلان دستاوردها</label>
                         <label class="switch">
-                            <input type="checkbox" id="data_warning_marzban" name="data_warning_marzban" {% if settings.data_warning_marzban %}checked{% endif %}>
+                            <input type="checkbox" id="achievement_alerts" name="achievement_alerts" {% if settings.achievement_alerts %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-group">
+                        <label for="promotional_alerts">هدایا و مناسبت‌ها</label>
+                        <label class="switch">
+                            <input type="checkbox" id="promotional_alerts" name="promotional_alerts" {% if settings.promotional_alerts %}checked{% endif %}>
                             <span class="slider"></span>
                         </label>
                     </div>

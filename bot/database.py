@@ -468,8 +468,6 @@ class DatabaseManager:
         with self.write_conn() as c:
             row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_hiddify, data_warning_marzban, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
-                # FIX: Changed from .get() to dictionary-style access
-                # Also check if the key exists in the row object before accessing
                 achievement_alerts = bool(row['achievement_alerts']) if 'achievement_alerts' in row.keys() else True
                 promotional_alerts = bool(row['promotional_alerts']) if 'promotional_alerts' in row.keys() else True
                 
@@ -484,7 +482,6 @@ class DatabaseManager:
                     'achievement_alerts': achievement_alerts,
                     'promotional_alerts': promotional_alerts
                 }
-            # Default settings if user not found or row is empty
             return {
                 'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True, 
                 'data_warnings': True, 'show_info_config': True, 'auto_delete_reports': True,

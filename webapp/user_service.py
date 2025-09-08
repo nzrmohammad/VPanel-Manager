@@ -221,7 +221,11 @@ class UserService:
                     except ValueError:
                         logger.warning(f"فرمت تاریخ تولد نامعتبر: {birthday_str}")
             
-            settings_keys = ['daily_reports', 'expiry_warnings', 'data_warning_hiddify', 'data_warning_marzban']
+            settings_keys = [
+                'daily_reports', 'expiry_warnings', 
+                'data_warnings', 'weekly_reports'
+                'achievement_alerts', 'promotional_alerts'
+            ]
             for setting in settings_keys:
                 value = setting in form_data
                 db.update_user_setting(user_id, setting, value)

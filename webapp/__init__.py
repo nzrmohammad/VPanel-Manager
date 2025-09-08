@@ -5,6 +5,7 @@ from bot.utils import to_shamsi
 from dotenv import load_dotenv
 from flask_wtf.csrf import CSRFProtect
 import urllib.parse
+from bot.config import ACHIEVEMENTS  # وارد کردن متغیر
 
 load_dotenv()
 
@@ -24,11 +25,15 @@ def create_app():
     app.register_blueprint(user_bp)
     app.register_blueprint(admin_bp)
 
+    # --- START OF FIX ---
+    @app.context_processor
+    def inject_global_variables():
+        """این تابع متغیرها را به صورت سراسری به تمام قالب‌ها تزریق می‌کند."""
+        return dict(ACHIEVEMENTS=ACHIEVEMENTS)
+    # --- END OF FIX ---
 
     app.jinja_env.filters['to_shamsi'] = to_shamsi
     app.jinja_env.filters['url_decode'] = lambda s: urllib.parse.unquote(s)
-
-
 
     logging.info("Flask app created and blueprints registered successfully.")
     return app

@@ -89,7 +89,7 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
             f"🗂 حجم کل : `{limit_gb:.0f} GB`",
             f"🔥 حجم مصرف شده : `{usage_gb:.2f} GB`",
             f"📥 حجم باقیمانده : `{remaining_gb:.2f} GB`",
-            f"⚡️ مصرف امروز : `{format_daily_usage(daily_usage_gb)}`",
+            f"{EMOJIS['lightning']} مصرف امروز : `{format_daily_usage(daily_usage_gb)}`",
             f"⏰ آخرین اتصال : `{esc(to_shamsi(panel_data.get('last_online'), include_time=True))}`"
         ]
 
