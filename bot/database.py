@@ -74,7 +74,7 @@ class DatabaseManager:
                     data_warning_marzban INTEGER DEFAULT 1,
                     show_info_config INTEGER DEFAULT 1,        
                     admin_note TEXT,
-                    lang_code TEXT DEFAULT 'fa',
+                    lang_code TEXT,
                     weekly_reports INTEGER DEFAULT 1,
                     auto_delete_reports INTEGER DEFAULT 0,
                     referral_code TEXT UNIQUE,
@@ -445,13 +445,23 @@ class DatabaseManager:
             row = c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
             return dict(row) if row else None
 
-    def add_or_update_user(self, user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> None:
+    def add_or_update_user(self, user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> bool:
+        """
+        Adds a user if they don't exist, or updates their info.
+        Returns True if the user was newly created, False otherwise.
+        """
         with self.write_conn() as c:
+            # ابتدا بررسی می‌کنیم که آیا کاربر از قبل وجود دارد یا نه
+            existing_user = c.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            
+            # ستون lang_code را از دستور INSERT اولیه حذف می‌کنیم تا مقدار پیش‌فرض دیتابیس (NULL) برای کاربر جدید ثبت شود
             c.execute(
                 "INSERT INTO users(user_id, username, first_name, last_name) VALUES(?,?,?,?) "
                 "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name, last_name=excluded.last_name",
                 (user_id, username, first, last),
             )
+            # اگر کاربر قبلا وجود نداشته (None بوده)، یعنی جدید است
+            return not existing_user
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self.write_conn() as c:

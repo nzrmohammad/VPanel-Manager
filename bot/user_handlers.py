@@ -515,14 +515,14 @@ def _handle_add_uuid_request(call: types.CallbackQuery):
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
     
+    # اصلاح کلیدی: دکمه لغو، کاربر جدید را به منوی خوش‌آمدگویی برمی‌گرداند
+    cancel_callback = "back_to_start_menu"
+    
     _safe_edit(uid, call.message.message_id, get_string("prompt_add_uuid", lang_code), 
-               reply_markup=menu.user_cancel_action(back_callback="manage", lang_code=lang_code), 
+               reply_markup=menu.user_cancel_action(back_callback=cancel_callback, lang_code=lang_code), 
                parse_mode=None)
                
-    # --- *** START OF CHANGES (TypeError Fix) *** ---
-    # به تابع بعدی، message_id پیام اصلی ("لطفاً UUID بفرستید") را پاس می‌دهیم
     bot.register_next_step_handler(call.message, _add_uuid_step, original_msg_id=call.message.message_id)
-    # --- *** END OF CHANGES *** ---
 
 def _show_manage_menu(call: types.CallbackQuery = None, message: types.Message = None, override_text: str = None, target_user_id: int = None, target_msg_id: int = None):
     uid = target_user_id or (call.from_user.id if call else message.from_user.id)
@@ -1267,14 +1267,21 @@ def _handle_connection_doctor(call: types.CallbackQuery):
     _safe_edit(uid, msg_id, "\n".join(report_lines), reply_markup=kb)
 
 
+# In bot/user_handlers.py
+
 def _handle_request_service(call: types.CallbackQuery):
-    """درخواست کاربر جدید را به ادمین‌ها اطلاع می‌دهد."""
+    """درخواست کاربر جدید را به ادمین‌ها اطلاع می‌دهد و به کاربر دکمه بازگشت نمایش می‌دهد."""
     user_info = call.from_user
     uid = user_info.id
     msg_id = call.message.message_id
+    lang_code = db.get_user_language(uid)
 
-    # اطلاع‌رسانی به کاربر
-    _safe_edit(uid, msg_id, escape_markdown("✅ درخواست شما برای مدیران ارسال شد. لطفاً منتظر بمانید تا با شما تماس بگیرند."), reply_markup=None)
+    # ساخت دکمه بازگشت
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back_to_start_menu"))
+
+    # اطلاع‌رسانی به کاربر همراه با دکمه بازگشت
+    _safe_edit(uid, msg_id, escape_markdown("✅ درخواست شما برای مدیران ارسال شد. لطفاً منتظر بمانید تا با شما تماس بگیرند."), reply_markup=kb)
 
     # ساخت پیام برای ادمین‌ها
     user_name = escape_markdown(user_info.first_name)
@@ -1359,14 +1366,15 @@ def _show_features_guide(call: types.CallbackQuery):
 
     guide_title = get_string("features_guide_title", lang_code)
     guide_body = get_string("features_guide_body", lang_code)
-    guide_text = f"{guide_title}\n\n{guide_body}"
+
+    escaped_body = escape_markdown(guide_body)
+    final_body = escaped_body.replace('\\*\\*', '*')
+    guide_text = f"*{escape_markdown(guide_title)}*\n\n{final_body}"
 
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back_to_start_menu"))
 
-    _safe_edit(uid, msg_id, escape_markdown(guide_text), reply_markup=kb)
-
-# In bot/user_handlers.py
+    _safe_edit(uid, msg_id, guide_text, reply_markup=kb, parse_mode="MarkdownV2")
 
 def _show_user_account_page(call: types.CallbackQuery):
     """صفحه کامل حساب کاربری را نمایش می‌دهد."""
@@ -1392,21 +1400,24 @@ def register_user_handlers(b: telebot.TeleBot):
     @bot.message_handler(commands=['start'])
     def cmd_start(message: types.Message):
         uid = message.from_user.id
-        db.add_or_update_user(uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name)
+        is_new_user = db.add_or_update_user(uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name)
+
+        user_data = db.user(uid)
+        # اگر کاربر کاملا جدید بود یا زبانش هنوز ثبت نشده بود، منوی انتخاب زبان را نشان بده
+        if is_new_user or not user_data.get('lang_code'):
+            bot.send_message(uid, "Welcome! / خوش آمدید!\nPlease select your language: / لطفاً زبان خود را انتخاب کنید:", reply_markup=language_selection_menu())
+            return
         
-        # بررسی وجود کد معرف در دستور استارت
+        # بقیه منطق برای کاربرانی که از قبل وجود دارند
         parts = message.text.split()
         if len(parts) > 1:
             referral_code = parts[1]
-            # فقط در صورتی کد معرف را ثبت کن که کاربر از قبل معرف نداشته باشد
-            if not db.user(uid).get('referred_by_user_id'):
+            if not user_data.get('referred_by_user_id'):
                 db.set_referrer(uid, referral_code)
 
         if db.uuids(uid):
-            # اگر کاربر از قبل اکانت دارد، مستقیم به منوی اصلی برود
             _go_back_to_main(message=message)
         else:
-            # اگر کاربر جدید است، از تابع کمکی برای نمایش منو استفاده می‌کنیم
             _show_initial_menu(uid=uid)
 
     def process_uuid_step_after_lang(message: types.Message, original_msg_id: int):
@@ -1437,12 +1448,16 @@ def register_user_handlers(b: telebot.TeleBot):
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def handle_language_selection(call: types.CallbackQuery):
         """
-        Handles language selection and ensures the user is returned to the settings menu.
+        Handles language selection. Returns new users to the initial menu and
+        existing users back to the settings menu.
         """
         uid, lang_code = call.from_user.id, call.data.split(':')[1]
         db.set_user_language(uid, lang_code)
         bot.answer_callback_query(call.id, get_string("lang_selected", lang_code))
 
-        # FIX: Always show the settings menu again after changing the language.
-        # This provides a better user experience as they remain in the same context.
-        _show_settings(call)
+        # اگر کاربر اکانتی (UUID) ثبت نکرده باشد، یعنی کاربر جدیدی است که زبانش را انتخاب کرده
+        if not db.uuids(uid):
+            _show_initial_menu(uid=uid, msg_id=call.message.message_id)
+        else:
+            # اگر کاربر اکانت دارد، یعنی از منوی تنظیمات آمده، پس به همانجا برمی‌گردانیم
+            _show_settings(call)
