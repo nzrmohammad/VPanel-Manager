@@ -303,7 +303,16 @@ class SchedulerManager:
 
                 # گزارش شخصی برای همه کاربران (شامل ادمین‌ها)
                 user_uuids_from_db = db.uuids(user_id)
-                user_infos_for_report = [user_info_map[u['uuid']] for u in user_uuids_from_db if u['uuid'] in user_info_map]
+                user_infos_for_report = []
+                
+                # --- START OF FIX: Add 'db_id' to user_info ---
+                for u_row in user_uuids_from_db:
+                    if u_row['uuid'] in user_info_map:
+                        user_data = user_info_map[u_row['uuid']]
+                        # This line is crucial for daily usage calculation in fmt_user_report
+                        user_data['db_id'] = u_row['id'] 
+                        user_infos_for_report.append(user_data)
+                # --- END OF FIX ---
                 
                 if user_infos_for_report:
                     user_header = f"🌙 *گزارش شبانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
@@ -575,15 +584,16 @@ class SchedulerManager:
 
     def _notify_user_achievement(self, user_id: int, badge_code: str):
         """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""
-        user_settings = db.get_user_settings(user_id)
-        if not user_settings.get('achievement_alerts', True):
-            return
-        
         badge = ACHIEVEMENTS.get(badge_code)
         if not badge: return
 
         points = badge.get("points", 0)
-        db.add_achievement_points(user_id, points)
+        if points > 0:
+            db.add_achievement_points(user_id, points)
+
+        user_settings = db.get_user_settings(user_id)
+        if not user_settings.get('achievement_alerts', True):
+            return
         
         message = (
             f"{badge['icon']} *شما یک نشان جدید دریافت کردید\\!* {badge['icon']}\n\n"
@@ -804,7 +814,7 @@ class SchedulerManager:
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._send_daily_achievements_report)
-        schedule.every().sunday.at("22:00", self.tz_str).do(self._send_achievement_leaderboard)
+        schedule.every().friday.at("23:30", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)
         schedule.every().friday.at("21:00", self.tz_str).do(self._run_lucky_lottery)

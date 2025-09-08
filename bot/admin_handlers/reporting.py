@@ -10,7 +10,7 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks, fmt_leaderboard_list
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
 from ..utils import _safe_edit, escape_markdown, load_service_plans, parse_volume_string
@@ -95,9 +95,7 @@ def handle_paginated_list(call, params):
     این نسخه شامل صفحه‌بندی برای تمام لیست‌ها و اصلاح منطق کاربران آنلاین است.
     """
     list_type, page = params[0], int(params[-1])
-    # پنل ممکن است در برخی callback ها وجود نداشته باشد
     panel_type = params[1] if len(params) > 2 else None
-    
     _safe_edit(call.from_user.id, call.message.message_id, escape_markdown("⏳ در حال دریافت و پردازش اطلاعات..."), reply_markup=None)
 
     all_users_combined = combined_handler.get_all_users_combined()
@@ -106,7 +104,6 @@ def handle_paginated_list(call, params):
     now_utc = datetime.now(pytz.utc)
     users = []
 
-    # --- منطق کامل برای جمع‌آوری لیست‌ها بر اساس نوع گزارش ---
     if list_type == "online_users":
         deadline = now_utc - timedelta(minutes=3)
         online_users_hiddify, online_users_marzban = [], []
@@ -121,7 +118,6 @@ def handle_paginated_list(call, params):
             h_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'hiddify'), None)
             m_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'marzban'), None)
             
-            # منطق اصلی: کاربر به پنلی که آخرین فعالیت را در آن داشته، اختصاص می‌یابد
             if h_online and (not m_online or h_online >= m_online):
                 online_users_hiddify.append(user)
             elif m_online:
@@ -129,8 +125,10 @@ def handle_paginated_list(call, params):
         
         users = online_users_hiddify if panel_type == 'hiddify' else online_users_marzban
 
+    elif list_type == "leaderboard":
+        users = db.get_all_users_by_points()
+
     else:
-        # فیلتر کردن کاربران برای گزارش‌های مخصوص یک پنل
         if panel_type:
             all_panels_map = {p['name']: p['panel_type'] for p in db.get_all_panels()}
             for user in all_users_combined:
@@ -170,18 +168,17 @@ def handle_paginated_list(call, params):
         "bot_users": {"format": fmt_bot_users_list, "back": "reports_menu"},
         "birthdays": {"format": fmt_birthdays_list, "back": "reports_menu"},
         "payments": {"format": fmt_payments_report_list, "back": "reports_menu"},
+        "leaderboard": {"format": fmt_leaderboard_list, "back": "reports_menu"}
     }
     
     config = list_configs.get(list_type)
     if not config: return
     
-    # فرمتر مناسب را بر اساس نوع گزارش فراخوانی می‌کنیم
-    if list_type in ["top_consumers", "bot_users", "birthdays", "payments"]:
+    if list_type in ["leaderboard", "top_consumers", "bot_users", "birthdays", "payments"]:
         text = config["format"](users, page)
     else:
         text = config["format"](users, page, panel_type)
     
-    # دکمه‌های صفحه‌بندی را بر اساس اطلاعات ساخته و به پیام اضافه می‌کنیم
     base_cb = f"admin:list:{list_type}" + (f":{panel_type}" if panel_type else "")
     back_cb = ""
     if list_type == "panel_users":
@@ -193,6 +190,7 @@ def handle_paginated_list(call, params):
 
     kb = menu.create_pagination_menu(base_cb, page, len(users), back_cb)
     _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
+
 
 def handle_report_by_plan_selection(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id

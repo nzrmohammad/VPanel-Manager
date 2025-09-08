@@ -1071,3 +1071,71 @@ def handle_force_snapshot(call, params):
         logger.error(f"Error in handle_force_snapshot: {e}", exc_info=True)
         bot.answer_callback_query(call.id, "❌ خطایی در هنگام اجرای عملیات رخ داد.", show_alert=True)
         _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در ارتباط با پنل‌ها یا دیتابیس رخ داد."), reply_markup=menu.admin_system_tools_menu())
+
+def handle_reset_all_points_confirm(call, params):
+    """از ادمین برای ریست کردن تمام امتیازها و دستاوردها تاییدیه می‌گیرد."""
+    prompt = (
+        f"⚠️ *{escape_markdown('توجه بسیار مهم!')}*\n\n"
+        f"{escape_markdown('آیا مطمئن هستید که می‌خواهید امتیازات و دستاوردهای')} "
+        f"*{escape_markdown('تمام کاربران')}* {escape_markdown('را صفر کنید؟')}\n\n"
+        f"{escape_markdown('این عمل غیرقابل بازگشت است و کاربران باید دستاوردها را دوباره کسب کنند.')}"
+    )
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، ریست کن", callback_data="admin:reset_all_points_exec"),
+        types.InlineKeyboardButton("❌ انصراف", callback_data="admin:system_tools_menu")
+    )
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
+
+def handle_reset_all_points_execute(call, params):
+    """تمام امتیازات و دستاوردهای کاربران را ریست می‌کند."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال ریست کردن امتیازات و دستاوردها..."), reply_markup=None)
+
+    try:
+        deleted_achievements = db.delete_all_achievements()
+        reset_users_count = db.reset_all_achievement_points()
+
+        success_msg = (
+            f"✅ *{escape_markdown('عملیات با موفقیت کامل شد.')}*\n\n"
+            f"{escape_markdown(f'امتیازات برای')} `{reset_users_count}` {escape_markdown('کاربر صفر شد.')}\n"
+            f"{escape_markdown(f'تعداد')} `{deleted_achievements}` {escape_markdown('دستاورد حذف شد.')}"
+        )
+        _safe_edit(uid, msg_id, success_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+    except Exception as e:
+        logger.error(f"Error while resetting all points and achievements: {e}", exc_info=True)
+        error_msg = escape_markdown("❌ خطا در هنگام ریست کردن. لطفاً لاگ‌ها را بررسی کنید.")
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+def handle_delete_all_devices_confirm(call, params):
+    """از ادمین برای حذف تمام دستگاه‌های ثبت‌شده تاییدیه می‌گیرد."""
+    prompt = (
+        f"⚠️ *{escape_markdown('توجه بسیار مهم!')}*\n\n"
+        f"{escape_markdown('آیا مطمئن هستید که می‌خواهید تاریخچه دستگاه‌های متصل')} "
+        f"*{escape_markdown('تمام کاربران')}* {escape_markdown('را حذف کنید؟')}\n\n"
+        f"{escape_markdown('این عمل غیرقابل بازگشت است و پس از آن، دستگاه‌ها با اولین اتصال مجدد ثبت خواهند شد.')}"
+    )
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، حذف کن", callback_data="admin:delete_all_devices_exec"),
+        types.InlineKeyboardButton("❌ انصراف", callback_data="admin:system_tools_menu")
+    )
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
+
+def handle_delete_all_devices_execute(call, params):
+    """تمام دستگاه‌های ثبت‌شده کاربران را حذف می‌کند."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال حذف تاریخچه تمام دستگاه‌ها..."), reply_markup=None)
+
+    try:
+        deleted_count = db.delete_all_user_agents()
+        success_msg = (
+            f"✅ *{escape_markdown('عملیات با موفقیت کامل شد.')}*\n\n"
+            f"{escape_markdown(f'تعداد')} `{deleted_count}` {escape_markdown('رکورد دستگاه حذف شد.')}"
+        )
+        _safe_edit(uid, msg_id, success_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+    except Exception as e:
+        logger.error(f"Error while deleting all user agents: {e}", exc_info=True)
+        error_msg = escape_markdown("❌ خطا در هنگام حذف دستگاه‌ها. لطفاً لاگ‌ها را بررسی کنید.")
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")

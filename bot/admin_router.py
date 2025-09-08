@@ -217,6 +217,10 @@ ADMIN_CALLBACK_HANDLERS = {
     "reset_all_daily_usage_confirm": user_management.handle_reset_all_daily_usage_confirm,
     "reset_all_daily_usage_exec": user_management.handle_reset_all_daily_usage_action,
     "force_snapshot": user_management.handle_force_snapshot,
+    "reset_all_points_confirm": user_management.handle_reset_all_points_confirm,
+    "reset_all_points_exec": user_management.handle_reset_all_points_execute,
+    "delete_all_devices_confirm": user_management.handle_delete_all_devices_confirm,
+    "delete_all_devices_exec": user_management.handle_delete_all_devices_execute,
 }
 
 def handle_admin_callbacks(call: types.CallbackQuery):

@@ -216,6 +216,48 @@ def fmt_achievement_leaderboard(leaderboard_data: list) -> str:
         
     return "\n".join(lines)
 
+def fmt_leaderboard_list(users: list, page: int) -> str:
+    """(نسخه نهایی) لیست کامل کاربران، امتیازات و نشان‌هایشان را برای ادمین فرمت‌بندی می‌کند."""
+    title = "🏆 رتبه‌بندی امتیازهای کاربران"
+    if not users:
+        return f"*{escape_markdown(title)}*\n\n{escape_markdown('هیچ کاربری امتیازی کسب نکرده است.')}"
+
+    total_users = len(users)
+    total_pages = (total_users + PAGE_SIZE - 1) // PAGE_SIZE
+    is_last_page = (page + 1) == total_pages
+
+    header_text = f"*{escape_markdown(title)}*"
+    if total_users > PAGE_SIZE:
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_users}\\)"
+        header_text += f"\n{pagination_text}"
+
+    lines = [header_text]
+    start_index = page * PAGE_SIZE
+    paginated_users = users[start_index : start_index + PAGE_SIZE]
+
+    for i, user in enumerate(paginated_users, start=start_index + 1):
+        name = escape_markdown(user.get('first_name', 'کاربر ناشناس'))
+        points = user.get('achievement_points', 0)
+        
+        badges_str = user.get('badges', '')
+        badge_icons = ""
+        if badges_str:
+            badge_codes = badges_str.split(',')
+            badge_icons = " ".join([ACHIEVEMENTS.get(code, {}).get('icon', '') for code in badge_codes])
+        
+        lines.append(f"`{i}.` *{name}* {badge_icons} : *{points}* امتیاز")
+    
+    if is_last_page:
+        lines.append("\n`──────────────────`")
+        lines.append("*راهنمای نشان‌ها:*")
+        for code, details in ACHIEVEMENTS.items():
+            points = details.get('points', 0)
+            lines.append(f"{details.get('icon', '❓')} \\= {escape_markdown(details.get('name', code))} \\(*{points} امتیاز*\\)")
+        
+        lines.append("\nتمام امتیازها به جز نشان خوش‌شانس \\(🍀\\) فقط یک بار به کاربر تعلق می‌گیرند\\.")
+
+    return "\n".join(lines)
+
 def fmt_lottery_participants_list(participants: list) -> str:
     """لیست شرکت‌کنندگان در قرعه‌کشی را برای ادمین فرمت‌بندی می‌کند."""
     lines = ["🍀 *لیست هفتگی واجدین شرایط قرعه‌کشی ماهانه*"]
@@ -547,18 +589,18 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     # --- بخش ۲: ساخت متن گزارش (هدر از اینجا حذف شد) ---
     report_lines = [
         f"*{escape_markdown('⚙️ خلاصه وضعیت کل پنل')}*",
-        f"{list_bullet}👤 تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
-        f"{list_bullet}✅ اکانت‌های فعال : *{active_users}*",
-        f"{list_bullet}➕ کاربران جدید امروز : *{len(new_users_today)}*",
-        f"{list_bullet}💳 پرداخت‌های امروز : *{payments_today_count}*",
-        f"{list_bullet}⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
-        f"{list_bullet} 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-        f"{list_bullet} 🇫🇷🇹🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+        f"👤 تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
+        f"✅ اکانت‌های فعال : *{active_users}*",
+        f"➕ کاربران جدید امروز : *{len(new_users_today)}*",
+        f"💳 پرداخت‌های امروز : *{payments_today_count}*",
+        f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
+        f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
+        f" 🇫🇷🇹🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
 
     # --- بخش ۳: افزودن لیست‌های جزئی (بدون تغییر) ---
     if active_today_users:
-        report_lines.append("`───────────────`")
+        report_lines.append("───────────────")
         report_lines.append(f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*")
         active_today_users.sort(key=lambda u: u.get('name', ''))
         for user in active_today_users:
@@ -581,14 +623,14 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 report_lines.append(f"• {user_name} : {usage_str}")
     
     if new_users_today:
-        report_lines.append("`───────────────`")
+        report_lines.append("───────────────")
         report_lines.append(f"*{escape_markdown('⭐️ کاربران جدید (۲۴ ساعت اخیر):')}*")
         for user in new_users_today:
             name = escape_markdown(user['name'])
             report_lines.append(f"• {name}")
 
     if achievements_today:
-        report_lines.append("`───────────────`")
+        report_lines.append("───────────────")
         report_lines.append(f"*{escape_markdown('🏆 دستاوردها و امتیازات امروز')}*")
         users_achievements = {}
         for ach in achievements_today:
@@ -603,7 +645,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             report_lines.append(f"• {name} \\({escape_markdown(badge_names)}\\) \\(\\+{points_today} امتیاز\\)")
 
     if expiring_soon_users:
-        report_lines.append("`───────────────`")
+        report_lines.append("───────────────")
         report_lines.append(f"*{escape_markdown('⚠️ کاربرانی که تا ۳ روز آینده منقضی می شوند')}*")
         expiring_soon_users.sort(key=lambda u: u.get('expire', 99))
         for user in expiring_soon_users:
@@ -612,7 +654,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             report_lines.append(f"• {name} : {days} روز")
 
     if expired_recently_users:
-        report_lines.append("`───────────────`")
+        report_lines.append("───────────────")
         report_lines.append(f"*{escape_markdown('❌ کاربران منقضی (۴۸ ساعت اخیر)')}*")
         expired_recently_users.sort(key=lambda u: u.get('name', ''))
         for user in expired_recently_users:
@@ -621,7 +663,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
     sent_warnings = db_manager.get_sent_warnings_since_midnight()
     if sent_warnings:
-        report_lines.append("`───────────────`")
+        report_lines.append("───────────────")
         warning_map = {"expiry": "انقضای سرویس", "low_data_hiddify": "اتمام حجم 🇩🇪", "low_data_marzban": "اتمام حجم 🇫🇷", "unusual_daily_usage": "مصرف غیرعادی", "too_many_devices": "تعداد دستگاه بالا"}
         user_warnings = [f"• {escape_markdown(w.get('name', 'N/A'))} : {escape_markdown(warning_map.get(w.get('warning_type'), w.get('warning_type')))}" for w in sent_warnings]
         report_lines.append(f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*")

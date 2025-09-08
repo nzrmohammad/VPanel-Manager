@@ -262,9 +262,11 @@ class Menu:
 
     def admin_system_tools_menu(self):
         """منوی جدید برای دستورات حساس و سیستمی."""
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(types.InlineKeyboardButton("🔄 به‌روزرسانی دستی آمار مصرف (Snapshot)", callback_data="admin:force_snapshot"))
-        kb.add(types.InlineKeyboardButton("🔄 ریست مصرف امروز همه کاربران", callback_data="admin:reset_all_daily_usage_confirm"))
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.add(types.InlineKeyboardButton("🔄 به‌روزرسانی دستی آمار مصرف (Snapshot)", callback_data="admin:force_snapshot"),
+               types.InlineKeyboardButton("🔄 ریست مصرف امروز همه کاربران", callback_data="admin:reset_all_daily_usage_confirm"))
+        kb.add(types.InlineKeyboardButton("🏆 ریست امتیازات و دستاوردها", callback_data="admin:reset_all_points_confirm"),
+               types.InlineKeyboardButton("🗑️ حذف تمام دستگاه‌های ثبت‌شده", callback_data="admin:delete_all_devices_confirm"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 
@@ -366,7 +368,8 @@ class Menu:
             types.InlineKeyboardButton("🤖 لیست کاربران ربات", callback_data="admin:list:bot_users:0"))
         kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"),
                types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
-        kb.add(types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
+        kb.add(types.InlineKeyboardButton("🏆 رتبه‌بندی امتیازها", callback_data="admin:list:leaderboard:0"),
+               types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 

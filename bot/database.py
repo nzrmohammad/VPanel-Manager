@@ -1537,7 +1537,29 @@ class DatabaseManager:
             return [dict(r) for r in rows]
 
     def record_user_agent(self, uuid_id: int, user_agent: str):
-        """Saves or updates the user agent for a given UUID, resetting the last_seen timestamp."""
+        """(نسخه نهایی) به صورت هوشمند دستگاه را ثبت یا به‌روزرسانی می‌کند."""
+        from .utils import parse_user_agent # Import محلی برای جلوگیری از خطای وابستگی چرخه‌ای
+        
+        new_parsed = parse_user_agent(user_agent)
+        if not new_parsed or not new_parsed.get('client'):
+            return # اگر User-Agent قابل تحلیل نبود، از آن صرف نظر کن
+
+        existing_agents = self.get_user_agents_for_uuid(uuid_id)
+        
+        # تلاش برای یافتن یک دستگاه مشابه (همان برنامه روی همان سیستم‌عامل)
+        for agent in existing_agents:
+            existing_parsed = parse_user_agent(agent['user_agent'])
+            if existing_parsed and existing_parsed.get('client') == new_parsed.get('client') and existing_parsed.get('os') == new_parsed.get('os'):
+                # اگر پیدا شد، رکورد قدیمی را با اطلاعات جدید به‌روزرسانی می‌کنیم
+                with self.write_conn() as c:
+                    c.execute("""
+                        UPDATE client_user_agents 
+                        SET user_agent = ?, last_seen = ? 
+                        WHERE uuid_id = ? AND user_agent = ?
+                    """, (user_agent, datetime.now(pytz.utc), uuid_id, agent['user_agent']))
+                return # عملیات تمام است
+
+        # اگر هیچ دستگاه مشابهی یافت نشد، یک رکورد جدید ثبت می‌کنیم
         with self.write_conn() as c:
             c.execute("""
                 INSERT INTO client_user_agents (uuid_id, user_agent, last_seen)
@@ -1545,6 +1567,17 @@ class DatabaseManager:
                 ON CONFLICT(uuid_id, user_agent) DO UPDATE SET
                 last_seen = excluded.last_seen;
             """, (uuid_id, user_agent, datetime.now(pytz.utc)))
+
+    def delete_all_user_agents(self) -> int:
+        """تمام رکوردهای دستگاه‌های ثبت‌شده را از دیتابیس حذف می‌کند."""
+        with self.write_conn() as c:
+            cursor = c.execute("DELETE FROM client_user_agents;")
+            # شمارنده auto-increment جدول را نیز ریست می‌کنیم
+            try:
+                c.execute("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'client_user_agents';")
+            except sqlite3.OperationalError:
+                pass # اگر جدول خالی بود و رکوردی در sqlite_sequence نداشت، خطا را نادیده بگیر
+            return cursor.rowcount
 
     def get_user_agents_for_uuid(self, uuid_id: int) -> List[Dict[str, Any]]:
         """Retrieves all recorded user agents for a specific user UUID, ordered by last seen."""
@@ -1902,6 +1935,27 @@ class DatabaseManager:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_all_users_by_points(self) -> List[Dict[str, Any]]:
+        """
+        (نسخه نهایی) تمام کاربرانی که امتیاز دارند را به همراه لیست نشان‌هایشان
+        به ترتیب امتیاز برمی‌گرداند.
+        """
+        with self.write_conn() as c:
+            query = """
+                SELECT
+                    u.user_id,
+                    u.first_name,
+                    u.achievement_points,
+                    GROUP_CONCAT(ua.badge_code) as badges
+                FROM users u
+                LEFT JOIN user_achievements ua ON u.user_id = ua.user_id
+                WHERE u.achievement_points > 0
+                GROUP BY u.user_id
+                ORDER BY u.achievement_points DESC
+            """
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in rows]
+
     def get_referred_users(self, referrer_user_id: int) -> list[dict]:
             """لیست کاربرانی که توسط یک کاربر خاص معرفی شده‌اند را برمی‌گرداند."""
             with self.write_conn() as c:
@@ -2017,5 +2071,39 @@ class DatabaseManager:
                     (start_date, end_date)
                 ).fetchone()
                 return row['count'] if row else 0
+
+    def get_all_users_by_points(self) -> List[Dict[str, Any]]:
+        """
+        (نسخه نهایی) تمام کاربرانی که امتیاز دارند را به همراه لیست نشان‌هایشان
+        به ترتیب امتیاز برمی‌گرداند.
+        """
+        with self.write_conn() as c:
+            query = """
+                SELECT
+                    u.user_id,
+                    u.first_name,
+                    u.achievement_points,
+                    GROUP_CONCAT(ua.badge_code) as badges
+                FROM users u
+                LEFT JOIN user_achievements ua ON u.user_id = ua.user_id
+                WHERE u.achievement_points > 0
+                GROUP BY u.user_id
+                ORDER BY u.achievement_points DESC
+            """
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in rows]
+
+    def reset_all_achievement_points(self) -> int:
+        """امتیاز تمام کاربران را به ۰ ریست می‌کند."""
+        with self.write_conn() as c:
+            cursor = c.execute("UPDATE users SET achievement_points = 0;")
+            return cursor.rowcount
+
+    def delete_all_achievements(self) -> int:
+        """تمام رکوردهای دستاوردهای کسب شده را حذف می‌کند."""
+        with self.write_conn() as c:
+            cursor = c.execute("DELETE FROM user_achievements;")
+            return cursor.rowcount
+
 
 db = DatabaseManager()
