@@ -85,7 +85,6 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
 
         return [
             separator,
-            # خط ۲ (اصلاح شده): کاراکترهای ( و ) با \\ escape شده‌اند
             f"سرور {display_name_with_flags} \\({status_text_panel}\\)",
             f"🗂 حجم کل : `{limit_gb:.0f} GB`",
             f"🔥 حجم مصرف شده : `{usage_gb:.2f} GB`",
@@ -494,14 +493,21 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
 
 
 def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
+    """
+    (نسخه نهایی و اصلاح شده) گزارش جامع و کامل ادمین را با تمام جزئیات درخواستی تولید می‌کند.
+    این نسخه شامل آمار دقیق، قالب‌بندی صحیح و رفع باگ‌های مربوط به کاراکترهای خاص است.
+    """
     if not all_users_from_api:
         return "هیچ کاربری در پنل یافت نشد"
 
+    # --- بخش ۱: محاسبات اولیه و جمع‌آوری داده‌ها ---
     active_users = 0
     total_daily_hiddify, total_daily_marzban = 0.0, 0.0
     active_today_users, expiring_soon_users, new_users_today, expired_recently_users = [], [], [], []
     
     now_utc = datetime.now(pytz.utc)
+    start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    
     db_users_map = {u['uuid']: u for u in db_manager.get_all_user_uuids()}
 
     for user_info in all_users_from_api:
@@ -535,100 +541,91 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     total_daily_all = total_daily_hiddify + total_daily_marzban
     list_bullet = escape_markdown("- ")
     
+    payments_today_count = db_manager.get_total_payments_in_range(start_of_today_utc, now_utc)
+    achievements_today = db_manager.get_daily_achievements()
+
+    # --- بخش ۲: ساخت متن گزارش (هدر از اینجا حذف شد) ---
     report_lines = [
-        f"{EMOJIS['gear']} *{escape_markdown('خلاصه وضعیت کل پنل')}*",
-        f"{list_bullet}{EMOJIS['user']} تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
-        f"{list_bullet}{EMOJIS['success']} اکانت‌های فعال : *{active_users}*",
-        f"{list_bullet}{EMOJIS['wifi']} کاربران فعال امروز : *{len(active_today_users)}*",
-        f"{list_bullet}{EMOJIS['lightning']} *مصرف کل امروز :* `{escape_markdown(format_daily_usage(total_daily_all))}`",
+        f"*{escape_markdown('⚙️ خلاصه وضعیت کل پنل')}*",
+        f"{list_bullet}👤 تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
+        f"{list_bullet}✅ اکانت‌های فعال : *{active_users}*",
+        f"{list_bullet}➕ کاربران جدید امروز : *{len(new_users_today)}*",
+        f"{list_bullet}💳 پرداخت‌های امروز : *{payments_today_count}*",
+        f"{list_bullet}⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
         f"{list_bullet} 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
         f"{list_bullet} 🇫🇷🇹🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
 
+    # --- بخش ۳: افزودن لیست‌های جزئی (بدون تغییر) ---
     if active_today_users:
-        report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['success']} {escape_markdown('کاربران فعال امروز و مصرفشان')}*")
+        report_lines.append("`───────────────`")
+        report_lines.append(f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*")
         active_today_users.sort(key=lambda u: u.get('name', ''))
         for user in active_today_users:
             user_name = escape_markdown(user.get('name', 'کاربر ناشناس'))
             daily_dict = user.get('daily_usage_dict', {})
-            
             usage_parts = []
-            
             user_db_record = db_users_map.get(user.get('uuid'))
-
             hiddify_usage = daily_dict.get('hiddify', 0.0)
-            if hiddify_usage > 0:
-                usage_parts.append(f"🇩🇪 `{escape_markdown(format_daily_usage(hiddify_usage))}`")
-
+            if hiddify_usage > 0.001:
+                usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(hiddify_usage))}")
             marzban_usage = daily_dict.get('marzban', 0.0)
-            if marzban_usage > 0 and user_db_record:
+            if marzban_usage > 0.001 and user_db_record:
                 flags = []
-                if user_db_record.get('has_access_fr'):
-                    flags.append("🇫🇷")
-                if user_db_record.get('has_access_tr'):
-                    flags.append("🇹🇷")
-                
+                if user_db_record.get('has_access_fr'): flags.append("🇫🇷")
+                if user_db_record.get('has_access_tr'): flags.append("🇹🇷")
                 if flags:
-                    flag_str = "".join(flags)
-                    usage_parts.append(f"{flag_str} `{escape_markdown(format_daily_usage(marzban_usage))}`")
-
+                    usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(marzban_usage))}")
             usage_str = escape_markdown(" | ").join(usage_parts)
             if usage_str:
-                report_lines.append(f"`•` *{user_name} :* {usage_str}")
+                report_lines.append(f"• {user_name} : {usage_str}")
+    
+    if new_users_today:
+        report_lines.append("`───────────────`")
+        report_lines.append(f"*{escape_markdown('⭐️ کاربران جدید (۲۴ ساعت اخیر):')}*")
+        for user in new_users_today:
+            name = escape_markdown(user['name'])
+            report_lines.append(f"• {name}")
+
+    if achievements_today:
+        report_lines.append("`───────────────`")
+        report_lines.append(f"*{escape_markdown('🏆 دستاوردها و امتیازات امروز')}*")
+        users_achievements = {}
+        for ach in achievements_today:
+            user_id = ach['user_id']
+            if user_id not in users_achievements:
+                users_achievements[user_id] = {'first_name': ach.get('first_name', 'کاربر'), 'badges': []}
+            users_achievements[user_id]['badges'].append(ach['badge_code'])
+        for user_id, data in users_achievements.items():
+            name = escape_markdown(data['first_name'])
+            points_today = sum(ACHIEVEMENTS.get(b, {}).get('points', 0) for b in data['badges'])
+            badge_names = ', '.join([escape_markdown(ACHIEVEMENTS.get(b, {}).get('name', b)) for b in data['badges']])
+            report_lines.append(f"• {name} \\({escape_markdown(badge_names)}\\) \\(\\+{points_today} امتیاز\\)")
 
     if expiring_soon_users:
-        report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['warning']} {escape_markdown('کاربرانی که تا ۳ روز آینده منقضی می شوند')}*")
+        report_lines.append("`───────────────`")
+        report_lines.append(f"*{escape_markdown('⚠️ کاربرانی که تا ۳ روز آینده منقضی می شوند')}*")
         expiring_soon_users.sort(key=lambda u: u.get('expire', 99))
         for user in expiring_soon_users:
             name = escape_markdown(user['name'])
             days = user['expire']
-            report_lines.append(f"`•` *{name} :* {days} روز")
+            report_lines.append(f"• {name} : {days} روز")
 
     if expired_recently_users:
-        report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['error']} {escape_markdown('کاربران منقضی (۴۸ ساعت اخیر)')}*")
+        report_lines.append("`───────────────`")
+        report_lines.append(f"*{escape_markdown('❌ کاربران منقضی (۴۸ ساعت اخیر)')}*")
         expired_recently_users.sort(key=lambda u: u.get('name', ''))
         for user in expired_recently_users:
             name = escape_markdown(user['name'])
-            report_lines.append(f"`•` *{name}*")
-
-    if new_users_today:
-        report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['star']} {escape_markdown('کاربران جدید (۲۴ ساعت اخیر):')}*")
-        for user in new_users_today:
-            name = escape_markdown(user['name'])
-            report_lines.append(f"`•` *{name}*")
+            report_lines.append(f"• {name}")
 
     sent_warnings = db_manager.get_sent_warnings_since_midnight()
     if sent_warnings:
-        user_warnings = []
-        admin_warnings = []
-
-        warning_map = {
-            "expiry": "انقضای سرویس",
-            "low_data_hiddify": "اتمام حجم 🇩🇪",
-            "low_data_marzban": "اتمام حجم 🇫🇷",
-            "unusual_daily_usage": "مصرف غیرعادی",
-            "too_many_devices": "تعداد دستگاه بالا"
-        }
-        
-        admin_only_warnings = ["unusual_daily_usage", "too_many_devices"]
-
-        for warning in sent_warnings:
-            user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
-            warning_type_fa = escape_markdown(warning_map.get(warning.get('warning_type'), "نامشخص"))
-            formatted_line = f"`•` *{user_name} :* {warning_type_fa}"
-
-            if warning.get('warning_type') in admin_only_warnings:
-                admin_warnings.append(formatted_line)
-            else:
-                user_warnings.append(formatted_line)
-
-        if user_warnings:
-            report_lines.append("\n" + "─" * 15 + f"\n*{EMOJIS['bell']} {escape_markdown('هشدارهای ارسال شده به کاربر')}*")
-            report_lines.extend(user_warnings)
-        
-        if admin_warnings:
-            report_lines.append("\n" + "─" * 15 + f"\n*🚨 {escape_markdown('هشدارهای ارسال شده به ادمین')}*")
-            report_lines.extend(admin_warnings)
+        report_lines.append("`───────────────`")
+        warning_map = {"expiry": "انقضای سرویس", "low_data_hiddify": "اتمام حجم 🇩🇪", "low_data_marzban": "اتمام حجم 🇫🇷", "unusual_daily_usage": "مصرف غیرعادی", "too_many_devices": "تعداد دستگاه بالا"}
+        user_warnings = [f"• {escape_markdown(w.get('name', 'N/A'))} : {escape_markdown(warning_map.get(w.get('warning_type'), w.get('warning_type')))}" for w in sent_warnings]
+        report_lines.append(f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*")
+        report_lines.extend(user_warnings)
             
     return "\n".join(report_lines)
 
@@ -938,8 +935,7 @@ def fmt_daily_achievements_report(daily_achievements: list) -> str:
             badge_info = ACHIEVEMENTS.get(badge_code, {})
             points = badge_info.get('points', 0)
             total_points_today += points
-            lines.append(f"  `•` {badge_info.get('icon', '🎖️')} {escape_markdown(badge_info.get('name', badge_code))} \\( +{points} امتیاز \\)")
-        
+            lines.append(f"  `•` {badge_info.get('icon', '🎖️')} {escape_markdown(badge_info.get('name', badge_code))} \\( \\+{points} امتیاز \\)")        
         lines.append(f"  💰 *مجموع امتیاز امروز: {total_points_today}*")
         lines.append("") 
 

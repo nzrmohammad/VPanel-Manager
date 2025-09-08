@@ -42,6 +42,15 @@ class SchedulerManager:
         self.tz = pytz.timezone(TEHRAN_TZ) if isinstance(TEHRAN_TZ, str) else TEHRAN_TZ
         self.tz_str = str(self.tz)
 
+    def _notify_user(self, user_id: int, message: str):
+        """یک پیام را برای کاربر مشخصی ارسال می‌کند و خطاهای احتمالی را مدیریت می‌کند."""
+        if not user_id:
+            return
+        try:
+            self.bot.send_message(user_id, message, parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.warning(f"SCHEDULER: Failed to send notification to user {user_id}: {e}")
+
     def _send_warning_message(self, user_id: int, message_template: str, **kwargs):
         """
         A central function to format and send all warning messages,
@@ -154,7 +163,7 @@ class SchedulerManager:
                                     "💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم\\.\n\n"
                                     "با آرزوی بهترین‌ها ✨"
                                 )
-                                if self.bot.send_message(user_id_in_telegram, welcome_text, parse_mode="MarkdownV2"):
+                                if self._send_warning_message(user_id_in_telegram, welcome_text):
                                     db.mark_welcome_message_as_sent(uuid_id_in_db)
 
                         # 2. ارسال یادآوری تمدید
@@ -183,8 +192,8 @@ class SchedulerManager:
                                 if recommended_plans:
                                     msg_template = (
                                         f"🔔 *تمدید هوشمند سرویس* 🔔\n\n"
-                                        f"سلام {escape_markdown(user_name.split('(')[0].strip())} عزیز!\n"
-                                        f"سرویس شما تا *{escape_markdown(str(expire_days))}* روز دیگر منقضی می‌شود.\n\n"
+                                        f"سلام {escape_markdown(user_name.split('(')[0].strip())} عزیز\\!\n"
+                                        f"سرویس شما تا *{escape_markdown(str(expire_days))}* روز دیگر منقضی می‌شود\\.\n\n"
                                         f"ما بر اساس مصرف شما در این دوره، گزینه‌های زیر را برای تمدید پیشنهاد می‌کنیم تا بهترین تجربه را داشته باشید:"
                                     )
                                     kb = types.InlineKeyboardMarkup(row_width=1)
@@ -197,7 +206,6 @@ class SchedulerManager:
                                     if self.bot.send_message(user_id_in_telegram, msg_template, parse_mode="MarkdownV2", reply_markup=kb):
                                         db.log_warning(uuid_id_in_db, 'expiry')
                                 else:
-                                    # اگر مصرف کم بود، پیام عادی ارسال می‌شود
                                     msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
                                     if self._send_warning_message(user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
                                         db.log_warning(uuid_id_in_db, 'expiry')
@@ -220,21 +228,22 @@ class SchedulerManager:
                         if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
                             total_daily_usage = sum(db.get_usage_since_midnight_by_uuid(uuid_str).values())
                             if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage', hours=24):
+                                # ✅ اصلاح اصلی اینجاست: علامت " به ابتدای f-string اضافه شد
                                 alert_message = (f"⚠️ *مصرف غیرعادی روزانه*\n\nکاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
-                                                f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
-                                                f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
+                                                 f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
+                                                 f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
                                 for admin_id in ADMIN_IDS:
-                                    self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
+                                    self._notify_user(admin_id, alert_message)
                                 db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
 
                         # 6. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
                         device_count = db.count_user_agents(uuid_id_in_db)
-                        if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168): # Check once a week
+                        if device_count > 5 and not db.has_recent_warning(uuid_id_in_db, 'too_many_devices', hours=168):
                             alert_message = (f"⚠️ *تعداد دستگاه بالا*\n\n"
-                                            f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
-                                            f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
+                                             f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
+                                             f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
                             for admin_id in ADMIN_IDS:
-                                self.bot.send_message(admin_id, alert_message, parse_mode="MarkdownV2")
+                                self._notify_user(admin_id, alert_message)
                             db.log_warning(uuid_id_in_db, 'too_many_devices')
 
                     except Exception as e:
@@ -251,7 +260,7 @@ class SchedulerManager:
         now_gregorian = datetime.now(tehran_tz)
         
         # اگر جمعه بود، فقط برای کاربران عادی از ارسال گزارش روزانه صرف‌نظر کن
-        if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6 and user_id not in ADMIN_IDS:
+        if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6 and (target_user_id is None or target_user_id not in ADMIN_IDS):
             logger.info("SCHEDULER (Nightly): Friday, skipping daily for weekly report.")
             return
 
@@ -271,27 +280,30 @@ class SchedulerManager:
         for user_id in user_ids_to_process:
             try:
                 user_settings = db.get_user_settings(user_id)
-                # Skip non-targeted users if daily reports are off
                 if not user_settings.get('daily_reports', True) and not target_user_id:
                     continue
                 
-                # --- START OF FIX: Separate Admin and User Report Sending ---
-                
-                # 1. Send Admin-specific comprehensive report if the user is an admin
+                # گزارش جامع برای ادمین‌ها
                 if user_id in ADMIN_IDS:
                     admin_header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                     admin_report_text = fmt_admin_report(all_users_info_from_api, db)
                     admin_full_message = admin_header + admin_report_text
-                    self.bot.send_message(user_id, admin_full_message, parse_mode="MarkdownV2")
+                    
+                    # --- منطق تقسیم پیام برای ادمین ---
+                    if len(admin_full_message) > 4096:
+                        chunks = [admin_full_message[i:i + 4090] for i in range(0, len(admin_full_message), 4090)]
+                        for i, chunk in enumerate(chunks):
+                            # به پیام‌های بعدی یک عنوان اضافه می‌کنیم تا مشخص باشد ادامه گزارش است
+                            if i > 0:
+                                chunk = f"*{escape_markdown('(ادامه گزارش جامع)')}*\n\n" + chunk
+                            self.bot.send_message(user_id, chunk, parse_mode="MarkdownV2")
+                            time.sleep(0.5) # وقفه کوتاه بین ارسال پیام‌ها
+                    else:
+                        self.bot.send_message(user_id, admin_full_message, parse_mode="MarkdownV2")
 
-                # 2. Send the personal user report for EVERY user (including admins)
+                # گزارش شخصی برای همه کاربران (شامل ادمین‌ها)
                 user_uuids_from_db = db.uuids(user_id)
-                user_infos_for_report = []
-                for u in user_uuids_from_db:
-                    if u['uuid'] in user_info_map:
-                        user_data = user_info_map[u['uuid']]
-                        user_data['db_id'] = u['id']
-                        user_infos_for_report.append(user_data)
+                user_infos_for_report = [user_info_map[u['uuid']] for u in user_uuids_from_db if u['uuid'] in user_info_map]
                 
                 if user_infos_for_report:
                     user_header = f"🌙 *گزارش شبانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
@@ -302,8 +314,6 @@ class SchedulerManager:
                     sent_message = self.bot.send_message(user_id, user_full_message, parse_mode="MarkdownV2")
                     if sent_message:
                         db.add_sent_report(user_id, sent_message.message_id)
-
-                # --- END OF FIX ---
 
             except apihelper.ApiTelegramException as e:
                 if "bot was blocked by the user" in e.description:
@@ -347,7 +357,6 @@ class SchedulerManager:
         current_year = jdatetime.datetime.now(self.tz).year
 
         for user_id in today_birthday_users:
-            # FIX: Check if a gift has already been given this year
             with db._conn() as c:
                 already_given = c.execute(
                     "SELECT 1 FROM birthday_gift_log WHERE user_id = ? AND gift_year = ?",
@@ -359,7 +368,6 @@ class SchedulerManager:
                 continue
 
             user_uuids = db.uuids(user_id)
-            # هدیه فقط به اولین اکانت کاربر اضافه می‌شود
             if user_uuids:
                 first_uuid = user_uuids[0]['uuid']
                 if combined_handler.modify_user_on_all_panels(first_uuid, add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS):
@@ -500,7 +508,7 @@ class SchedulerManager:
                     if db.add_achievement(user_id, 'loyal_supporter'):
                         self._notify_user_achievement(user_id, 'loyal_supporter')
 
-                # --- ۳. بررسی نشان "سفیر" (جدید) ---
+                # --- ۳. بررسی نشان "سفیر" ---
                 from .config import AMBASSADOR_BADGE_THRESHOLD
                 successful_referrals = [u for u in db.get_referred_users(user_id) if u['referral_reward_applied']]
                 if len(successful_referrals) >= AMBASSADOR_BADGE_THRESHOLD:
@@ -508,7 +516,7 @@ class SchedulerManager:
                         self._notify_user_achievement(user_id, 'ambassador')
 
                 # --- ۴. بررسی نشان "دوست VIP" ---
-                user_record = db.uuid_by_id(user_id, uuid_id) # uuid_by_id should accept user_id and uuid_id
+                user_record = db.uuid_by_id(user_id, uuid_id)
                 if user_record and user_record.get('is_vip'):
                     if db.add_achievement(user_id, 'vip_friend'):
                         self._notify_user_achievement(user_id, 'vip_friend')
@@ -537,7 +545,7 @@ class SchedulerManager:
                     if db.add_achievement(user_id, 'lucky_one'):
                         self._notify_user_achievement(user_id, 'lucky_one')
 
-                # --- START: منطق جدید برای هدیه سالگرد ---
+                # --- منطق هدیه سالگرد ---
                 if days_since_creation >= 365:
                     with db._conn() as c:
                         already_given = c.execute(
@@ -545,25 +553,25 @@ class SchedulerManager:
                             (user_id, current_year)
                         ).fetchone()
 
-                if not already_given:
-                    anniversary_gift_gb = 20
-                    anniversary_gift_days = 10
+                        if not already_given:
+                            anniversary_gift_gb = 20
+                            anniversary_gift_days = 10
 
-                    if combined_handler.modify_user_on_all_panels(first_uuid_record['uuid'], add_gb=anniversary_gift_gb, add_days=anniversary_gift_days):
-                        lang_code = db.get_user_language(user_id)
-                        title = get_string("anniversary_gift_title", lang_code)
-                        body = get_string("anniversary_gift_body", lang_code).format(
-                            gift_gb=anniversary_gift_gb,
-                            gift_days=anniversary_gift_days
-                        )
-                        anniversary_message = f"{title}\n\n{body}"
+                            if combined_handler.modify_user_on_all_panels(first_uuid_record['uuid'], add_gb=anniversary_gift_gb, add_days=anniversary_gift_days):
+                                lang_code = db.get_user_language(user_id)
+                                title = get_string("anniversary_gift_title", lang_code)
+                                body = get_string("anniversary_gift_body", lang_code).format(
+                                    gift_gb=anniversary_gift_gb,
+                                    gift_days=anniversary_gift_days
+                                )
+                                anniversary_message = f"*{escape_markdown(title)}*\n\n{escape_markdown(body)}"
 
-                        self._send_warning_message(user_id, anniversary_message)
-                        with db._conn() as c:
-                            c.execute("INSERT INTO anniversary_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
+                                self._send_warning_message(user_id, anniversary_message)
+                                c.execute("INSERT INTO anniversary_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
 
             except Exception as e:
                 logger.error(f"Error checking achievements for user_id {user_id}: {e}")
+
 
     def _notify_user_achievement(self, user_id: int, badge_code: str):
         """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""
@@ -580,7 +588,7 @@ class SchedulerManager:
         message = (
             f"{badge['icon']} *شما یک نشان جدید دریافت کردید\\!* {badge['icon']}\n\n"
             f"تبریک\\! شما موفق به کسب نشان «*{escape_markdown(badge['name'])}*» شدید و *{points} امتیاز* دریافت کردید\\.\n\n"
-            f"_{escape_markdown(badge['description'])}_\n\n"
+            f"{escape_markdown(badge['description'])}\n\n"
             f"این نشان و امتیاز آن به پروفایل شما اضافه شد\\."
         )
         self._send_warning_message(user_id, message)

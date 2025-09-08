@@ -78,7 +78,27 @@ def register_admin_handlers(bot, scheduler):
             bot.send_message(admin_id, f"❌ خطا در اجرای تست بررسی هشدارها: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
             logger.error(f"Error in test_warnings command: {e}", exc_info=True)
     # --- END: NEW TEST COMMANDS FOR SCHEDULER ---
+    @bot.message_handler(commands=['test_achievements'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_achievements_check(message: types.Message):
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال اجرای تست بررسی دستاوردها و سالگرد...")
+        try:
+            scheduler._check_achievements_and_anniversary()
+            bot.send_message(admin_id, "✅ تست بررسی دستاوردها با موفقیت انجام شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست دستاوردها: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_achievements command: {e}", exc_info=True)
 
+    @bot.message_handler(commands=['test_birthday'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_birthday_job(message: types.Message):
+        admin_id = message.from_user.id
+        bot.send_message(admin_id, "⏳ در حال اجرای تست هدیه تولد...")
+        try:
+            scheduler._birthday_gifts_job()
+            bot.send_message(admin_id, "✅ تست هدیه تولد با موفقیت انجام شد. اگر کاربری امروز تولدش باشد، هدیه را دریافت می‌کند.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست هدیه تولد: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+            logger.error(f"Error in test_birthday command: {e}", exc_info=True)
 # ===================================================================
 # Simple Menu Functions
 # ===================================================================

@@ -287,10 +287,10 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             busiest_period_name = period_map.get(busiest_period_key, "ساعات مختلف")
 
             summary_text = (
-                f"\n\nسلام {escape_markdown(name.split('(')[0].strip())}!\n"
-                f"این هفته *{escape_markdown(format_daily_usage(current_week_usage))}* مصرف داشتی. "
-                f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی. "
-                f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی!"
+                f"\n\nسلام {escape_markdown(name.split('(')[0].strip())}\\!\n"
+                f"این هفته *{escape_markdown(format_daily_usage(current_week_usage))}* مصرف داشتی\\. "
+                f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی\\. "
+                f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی\\!"
             )
             account_lines.append(summary_text)
 

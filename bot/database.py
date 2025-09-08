@@ -1711,8 +1711,6 @@ class DatabaseManager:
 
                 latest_snap, previous_snap = snapshots[0], snapshots[1]
 
-                # 🔥 خط اصلاح شده اینجاست
-                # اطمینان حاصل می‌کنیم که زمان خوانده شده از دیتابیس، دارای اطلاعات منطقه زمانی است
                 latest_snap_time = latest_snap['taken_at']
                 if latest_snap_time.tzinfo is None:
                     latest_snap_time = pytz.utc.localize(latest_snap_time)
@@ -1736,7 +1734,6 @@ class DatabaseManager:
         results['marzban_fr'] = len(active_users['marzban_fr'])
         results['marzban_tr'] = len(active_users['marzban_tr'])
         return results
-
 
     def get_or_create_referral_code(self, user_id: int) -> str:
         """کد معرف کاربر را برمی‌گرداند یا اگر وجود نداشته باشد، یکی برای او می‌سازد."""
@@ -2011,5 +2008,14 @@ class DatabaseManager:
             if plan_total_volume == int(current_limit_gb):
                 return plan.get('price')
         return None
+
+    def get_total_payments_in_range(self, start_date: datetime, end_date: datetime) -> int:
+            """تعداد کل پرداخت‌ها در یک بازه زمانی مشخص را برمی‌گرداند."""
+            with self.write_conn() as c:
+                row = c.execute(
+                    "SELECT COUNT(payment_id) as count FROM payments WHERE payment_date >= ? AND payment_date < ?",
+                    (start_date, end_date)
+                ).fetchone()
+                return row['count'] if row else 0
 
 db = DatabaseManager()
