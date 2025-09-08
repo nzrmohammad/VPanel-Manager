@@ -451,16 +451,17 @@ class DatabaseManager:
         Returns True if the user was newly created, False otherwise.
         """
         with self.write_conn() as c:
-            # ابتدا بررسی می‌کنیم که آیا کاربر از قبل وجود دارد یا نه
             existing_user = c.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone()
             
-            # ستون lang_code را از دستور INSERT اولیه حذف می‌کنیم تا مقدار پیش‌فرض دیتابیس (NULL) برای کاربر جدید ثبت شود
+            # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
+            logger.info(f"DB: Checking user {user_id}. Exists before this operation: {bool(existing_user)}")
+            # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
+
             c.execute(
                 "INSERT INTO users(user_id, username, first_name, last_name) VALUES(?,?,?,?) "
                 "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name, last_name=excluded.last_name",
                 (user_id, username, first, last),
             )
-            # اگر کاربر قبلا وجود نداشته (None بوده)، یعنی جدید است
             return not existing_user
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
@@ -1223,14 +1224,28 @@ class DatabaseManager:
     def set_user_language(self, user_id: int, lang_code: str):
         """زبان انتخابی کاربر را در دیتابیس ذخیره می‌کند."""
         with self.write_conn() as c:
-            c.execute("UPDATE users SET lang_code = ? WHERE user_id = ?", (lang_code, user_id))
+            try:
+                cursor = c.execute("UPDATE users SET lang_code = ? WHERE user_id = ?", (lang_code, user_id))
+                # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
+                if cursor.rowcount > 0:
+                    logger.info(f"DB WRITE: Successfully set lang_code='{lang_code}' for user_id={user_id}.")
+                else:
+                    logger.warning(f"DB WRITE: UPDATE for lang_code failed. No rows affected for user_id={user_id}.")
+                # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
+            except Exception as e:
+                logger.error(f"DB WRITE: FAILED to set lang_code for user_id={user_id}. Error: {e}", exc_info=True)
 
     def get_user_language(self, user_id: int) -> str:
         """کد زبان کاربر را از دیتابیس می‌خواند."""
         with self.write_conn() as c:
             row = c.execute("SELECT lang_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
-            # اگر زبانی ثبت نشده بود، فارسی را به عنوان پیش‌فرض برمی‌گرداند
-            return row['lang_code'] if row and row['lang_code'] else 'fa'
+            
+            # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
+            lang_code = row['lang_code'] if row and row['lang_code'] else 'fa'
+            logger.info(f"DB: Fetched lang_code for user {user_id}. Result: '{lang_code}' (Raw value was: {row['lang_code'] if row else 'No row'})")
+            # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
+
+            return lang_code
 
     def add_marzban_mapping(self, hiddify_uuid: str, marzban_username: str) -> bool:
         """یک ارتباط جدید بین UUID هیدیفای و یوزرنیم مرزبان اضافه یا جایگزین می‌کند."""

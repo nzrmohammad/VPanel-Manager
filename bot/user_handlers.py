@@ -43,6 +43,40 @@ def language_selection_menu() -> types.InlineKeyboardMarkup:
     )
     return kb
 
+def handle_language_selection(call: types.CallbackQuery):
+    """
+    Handles language selection. Re-renders the menu directly to ensure the change is visible.
+    """
+    uid, new_lang_code = call.from_user.id, call.data.split(':')[1]
+    
+    # ۱. زبان جدید در دیتابیس ذخیره می‌شود
+    db.set_user_language(uid, new_lang_code)
+    logger.info(f"LANGUAGE: User {uid} changed language to '{new_lang_code}'.")
+
+    # ۲. به کاربر با زبان جدید پاسخ داده می‌شود
+    bot.answer_callback_query(call.id, get_string("lang_selected", new_lang_code))
+
+    # ۳. بررسی می‌شود کاربر جدید است یا قدیمی
+    if not db.uuids(uid):
+        # اگر کاربر جدید بود، منوی اولیه با زبان جدید نمایش داده می‌شود
+        logger.info(f"LANGUAGE: User {uid} is new. Showing initial menu.")
+        _show_initial_menu(uid=uid, msg_id=call.message.message_id)
+    else:
+        # اگر کاربر قدیمی بود، منوی تنظیمات مستقیماً در اینجا با زبان جدید بازسازی می‌شود
+        logger.info(f"LANGUAGE: User {uid} is existing. Re-rendering settings menu.")
+        try:
+            settings_data = db.get_user_settings(uid)
+            title_text = f'*{escape_markdown(get_string("settings_title", new_lang_code))}*'
+            reply_markup = menu.settings(settings_data, lang_code=new_lang_code)
+            
+            # پیام قبلی (منوی تنظیمات) با نسخه جدید و ترجمه شده ویرایش می‌شود
+            _safe_edit(uid, call.message.message_id, text=title_text, reply_markup=reply_markup)
+            logger.info(f"LANGUAGE: Successfully edited settings menu for user {uid} in '{new_lang_code}'.")
+        except Exception as e:
+            logger.error(f"LANGUAGE: FAILED to re-render settings menu for user {uid}. Error: {e}", exc_info=True)
+            # در صورت بروز خطا، به منوی اصلی بازمی‌گردد
+            _go_back_to_main(call=call)
+
 # =============================================================================
 # Callback Handler
 # =============================================================================
@@ -392,9 +426,6 @@ def handle_user_callbacks(call: types.CallbackQuery):
             
         _show_manage_menu(call=call, override_text="✅ درخواست شما با موفقیت لغو شد.")
 
-
-
-
 # =============================================================================
 # Helper Functions (Next Step Handlers & Menu Builders)
 # =============================================================================
@@ -625,16 +656,21 @@ def _show_initial_menu(uid: int, msg_id: int = None):
     منوی خوشامدگویی اولیه را برای کاربران جدید نمایش می‌دهد یا ویرایش می‌کند.
     """
     lang_code = db.get_user_language(uid)
-    welcome_text = (
-        "<b>Welcome!</b> 👋\n\n"
-        "Please choose one of the options below to get started:"
-    )
+    
+    welcome_text = "<b>Welcome!</b> 👋\n\nلطفاً برای شروع یکی از گزینه‌های زیر را انتخاب کنید:"
+
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(f"💳 {get_string('btn_have_service', lang_code)}", callback_data="add"),
         types.InlineKeyboardButton(f"🚀 {get_string('btn_request_service', lang_code)}", callback_data="request_service")
     )
-    kb.add(types.InlineKeyboardButton(get_string('btn_features_guide', lang_code), callback_data="show_features_guide"))
+    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>>>
+    # افزودن دکمه تغییر زبان به منوی اولیه
+    kb.add(
+        types.InlineKeyboardButton(f"🌐 {get_string('change_language', lang_code)}", callback_data="change_language"),
+        types.InlineKeyboardButton(get_string('btn_features_guide', lang_code), callback_data="show_features_guide")
+    )
+    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>>>
 
     if msg_id:
         _safe_edit(uid, msg_id, welcome_text, reply_markup=kb, parse_mode="HTML")
@@ -1403,12 +1439,16 @@ def register_user_handlers(b: telebot.TeleBot):
         is_new_user = db.add_or_update_user(uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name)
 
         user_data = db.user(uid)
-        # اگر کاربر کاملا جدید بود یا زبانش هنوز ثبت نشده بود، منوی انتخاب زبان را نشان بده
+        
+        # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
+        logger.info(f"START CMD: User {uid}. Is New User: {is_new_user}. DB lang_code: '{user_data.get('lang_code') if user_data else 'N/A'}'")
+        # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
+        
         if is_new_user or not user_data.get('lang_code'):
+            logger.info(f"START CMD: Showing language menu for user {uid}.")
             bot.send_message(uid, "Welcome! / خوش آمدید!\nPlease select your language: / لطفاً زبان خود را انتخاب کنید:", reply_markup=language_selection_menu())
             return
         
-        # بقیه منطق برای کاربرانی که از قبل وجود دارند
         parts = message.text.split()
         if len(parts) > 1:
             referral_code = parts[1]
@@ -1444,20 +1484,3 @@ def register_user_handlers(b: telebot.TeleBot):
 
         db.add_uuid(uid, uuid_str, info.get("name", get_string('unknown_user', lang_code)))
         _go_back_to_main(message=message, original_msg_id=original_msg_id)
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
-    def handle_language_selection(call: types.CallbackQuery):
-        """
-        Handles language selection. Returns new users to the initial menu and
-        existing users back to the settings menu.
-        """
-        uid, lang_code = call.from_user.id, call.data.split(':')[1]
-        db.set_user_language(uid, lang_code)
-        bot.answer_callback_query(call.id, get_string("lang_selected", lang_code))
-
-        # اگر کاربر اکانتی (UUID) ثبت نکرده باشد، یعنی کاربر جدیدی است که زبانش را انتخاب کرده
-        if not db.uuids(uid):
-            _show_initial_menu(uid=uid, msg_id=call.message.message_id)
-        else:
-            # اگر کاربر اکانت دارد، یعنی از منوی تنظیمات آمده، پس به همانجا برمی‌گردانیم
-            _show_settings(call)

@@ -1,5 +1,3 @@
-# nzrmohammad/vpanel-manager/VPanel-Manager-aa3b4f7623a793527cfa3d33f8968c1f80909dbb/bot/custom_bot.py
-
 import logging
 import sys
 import signal
@@ -17,12 +15,10 @@ from .callback_router import register_callback_router
 from .utils import initialize_utils
 from .inline_handlers import register_inline_handlers
 
-
 logger = logging.getLogger(__name__)
-# bot is initialized here but the instance from bot_instance is used for consistency
 bot = TeleBot(BOT_TOKEN, parse_mode=None)
 initialize_utils(bot)
-scheduler = SchedulerManager(bot) # The scheduler instance is created here
+scheduler = SchedulerManager(bot)
 
 def setup_bot_logging():
     class UserIdFilter(logging.Filter):
@@ -30,11 +26,7 @@ def setup_bot_logging():
             if not hasattr(record, 'user_id'):
                 record.user_id = 'SYSTEM'
             return True
-    
     LOG_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — [User:%(user_id)s] — %(message)s"
-    
-    # 🔥 تغییر اصلی اینجاست: استفاده از force=True
-    # این دستور تمام تنظیمات قبلی لاگ را پاک کرده و تنظیمات ما را اعمال می‌کند.
     logging.basicConfig(
         level=LOG_LEVEL,
         format=LOG_FORMAT,
@@ -46,7 +38,6 @@ def setup_bot_logging():
         force=True
     )
 
-    # فیلتر سفارشی را به هندلرهای فایل اضافه می‌کنیم
     root_logger = logging.getLogger()
     user_id_filter = UserIdFilter()
     for handler in root_logger.handlers:
@@ -82,6 +73,12 @@ class HiddifyBot:
     def start(self) -> None:
         if self.running: return
         try:
+            # <<<<<<<<<<<<<<<<<<<< START OF FINAL FIX >>>>>>>>>>>>>>>>>>
+            # ۱. فایل‌های زبان را به صورت دستی در همین ابتدا بارگذاری می‌کنیم
+            from . import language
+            language.load_translations()
+            # <<<<<<<<<<<<<<<<<<<< END OF FINAL FIX >>>>>>>>>>>>>>>>>>
+
             logger.info("Registering handlers ...")
             initialize_utils(self.bot)
             initialize_user_handlers(self.bot, admin_conversations)
