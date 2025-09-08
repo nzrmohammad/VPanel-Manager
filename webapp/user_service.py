@@ -222,6 +222,7 @@ class UserService:
                     except ValueError:
                         logger.warning(f"فرمت تاریخ تولد نامعتبر: {birthday_str}")
             
+            # --- START OF FIX ---
             settings_keys = {
                 'daily_reports': 'daily_reports',
                 'weekly_reports': 'weekly_reports',
@@ -233,8 +234,10 @@ class UserService:
                 'promotional_alerts': 'promotional_alerts'
             }
             for form_key, db_key in settings_keys.items():
+                # اگر کلید در فرم بود یعنی روشن است، در غیر این صورت خاموش است
                 value = form_key in form_data
                 db.update_user_setting(user_id, db_key, value)
+            # --- END OF FIX ---
 
             return True, "تغییرات با موفقیت ذخیره شد."
         except Exception as e:
