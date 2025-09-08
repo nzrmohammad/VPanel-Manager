@@ -467,6 +467,14 @@ class SchedulerManager:
                 all_bot_users_with_uuids = db.get_all_bot_users_with_uuids()
                 user_map = {user['config_name']: user['user_id'] for user in all_bot_users_with_uuids}
 
+                if len(top_users) > 0:
+                    champion = top_users[0]
+                    champion_name = champion.get('name')
+                    champion_id = user_map.get(champion_name)
+                    if champion_id:
+                        if db.add_achievement(champion_id, 'weekly_champion'):
+                            self._notify_user_achievement(champion_id, 'weekly_champion')
+
                 # ارسال پیام به ۱۰ نفر اول
                 for i, user in enumerate(top_users):
                     rank = i + 1
@@ -596,6 +604,16 @@ class SchedulerManager:
 
                                 self._send_warning_message(user_id, anniversary_message)
                                 c.execute("INSERT INTO anniversary_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
+
+                # --- START OF CHANGE: "Early Bird" Badge ---
+                time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
+                total_weekly_usage = sum(time_of_day_stats.values())
+                if total_weekly_usage > 0.1: # حداقل مصرف برای محاسبه
+                    morning_usage = time_of_day_stats.get('morning', 0.0)
+                    if (morning_usage / total_weekly_usage) > 0.5:
+                        if db.add_achievement(user_id, 'early_bird'):
+                            self._notify_user_achievement(user_id, 'early_bird')
+                # --- END OF CHANGE ---
 
             except Exception as e:
                 logger.error(f"Error checking achievements for user_id {user_id}: {e}")

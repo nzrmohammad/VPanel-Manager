@@ -231,18 +231,30 @@ def handle_referral_callbacks(call: types.CallbackQuery):
 # =============================================================================
 
 def handle_shop_callbacks(call: types.CallbackQuery):
-    """تمام callback های مربوط به فروشگاه دستاوردها را مدیریت می‌کند."""
+    """تمام callback های مربوط به فروشگاه دستاوردها را با منطق جدید و هوشمند مدیریت می‌کند."""
     uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
     
     if data == "shop:main":
         user = db.user(uid)
         user_points = user.get('achievement_points', 0) if user else 0
+        
+        # --- START OF FIX: Fetch user access rights before showing the menu ---
+        user_uuids = db.uuids(uid)
+        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
+        if user_uuids:
+            first_uuid_record = db.uuid_by_id(uid, user_uuids[0]['id'])
+            if first_uuid_record:
+                access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
+                access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
+                access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
+        # --- END OF FIX ---
+
         prompt = (
             f"🛍️ *{escape_markdown('فروشگاه دستاوردها')}*\n\n"
             f"{escape_markdown('با امتیازهای خود می‌توانید جوایز زیر را خریداری کنید.')}\n\n"
             f"💰 *{escape_markdown('موجودی امتیاز شما:')} {user_points}*"
         )
-        _safe_edit(uid, msg_id, prompt, reply_markup=menu.achievement_shop_menu(user_points))
+        _safe_edit(uid, msg_id, prompt, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
 
     elif data.startswith("shop:buy:"):
         from ..config import ACHIEVEMENT_SHOP_ITEMS
@@ -254,12 +266,49 @@ def handle_shop_callbacks(call: types.CallbackQuery):
         if db.spend_achievement_points(uid, item['cost']):
             user_uuids = db.uuids(uid)
             if user_uuids:
-                combined_handler.modify_user_on_all_panels(user_uuids[0]['uuid'], add_gb=item['gb'], add_days=item['days'])
-                db.log_shop_purchase(uid, item_key, item['cost'])
-                bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
-                user = db.user(uid)
-                user_points = user.get('achievement_points', 0) if user else 0
-                _safe_edit(uid, msg_id, escape_markdown(f"🛍️ *فروشگاه دستاوردها*\n\nموجودی امتیاز شما: {user_points}"), reply_markup=menu.achievement_shop_menu(user_points))
+                user_main_uuid = user_uuids[0]['uuid']
+                purchase_successful = False
+
+                # --- START OF FIX: Apply purchase to the correct panel ---
+                target = item.get("target")
+                add_gb = item.get("gb", 0)
+                add_days = item.get("days", 0)
+                
+                target_panel = None
+                if target == 'de':
+                    target_panel = 'hiddify'
+                elif target == 'fr_tr':
+                    target_panel = 'marzban'
+                
+                purchase_successful = combined_handler.modify_user_on_all_panels(
+                    user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel
+                )
+                # --- END OF FIX ---
+
+                if purchase_successful:
+                    db.log_shop_purchase(uid, item_key, item['cost'])
+                    bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
+                    
+                    # Refresh user points and access rights for the updated menu
+                    user = db.user(uid)
+                    user_points = user.get('achievement_points', 0) if user else 0
+                    first_uuid_record = db.uuid_by_id(uid, user_uuids[0]['id'])
+                    access_rights = {
+                        'has_access_de': first_uuid_record.get('has_access_de', False),
+                        'has_access_fr': first_uuid_record.get('has_access_fr', False),
+                        'has_access_tr': first_uuid_record.get('has_access_tr', False)
+                    }
+                    
+                    purchased_item_name = escape_markdown(item['name'])
+                    success_message = (
+                        f"✅ *خرید با موفقیت انجام شد*\\!\n\n"
+                        f"شما آیتم «*{purchased_item_name}*» را خریداری کردید و تغییرات روی سرویس شما اعمال شد\\.\n\n"
+                        f"💰 *موجودی امتیاز فعلی:* {user_points}"
+                    )
+                    _safe_edit(uid, msg_id, success_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
+                else:
+                    db.add_achievement_points(uid, item['cost'])
+                    bot.answer_callback_query(call.id, "❌ خطایی در اعمال تغییرات رخ داد. امتیاز شما بازگردانده شد.", show_alert=True)
         else:
             bot.answer_callback_query(call.id, "❌ امتیاز شما کافی نیست.", show_alert=True)
 

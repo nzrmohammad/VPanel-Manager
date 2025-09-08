@@ -2087,5 +2087,20 @@ class DatabaseManager:
             cursor = c.execute("DELETE FROM user_achievements;")
             return cursor.rowcount
 
+    def get_user_achievements_in_range(self, user_id: int, start_date: datetime) -> List[Dict[str, Any]]:
+        """
+        تمام دستاوردهای کسب شده توسط یک کاربر در یک بازه زمانی مشخص را برمی‌گرداند.
+        """
+        query = """
+            SELECT
+                ua.badge_code,
+                ua.awarded_at
+            FROM user_achievements ua
+            WHERE ua.user_id = ? AND ua.awarded_at >= ?
+            ORDER BY ua.awarded_at DESC;
+        """
+        with self.write_conn() as c:
+            rows = c.execute(query, (user_id, start_date)).fetchall()
+            return [dict(r) for r in rows]
 
 db = DatabaseManager()

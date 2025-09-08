@@ -1,6 +1,8 @@
 import logging
 import jdatetime
-from .config import EMOJIS, PAGE_SIZE
+import pytz
+from datetime import datetime, timedelta
+from .config import EMOJIS, PAGE_SIZE, ACHIEVEMENTS 
 from .database import db
 from . import combined_handler
 from .language import get_string
@@ -214,13 +216,20 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
     return final_report
 
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
-    """Formats the detailed weekly usage report for a user with daily breakdown and personalized insights."""
+    """
+    گزارش هفتگی کاملی را شامل تفکیک مصرف روزانه، تحلیل هوشمند و دستاوردهای هفته برای کاربر فرمت‌بندی می‌کند.
+    """
     if not user_infos:
         return ""
 
     accounts_reports = []
     separator = '`──────────────────`'
     day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+    
+    tehran_tz = pytz.timezone("Asia/Tehran")
+    today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+    days_since_saturday = (today_jalali.weekday() + 1) % 7
+    week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
     for info in user_infos:
         uuid = info.get("uuid")
@@ -229,6 +238,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         uuid_id = db.get_uuid_id_by_uuid(uuid)
         user_record = db.get_user_uuid_record(uuid)
         if not uuid_id or not user_record: continue
+        
+        user_id = user_record.get('user_id')
 
         has_access_de = user_record.get('has_access_de', False)
         has_access_fr = user_record.get('has_access_fr', False)
@@ -267,6 +278,21 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         final_footer_line = f"{footer_template} {usage_footer_str}"
         account_lines.append(f'\n\n⚡️ *{escape_markdown(final_footer_line)}*')
 
+        if user_id:
+            weekly_achievements = db.get_user_achievements_in_range(user_id, week_start_utc)
+            if weekly_achievements:
+                account_lines.append(separator)
+                account_lines.append(f"🏆 *{escape_markdown('دستاوردها و جوایز این هفته')}*")
+                for ach in weekly_achievements:
+                    badge_code = ach['badge_code']
+                    badge_data = ACHIEVEMENTS.get(badge_code, {})
+                    badge_name = escape_markdown(badge_data.get('name', badge_code))
+                    badge_icon = badge_data.get('icon', '🎖️')
+                    points = badge_data.get('points', 0)
+                    # --- START OF FIX: Escape reserved characters for MarkdownV2 ---
+                    account_lines.append(f"`•` {badge_icon} {badge_name} \\(\\*\\+{points} امتیاز\\*\\)")
+                    # --- END OF FIX ---
+        
         if current_week_usage > 0.1:
             busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
             busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
@@ -298,6 +324,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
 
     final_report = f"\n{separator}\n".join(accounts_reports)
     return final_report
+
 
 def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> str:
     if not plans_to_show:

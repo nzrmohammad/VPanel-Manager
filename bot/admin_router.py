@@ -17,6 +17,9 @@ from .admin_hiddify_handlers import (_start_add_hiddify_user_convo, initialize_h
 from .admin_marzban_handlers import (_start_add_marzban_user_convo, initialize_marzban_handlers)
 from .menu import menu
 from .utils import _safe_edit, escape_markdown
+from .database import db
+scheduler = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,73 +35,109 @@ def register_admin_handlers(bot, scheduler):
     plan_management.initialize_plan_management_handlers(bot, admin_conversations)
     panel_management.initialize_panel_management_handlers(bot, admin_conversations)
 
-    @bot.message_handler(commands=['test_report'], func=lambda message: message.from_user.id in ADMIN_IDS)
-    def test_report_command(message: types.Message):
-        reporting.handle_test_report_command(message)
+    # ===================================================================
+    # Test Commands (Corrected and Completed)
+    # ===================================================================
 
-    @bot.message_handler(commands=['test_weekly_report'], func=lambda message: message.from_user.id in ADMIN_IDS)
-    def test_weekly_report_command(message: types.Message):
-        reporting.handle_test_weekly_report_command(message)
-
-    @bot.message_handler(commands=['test_welcome'], func=lambda message: message.from_user.id in ADMIN_IDS)
-    def test_welcome_message_command(message: types.Message):
-        reporting.handle_test_welcome_message_command(message)
-        
-    # --- START: NEW TEST COMMANDS FOR SCHEDULER ---
     @bot.message_handler(commands=['test_nightly'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def run_test_nightly_report(message: types.Message):
         admin_id = message.from_user.id
-        bot.send_message(admin_id, "⏳ در حال اجرای تست گزارش شبانه (فقط برای شما)...")
         try:
-            scheduler._nightly_report(target_user_id=admin_id)
-            bot.send_message(admin_id, "✅ تست گزارش شبانه با موفقیت انجام شد.")
+            parts = message.text.split()
+            target_user_id = int(parts[1]) if len(parts) > 1 else admin_id
+            bot.send_message(admin_id, f"⏳ در حال اجرای تست گزارش شبانه برای کاربر `{target_user_id}`...", parse_mode="Markdown")
+            scheduler._nightly_report(target_user_id=target_user_id)
+            bot.send_message(admin_id, f"✅ تست گزارش شبانه برای کاربر `{target_user_id}` با موفقیت انجام و ارسال شد.")
         except Exception as e:
-            bot.send_message(admin_id, f"❌ خطا در اجرای تست گزارش شبانه: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
-            logger.error(f"Error in test_nightly command: {e}", exc_info=True)
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
 
     @bot.message_handler(commands=['test_weekly'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def run_test_weekly_report(message: types.Message):
         admin_id = message.from_user.id
-        bot.send_message(admin_id, "⏳ در حال اجرای تست گزارش هفتگی (فقط برای شما)...")
         try:
-            scheduler._weekly_report(target_user_id=admin_id)
-            bot.send_message(admin_id, "✅ تست گزارش هفتگی با موفقیت انجام شد.")
+            parts = message.text.split()
+            target_user_id = int(parts[1]) if len(parts) > 1 else admin_id
+            bot.send_message(admin_id, f"⏳ در حال اجرای تست گزارش هفتگی برای کاربر `{target_user_id}`...", parse_mode="Markdown")
+            scheduler._weekly_report(target_user_id=target_user_id)
+            bot.send_message(admin_id, f"✅ تست گزارش هفتگی برای کاربر `{target_user_id}` با موفقیت انجام و ارسال شد.")
         except Exception as e:
-            bot.send_message(admin_id, f"❌ خطا در اجرای تست گزارش هفتگی: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
-            logger.error(f"Error in test_weekly command: {e}", exc_info=True)
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
 
     @bot.message_handler(commands=['test_warnings'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def run_test_warnings_check(message: types.Message):
         admin_id = message.from_user.id
-        bot.send_message(admin_id, "⏳ در حال اجرای تست بررسی هشدارها (فقط برای شما)...")
         try:
-            scheduler._check_for_warnings(target_user_id=admin_id)
-            bot.send_message(admin_id, "✅ تست بررسی هشدارها با موفقیت انجام شد. اگر شرایط لازم را داشته باشید، پیام هشدار دریافت خواهید کرد.")
+            parts = message.text.split()
+            target_user_id = int(parts[1]) if len(parts) > 1 else admin_id
+            bot.send_message(admin_id, f"⏳ در حال اجرای تست بررسی هشدارها برای کاربر `{target_user_id}`...", parse_mode="Markdown")
+            scheduler._check_for_warnings(target_user_id=target_user_id)
+            bot.send_message(admin_id, "✅ تست بررسی هشدارها با موفقیت انجام شد. اگر کاربر شرایط لازم را داشته باشد، پیام دریافت خواهد کرد.")
         except Exception as e:
-            bot.send_message(admin_id, f"❌ خطا در اجرای تست بررسی هشدارها: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
-            logger.error(f"Error in test_warnings command: {e}", exc_info=True)
-    # --- END: NEW TEST COMMANDS FOR SCHEDULER ---
-    @bot.message_handler(commands=['test_achievements'], func=lambda message: message.from_user.id in ADMIN_IDS)
-    def run_test_achievements_check(message: types.Message):
-        admin_id = message.from_user.id
-        bot.send_message(admin_id, "⏳ در حال اجرای تست بررسی دستاوردها و سالگرد...")
-        try:
-            scheduler._check_achievements_and_anniversary()
-            bot.send_message(admin_id, "✅ تست بررسی دستاوردها با موفقیت انجام شد.")
-        except Exception as e:
-            bot.send_message(admin_id, f"❌ خطا در اجرای تست دستاوردها: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
-            logger.error(f"Error in test_achievements command: {e}", exc_info=True)
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
 
-    @bot.message_handler(commands=['test_birthday'], func=lambda message: message.from_user.id in ADMIN_IDS)
-    def run_test_birthday_job(message: types.Message):
+    @bot.message_handler(commands=['test'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_all_scheduler_tests(message: types.Message):
         admin_id = message.from_user.id
-        bot.send_message(admin_id, "⏳ در حال اجرای تست هدیه تولد...")
+        test_report = ["*⚙️ تست کامل سیستم زمان‌بندی ربات*"]
+        msg = bot.send_message(admin_id, "⏳ لطفاً صبر کنید، در حال اجرای تمام تست‌ها...", parse_mode="Markdown")
+
+        def run_single_test(title, function, *args, **kwargs):
+            try:
+                # اطمینان از اینکه scheduler مقداردهی شده است
+                if not scheduler:
+                    raise Exception("Scheduler has not been initialized.")
+                function(*args, **kwargs)
+                test_report.append(f"✅ {title}: موفق")
+            except Exception as e:
+                test_report.append(f"❌ {title}: ناموفق\n   `خطا: {str(e)}`")
+                logger.error(f"Error during '/test' for '{title}': {e}", exc_info=True)
+
+        run_single_test("گزارش شبانه", scheduler._nightly_report, target_user_id=admin_id)
+        run_single_test("گزارش هفتگی", scheduler._weekly_report, target_user_id=admin_id)
+        run_single_test("بررسی هشدارها", scheduler._check_for_warnings, target_user_id=admin_id)
+        run_single_test("بررسی دستاوردها و سالگرد", scheduler._check_achievements_and_anniversary)
+        run_single_test("بررسی هدیه تولد", scheduler._birthday_gifts_job)
+        
+        bot.edit_message_text("\n".join(test_report), chat_id=admin_id, message_id=msg.message_id, parse_mode="Markdown")
+
+    @bot.message_handler(commands=['addpoints'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def add_points_command(message: types.Message):
+        """
+        امتیاز دستاورد را به یک کاربر اضافه می‌کند.
+        نحوه استفاده: /addpoints [USER_ID] [AMOUNT]
+        اگر USER_ID وارد نشود، به خود ادمین امتیاز اضافه می‌شود.
+        """
+        admin_id = message.from_user.id
         try:
-            scheduler._birthday_gifts_job()
-            bot.send_message(admin_id, "✅ تست هدیه تولد با موفقیت انجام شد. اگر کاربری امروز تولدش باشد، هدیه را دریافت می‌کند.")
+            parts = message.text.split()
+            if len(parts) < 2:
+                bot.reply_to(message, "فرمت دستور اشتباه است. لطفاً به این شکل استفاده کنید:\n`/addpoints AMOUNT`\nیا\n`/addpoints USER_ID AMOUNT`", parse_mode="MarkdownV2")
+                return
+
+            if len(parts) == 2:
+                # حالت افزودن امتیاز به خود ادمین
+                target_user_id = admin_id
+                amount = int(parts[1])
+            else: # len(parts) == 3
+                # حالت افزودن امتیاز به کاربر دیگر
+                target_user_id = int(parts[1])
+                amount = int(parts[2])
+
+            # فراخوانی تابع دیتابیس برای افزودن امتیاز
+            db.add_achievement_points(target_user_id, amount)
+            
+            # --- START OF FIX: Escape the period for MarkdownV2 ---
+            success_message = f"✅ *{amount}* امتیاز با موفقیت به کاربر `{target_user_id}` اضافه شد\\."
+            bot.send_message(admin_id, success_message, parse_mode="MarkdownV2")
+            # --- END OF FIX ---
+
+        except (ValueError, IndexError):
+            bot.reply_to(message, "❌ مقادیر وارد شده نامعتبر هستند. لطفاً از اعداد صحیح استفاده کنید.", parse_mode="MarkdownV2")
         except Exception as e:
-            bot.send_message(admin_id, f"❌ خطا در اجرای تست هدیه تولد: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
-            logger.error(f"Error in test_birthday command: {e}", exc_info=True)
+            bot.send_message(admin_id, f"❌ خطایی در هنگام افزودن امتیاز رخ داد: `{escape_markdown(str(e))}`", parse_mode="MarkdownV2")
+            logger.error(f"Error in addpoints command: {e}", exc_info=True)
+
+
 # ===================================================================
 # Simple Menu Functions
 # ===================================================================

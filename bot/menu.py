@@ -133,21 +133,57 @@ class Menu:
         kb.add(btn_back)
         return kb
 
-    def achievement_shop_menu(self, user_points: int) -> types.InlineKeyboardMarkup:
-            """منوی فروشگاه دستاوردها را با آیتم‌های قابل خرید نمایش می‌دهد."""
-            from .config import ACHIEVEMENT_SHOP_ITEMS
-            kb = types.InlineKeyboardMarkup(row_width=1)
-            
-            for item_key, item_data in ACHIEVEMENT_SHOP_ITEMS.items():
+    def achievement_shop_menu(self, user_points: int, access: dict) -> types.InlineKeyboardMarkup:
+        """
+        منوی فروشگاه را به صورت یک گرید دو ستونه منظم و حرفه‌ای نمایش می‌دهد.
+        """
+        from .config import ACHIEVEMENT_SHOP_ITEMS
+        kb = types.InlineKeyboardMarkup(row_width=2) # کیبورد را روی حالت دو ستونه تنظیم می‌کنیم
+        
+        has_de_access = access.get('has_access_de', False)
+        has_fr_tr_access = access.get('has_access_fr', False) or access.get('has_access_tr', False)
+
+        # --- START OF NEW LOGIC: Build a clean two-column grid ---
+        buttons_to_add = []
+
+        # ابتدا آیتم‌های مربوط به تمدید روز را جدا می‌کنیم
+        day_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if v.get('days', 0) > 0 and v.get('gb', 0) == 0}
+        
+        # سپس آیتم‌های مربوط به حجم را جدا می‌کنیم
+        data_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if k not in day_items}
+
+        # تابع کمکی برای ساخت دکمه‌ها
+        def create_button(item_key, item_data):
+            # شرط نمایش آیتم بر اساس دسترسی کاربر
+            target = item_data.get('target')
+            show_item = False
+            if target == 'all' or (target == 'de' and has_de_access) or (target == 'fr_tr' and has_fr_tr_access):
+                show_item = True
+
+            if show_item:
                 is_affordable = user_points >= item_data['cost']
                 emoji = "✅" if is_affordable else "❌"
-                button_text = f"{emoji} {item_data['name']} ({item_data['cost']} امتیاز)"
-                
+                button_text = f"{emoji} {item_data['name']} ({item_data['cost']})"
                 callback_data = f"shop:buy:{item_key}" if is_affordable else "shop:insufficient_points"
-                kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+                return types.InlineKeyboardButton(button_text, callback_data=callback_data)
+            return None
 
-            kb.add(types.InlineKeyboardButton("🔙 بازگشت به سرویس‌ها", callback_data="view_plans"))
-            return kb
+        # اضافه کردن آیتم‌های حجم
+        data_buttons = [create_button(k, v) for k, v in data_items.items() if create_button(k, v)]
+        if data_buttons:
+            kb.add(types.InlineKeyboardButton("افزایش حجم (گیگابایت)", callback_data="noop"))
+            kb.add(*data_buttons) # کتابخانه تلگرام به صورت خودکار این دکمه‌ها را دو ستونه می‌چیند
+
+        # اضافه کردن آیتم‌های روز
+        day_buttons = [create_button(k, v) for k, v in day_items.items() if create_button(k, v)]
+        if day_buttons:
+            kb.add(types.InlineKeyboardButton("تمدید سرویس (روز)", callback_data="noop"))
+            kb.add(*day_buttons)
+
+        # --- END OF NEW LOGIC ---
+
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به سرویس‌ها", callback_data="view_plans"))
+        return kb
 
     def payment_options_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)

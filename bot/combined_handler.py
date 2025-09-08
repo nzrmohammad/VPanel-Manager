@@ -130,25 +130,15 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
     is_uuid = validate_uuid(identifier)
     all_panels = db.get_active_panels()
     
-    # <<<<<<< START OF FIX: Smart Identifier Resolution >>>>>>>>>
-    # If the identifier is a Marzban username, try to find its linked UUID.
-    # We will use the UUID to query Hiddify.
-    hiddify_uuid_to_query = None
-    marzban_username_to_query = None
-
-    # <<<<<<< START OF FIX: Smart Identifier Resolution >>>>>>>>>
     hiddify_uuid_to_query = None
     marzban_username_to_query = None
 
     if is_uuid:
-        # If we have a UUID, we use it for Hiddify and find the linked Marzban username.
         hiddify_uuid_to_query = identifier
         marzban_username_to_query = db.get_marzban_username_by_uuid(identifier)
     else:
-        # If we have a name, assume it might be a Marzban username and find its linked UUID.
         marzban_username_to_query = identifier
         hiddify_uuid_to_query = db.get_uuid_by_marzban_username(identifier)
-    # <<<<<<< END OF FIX: Smart Identifier Resolution >>>>>>>>>
 
     user_data_map = {}
 
@@ -157,19 +147,10 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
         if not handler: continue
 
         user_info = None
-        # Use the specific identifiers we determined earlier.
         if panel_config['panel_type'] == 'hiddify' and hiddify_uuid_to_query:
             user_info = handler.user_info(hiddify_uuid_to_query)
         elif panel_config['panel_type'] == 'marzban' and marzban_username_to_query:
             user_info = handler.get_user_by_username(marzban_username_to_query)
-        # If it's a hiddify-only user searched by name, and we didn't get a UUID, this might fail.
-        # This highlights the importance of using UUIDs as the primary search key.
-        elif panel_config['panel_type'] == 'hiddify' and not is_uuid:
-             # This is a fallback and might not always work if names are not unique as UUIDs.
-             # For now, we assume search by name that isn't a marzban user is a hiddify user.
-             # A more robust solution would require a different approach.
-             pass # We avoid querying hiddify by name to prevent ambiguity. UUID is preferred.
-
 
         if user_info:
             user_data_map[panel_config['name']] = {
@@ -180,7 +161,6 @@ def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
     if not user_data_map:
         return None
     
-    # The rest of the function remains the same...
     all_online_times = [ p['data'].get('last_online') for p in user_data_map.values() if p['data'].get('last_online') ]
     most_recent_online = max(all_online_times) if all_online_times else None
 
@@ -254,10 +234,15 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
             if add_gb != 0:
                 payload['usage_limit_GB'] = current_limit + add_gb
             
+            # --- START OF FIX ---
             if add_days > 0:
-                if current_days is not None:
-                    base_days = max(0, current_days)
-                    payload['package_days'] = base_days + add_days
+                if current_days is not None and current_days > 0:
+                    # اگر کاربر منقضی نشده، روزها را به روزهای باقیمانده اضافه کن
+                    payload['package_days'] = current_days + add_days
+                else:
+                    # اگر کاربر منقضی شده یا زمان نامحدود دارد، روزها را از امروز تنظیم کن
+                    payload['package_days'] = add_days
+            # --- END OF FIX ---
             
             if payload and handler.modify_user(user_info['uuid'], payload):
                 any_success = True
