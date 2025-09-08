@@ -38,25 +38,19 @@ def load_translations():
 
 def get_string(key: str, lang_code: str = 'fa') -> str:
     """
-    یک کلید متنی را ترجمه می‌کند و مراحل کار خود را با جزئیات لاگ می‌کند.
+    یک کلید متنی را ترجمه می‌کند.
     """
-    # <<<<<<<<<<<<<<<<<<<< START OF DIAGNOSTIC LOGGING >>>>>>>>>>>>>>>>>>
-    logger.info(f"GET_STRING: Attempting to get key '{key}' for lang_code '{lang_code}'.")
-    
-    original_lang_code = lang_code
-    
     if lang_code not in _translations:
-        logger.warning(f"GET_STRING: lang_code '{lang_code}' not found in loaded translations ({list(_translations.keys())}). Defaulting to 'fa'.")
+        # اگر زبان درخواستی موجود نبود، به زبان فارسی برمی‌گردد
         lang_code = 'fa'
     
+    # تلاش برای یافتن کلید در زبان مشخص شده. اگر یافت نشد، خود کلید را برمی‌گرداند.
     translation = _translations.get(lang_code, {}).get(key, key)
     
-    if translation == key:
-        logger.warning(f"GET_STRING: Key '{key}' not found for lang_code '{lang_code}'. Returning the key itself.")
-    
-    # فقط ۳۰ کاراکتر اول ترجمه را لاگ می‌کنیم تا لاگ‌ها شلوغ نشوند
-    logger.info(f"GET_STRING: For key '{key}' with original lang '{original_lang_code}', returning: '{translation[:30]}...'")
-    # <<<<<<<<<<<<<<<<<<<< END OF DIAGNOSTIC LOGGING >>>>>>>>>>>>>>>>>>
+    if translation == key and lang_code != 'fa':
+        # اگر کلید در زبان انتخابی نبود، یک بار هم در زبان فارسی جستجو می‌کند
+        translation = _translations.get('fa', {}).get(key, key)
+
     return translation
 
 # در ابتدای اجرای ربات، تمام فایل‌های زبان را بارگذاری می‌کنیم
