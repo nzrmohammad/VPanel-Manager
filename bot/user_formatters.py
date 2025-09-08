@@ -289,9 +289,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     badge_name = escape_markdown(badge_data.get('name', badge_code))
                     badge_icon = badge_data.get('icon', '🎖️')
                     points = badge_data.get('points', 0)
-                    # --- START OF FIX: Escape reserved characters for MarkdownV2 ---
-                    account_lines.append(f"`•` {badge_icon} {badge_name} \\(\\*\\+{points} امتیاز\\*\\)")
-                    # --- END OF FIX ---
+                    account_lines.append(f"{badge_icon} {badge_name} \\(*\\+{points} امتیاز*\\)")
+
         
         if current_week_usage > 0.1:
             busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
