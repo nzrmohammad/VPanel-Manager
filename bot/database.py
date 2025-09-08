@@ -1219,7 +1219,7 @@ class DatabaseManager:
 
     def get_user_language(self, user_id: int) -> str:
         """کد زبان کاربر را از دیتابیس می‌خواند."""
-        with self.write_conn() as c:
+        with self._conn() as c:  # <--- اصلاحیه: استفاده از کانکشن فقط خواندنی
             row = c.execute("SELECT lang_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
             
             # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>

@@ -137,19 +137,19 @@ def register_user_handlers(b: telebot.TeleBot):
     @bot.message_handler(commands=['start'])
     def cmd_start(message: types.Message):
         uid = message.from_user.id
-        is_new_user = db.add_or_update_user(uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name)
-        user_data = db.user(uid)
-        if is_new_user or not user_data.get('lang_code'):
-            bot.send_message(uid, "Welcome! / خوش آمدید!\nPlease select your language: / لطفاً زبان خود را انتخاب کنید:", 
-                             reply_markup=settings.language_selection_menu())
+        db.add_or_update_user(uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name)
+        
+        if not db.uuids(uid):
+            bot.send_message(uid, "Welcome! - خوش آمدید!\nPlease select your language: - لطفاً زبان خود را انتخاب کنید:", 
+                            reply_markup=settings.language_selection_menu())
             return
+            
         parts = message.text.split()
+        user_data = db.user(uid) 
         if len(parts) > 1 and not user_data.get('referred_by_user_id'):
             db.set_referrer(uid, parts[1])
-        if db.uuids(uid):
-            go_back_to_main(message=message)
-        else:
-            various.show_initial_menu(uid=uid)
+            
+        go_back_to_main(message=message)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def language_callback(call: types.CallbackQuery):
