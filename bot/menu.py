@@ -2,6 +2,7 @@ from telebot import types
 from .config import EMOJIS, PAGE_SIZE, CARD_PAYMENT_INFO, ONLINE_PAYMENT_LINK
 from .language import get_string
 from typing import Optional
+import urllib
 
 class Menu:
     # =============================================================================
