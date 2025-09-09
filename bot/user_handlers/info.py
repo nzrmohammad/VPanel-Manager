@@ -270,8 +270,9 @@ def show_plan_categories(call: types.CallbackQuery):
     lang_code = db.get_user_language(uid)
     prompt = get_string("prompt_select_plan_category", lang_code)
     
-    # حالا این تابع بدون نیاز به آرگومان اضافه فراخوانی می‌شود و خطا نمی‌دهد
-    reply_markup = menu.plan_category_menu(lang_code=lang_code)
+    # تغییر اصلی اینجا اتفاق افتاده است:
+    reply_markup = menu.plan_categories_menu(lang_code=lang_code)
+    
     _safe_edit(uid, msg_id, prompt, reply_markup=reply_markup, parse_mode=None)
 
 

@@ -163,7 +163,9 @@ ACHIEVEMENT_SHOP_ITEMS = {
     
     # آیتم‌های مخصوص فرانسه/ترکیه (Marzban)
     "buy_fr_tr_10gb":  {"name": "۱۰ گیگ (🇫🇷🇹🇷)", "cost": 120, "gb": 10, "target": "fr_tr"},
-    "buy_fr_tr_30gb":  {"name": "۳۰ گیگ (🇫🇷🇹🇷)", "cost": 300, "gb": 30, "target": "fr_tr"}
+    "buy_fr_tr_30gb":  {"name": "۳۰ گیگ (🇫🇷🇹🇷)", "cost": 300, "gb": 30, "target": "fr_tr"},
+
+    "buy_lottery_ticket": {"name": "🎟️ بلیط قرعه‌کشی", "cost": 100, "target": "all"},
 }
 
 # --- Emojis & Visuals ---

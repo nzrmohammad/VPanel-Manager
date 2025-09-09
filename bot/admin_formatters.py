@@ -982,3 +982,29 @@ def fmt_daily_achievements_report(daily_achievements: list) -> str:
         lines.append("") 
 
     return "\n".join(lines)
+
+def fmt_user_balances_list(users: list, page: int) -> str:
+    """لیست موجودی کیف پول کاربران را برای ادمین فرمت‌بندی می‌کند."""
+    title = "موجودی کیف پول کاربران"
+    if not users:
+        return f"💰 *{escape_markdown(title)}*\n\n{escape_markdown('هیچ کاربری کیف پول خود را شارژ نکرده است.')}"
+
+    total_users = len(users)
+    total_balance = sum(u.get('wallet_balance', 0) for u in users)
+    header_text = f"💰 *{escape_markdown(title)}* \\| *مجموع کل: {total_balance:,.0f} تومان*"
+
+    if total_users > PAGE_SIZE:
+        total_pages = (total_users + PAGE_SIZE - 1) // PAGE_SIZE
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_users}\\)"
+        header_text += f"\n{pagination_text}"
+
+    lines = [header_text]
+    start_index = page * PAGE_SIZE
+    paginated_users = users[start_index : start_index + PAGE_SIZE]
+
+    for i, user in enumerate(paginated_users, start=start_index + 1):
+        name = escape_markdown(user.get('first_name', 'کاربر ناشناس'))
+        balance = user.get('wallet_balance', 0)
+        lines.append(f"`{i}.` *{name}* \\(`{user['user_id']}`\\): `{balance:,.0f}` تومان")
+    
+    return "\n".join(lines)

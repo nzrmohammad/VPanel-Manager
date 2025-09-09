@@ -215,6 +215,8 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
     final_report += f"\n\n {footer_text}"
     return final_report
 
+# در فایل bot/user_formatters.py
+
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     """
     گزارش هفتگی کاملی را شامل تفکیک مصرف روزانه، تحلیل هوشمند و دستاوردهای هفته برای کاربر فرمت‌بندی می‌کند.
@@ -290,9 +292,9 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     badge_icon = badge_data.get('icon', '🎖️')
                     points = badge_data.get('points', 0)
                     account_lines.append(f"{badge_icon} {badge_name} \\(*\\+{points} امتیاز*\\)")
-
         
-        if current_week_usage > 0.1:
+        # --- بخش تحلیل هوشمند ---
+        if current_week_usage > 0.1: # حداقل مصرف برای نمایش تحلیل
             busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
             busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
 
@@ -304,10 +306,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get)
             
             period_map = {
-                "morning": "صبح ☀️",
-                "afternoon": "بعد از ظهر 🏙️",
-                "evening": "عصر 🌆",
-                "night": "شب 🦉"
+                "morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️",
+                "evening": "عصر 🌆", "night": "شب 🦉"
             }
             busiest_period_name = period_map.get(busiest_period_key, "ساعات مختلف")
 
@@ -720,4 +720,38 @@ def fmt_user_account_page(user_id: int, lang_code: str) -> str:
         f"`•` {escape_markdown(get_string('label_referrals', lang_code))}: *{referrals_count} {escape_markdown(get_string('unit_person', lang_code))}*",
     ]
     
+    return "\n".join(lines)
+
+
+def fmt_purchase_summary(info_before: dict, info_after: dict, plan_to_buy: dict, lang_code: str) -> str:
+    """یک خلاصه متنی مدرن برای نمایش وضعیت سرویس قبل و بعد از خرید ایجاد می‌کند."""
+
+    limit_before = info_before.get('usage_limit_GB', 0)
+    expire_before = info_before.get('expire', 0) if info_before.get('expire') is not None else '∞'
+    limit_after = info_after.get('usage_limit_GB', 0)
+    expire_after = info_after.get('expire', 0) if info_after.get('expire') is not None else '∞'
+
+    from .utils import parse_volume_string
+    days_added = parse_volume_string(plan_to_buy.get('duration', '0'))
+    
+    gb_added = 0
+    plan_type = plan_to_buy.get('type')
+    if plan_type == 'combined':
+        gb_added = parse_volume_string(plan_to_buy.get('total_volume', '0'))
+    else:
+        volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
+        gb_added = parse_volume_string(plan_to_buy.get(volume_key, '0'))
+
+    
+    header_text = escape_markdown("سرویس شما با موفقیت شارژ شد.\n")
+    details_header = escape_markdown("\nجزئیات تغییرات:")
+    separator = "`──────────────────`"
+    
+    gb_added_text = escape_markdown(f"+{gb_added:g} GB")
+    volume_line = f"📊 {limit_before:g} GB ➡️ {limit_after:g} GB \\({gb_added_text}\\)"
+    
+    days_added_text = escape_markdown(f"+{days_added} day")
+    days_line = f"📅 {expire_before} ➡️ {expire_after} \\({days_added_text}\\)"
+
+    lines = [header_text, details_header, separator, volume_line, days_line]
     return "\n".join(lines)

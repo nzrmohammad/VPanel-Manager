@@ -70,7 +70,8 @@ class DatabaseManager:
                     achievement_points INTEGER DEFAULT 0,
                     achievement_alerts INTEGER DEFAULT 1,
                     promotional_alerts INTEGER DEFAULT 1,
-                    wallet_balance REAL DEFAULT 0.0             
+                    wallet_balance REAL DEFAULT 0.0,
+                    auto_renew INTEGER DEFAULT 0             
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,12 +228,35 @@ class DatabaseManager:
                     request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_pending INTEGER DEFAULT 1,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
-                );          
-                CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
-                CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
-                CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
-                CREATE INDEX IF NOT EXISTS idx_snapshots_uuid_id_taken_at ON usage_snapshots(uuid_id, taken_at);
-            """)
+                );
+                CREATE TABLE IF NOT EXISTS wallet_transfers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_user_id INTEGER NOT NULL,
+                receiver_user_id INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                transferred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(sender_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY(receiver_user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS auto_renewal_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    uuid_id INTEGER NOT NULL,
+                    plan_price REAL NOT NULL,
+                    renewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS lottery_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );    
+                    CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
+                    CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
+                    CREATE INDEX IF NOT EXISTS idx_snapshots_uuid_id_taken_at ON usage_snapshots(uuid_id, taken_at);
+                """)
         logger.info("SQLite schema is fresh and ready.")
 
     def write_conn(self):
@@ -2191,5 +2215,74 @@ class DatabaseManager:
         """وضعیت یک درخواست شارژ را به‌روزرسانی می‌کند."""
         with self.write_conn() as c:
             c.execute("UPDATE charge_requests SET is_pending = ? WHERE id = ?", (int(is_pending), request_id))
+
+    def get_all_users_with_balance(self) -> List[Dict[str, Any]]:
+        """تمام کاربرانی که موجودی کیف پول دارند را به ترتیب از بیشترین به کمترین برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT user_id, first_name, wallet_balance FROM users WHERE wallet_balance > 0 ORDER BY wallet_balance DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_auto_renew_setting(self, user_id: int, status: bool):
+        """وضعیت تمدید خودکار را برای کاربر به‌روز می‌کند."""
+        with self.write_conn() as c:
+            c.execute("UPDATE users SET auto_renew = ? WHERE user_id = ?", (int(status), user_id))
+
+    def log_wallet_transfer(self, sender_id: int, receiver_id: int, amount: float):
+        """یک رکورد برای انتقال موجودی ثبت می‌کند."""
+        with self.write_conn() as c:
+            c.execute(
+                "INSERT INTO wallet_transfers (sender_user_id, receiver_user_id, amount) VALUES (?, ?, ?)",
+                (sender_id, receiver_id, amount)
+            )
+
+    def get_user_by_telegram_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """یک کاربر را بر اساس شناسه تلگرام او پیدا می‌کند."""
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_user_latest_plan_price(self, uuid_id: int) -> Optional[int]:
+        """با مقایسه حجم فعلی کاربر با پلن‌های موجود، قیمت پلن فعلی او را تخمین می‌زند."""
+        from .utils import load_json_file, parse_volume_string
+        from .combined_handler import get_combined_user_info
+
+        uuid_row = self._conn().execute("SELECT uuid FROM user_uuids WHERE id = ?", (uuid_id,)).fetchone()
+        if not uuid_row: return None
+
+        user_info = get_combined_user_info(uuid_row['uuid'])
+        if not user_info: return None
+
+        current_limit_gb = user_info.get('usage_limit_GB', -1)
+        all_plans = load_json_file('plans.json')
+
+        for plan in all_plans:
+            plan_total_volume = 0
+            if plan.get('type') == 'combined':
+                plan_total_volume = parse_volume_string(plan.get('total_volume', '0'))
+            else:
+                volume_key = 'volume_de' if plan.get('type') == 'germany' else 'volume_fr' if plan.get('type') == 'france' else 'volume_tr'
+                plan_total_volume = parse_volume_string(plan.get(volume_key, '0'))
+
+            if plan_total_volume == int(current_limit_gb):
+                return plan.get('price')
+        return None
+
+    def add_lottery_ticket(self, user_id: int):
+        """یک بلیط قرعه‌کشی برای کاربر ثبت می‌کند."""
+        with self.write_conn() as c:
+            c.execute("INSERT INTO lottery_tickets (user_id) VALUES (?)", (user_id,))
+
+    def get_lottery_participants(self) -> list:
+        """لیست تمام شرکت‌کنندگان در قرعه‌کشی این ماه را برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute("SELECT user_id FROM lottery_tickets").fetchall()
+            return [row['user_id'] for row in rows]
+
+    def clear_lottery_tickets(self):
+        """تمام بلیط‌های قرعه‌کشی را برای شروع دوره جدید پاک می‌کند."""
+        with self.write_conn() as c:
+            c.execute("DELETE FROM lottery_tickets")
 
 db = DatabaseManager()

@@ -20,7 +20,6 @@ def initialize_user_handlers(b_instance, conversations_dict):
     bot = b_instance
     admin_conversations = conversations_dict
 
-    # مقداردهی اولیه تمام ماژول‌های فرزند
     account.initialize_handlers(b_instance, conversations_dict)
     info.initialize_handlers(b_instance)
     settings.initialize_handlers(b_instance)
@@ -29,18 +28,22 @@ def initialize_user_handlers(b_instance, conversations_dict):
 
 
 def go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None, original_msg_id: int = None):
-    """منوی اصلی و شخصی‌سازی شده کاربر را نمایش می‌دهد."""
-    # (کد این تابع صحیح است و بدون تغییر باقی می‌ماند)
+    """منوی اصلی و شخصی‌سازی شده کاربر را با نمایش موجودی نمایش می‌دهد."""
     uid = call.from_user.id if call else message.from_user.id
     msg_id = original_msg_id or (call.message.message_id if call else None)
     lang_code = db.get_user_language(uid)
     user_db_info = db.user(uid)
+    
+    wallet_balance = user_db_info.get('wallet_balance', 0.0) if user_db_info else 0.0
     user_points = user_db_info.get('achievement_points', 0) if user_db_info else 0
+
     text_lines = [
         f"*{escape_markdown(get_string('main_menu_title', lang_code))}*",
-        "`-----------------`",
+        "`──────────────────`",
+        f"💳 {escape_markdown('موجودی شما :')} *{wallet_balance:,.0f} {escape_markdown('تومان')}*",
         f"💰 {escape_markdown(get_string('fmt_your_points', lang_code))} *{user_points}*"
     ]
+
     loyalty_data = get_loyalty_progress_message(uid)
     if loyalty_data:
         line1 = get_string('loyalty_message_line1', lang_code).format(payment_count=loyalty_data['payment_count'])
@@ -49,10 +52,12 @@ def go_back_to_main(call: types.CallbackQuery = None, message: types.Message = N
         line2_formatted = line2_template.format(renewals_left=renewals_left, gb_reward=loyalty_data['gb_reward'], days_reward=loyalty_data['days_reward'])
         loyalty_message = escape_markdown(line2_formatted).replace(escape_markdown(renewals_left), f"*{escape_markdown(renewals_left)}*")
         text_lines.append(f"{escape_markdown(line1)}\n{loyalty_message}")
+    
     text_lines.append("`──────────────────`")
     text_lines.append(f"💡 {escape_markdown(get_string('main_menu_tip', lang_code))}")
     text = "\n".join(text_lines)
     reply_markup = menu.main(uid in ADMIN_IDS, lang_code=lang_code)
+
     if msg_id:
         _safe_edit(uid, msg_id, text, reply_markup=reply_markup)
     else:

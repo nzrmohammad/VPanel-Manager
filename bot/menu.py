@@ -119,7 +119,7 @@ class Menu:
         return kb
 
 
-    def plan_category_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
+    def plan_categories_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         """
         منوی انتخاب دسته‌بندی سرویس‌ها (سرورهای مختلف) را ایجاد می‌کند.
         """
@@ -139,28 +139,21 @@ class Menu:
         kb.add(btn_back)
         return kb
 
+
     def achievement_shop_menu(self, user_points: int, access: dict) -> types.InlineKeyboardMarkup:
-        """
-        منوی فروشگاه را به صورت یک گرید دو ستونه منظم و حرفه‌ای نمایش می‌دهد.
-        """
+        """منوی فروشگاه را با دسته‌بندی‌های منظم (حجم، روز و قرعه‌کشی) نمایش می‌دهد."""
         from .config import ACHIEVEMENT_SHOP_ITEMS
-        kb = types.InlineKeyboardMarkup(row_width=2) # کیبورد را روی حالت دو ستونه تنظیم می‌کنیم
+        kb = types.InlineKeyboardMarkup(row_width=2)
         
         has_de_access = access.get('has_access_de', False)
         has_fr_tr_access = access.get('has_access_fr', False) or access.get('has_access_tr', False)
 
-        # --- START OF NEW LOGIC: Build a clean two-column grid ---
-        buttons_to_add = []
+        day_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if v.get('days', 0) > 0}
+        lottery_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if 'lottery' in k}
+        data_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if k not in day_items and k not in lottery_items}
+        # ----------------------------------------
 
-        # ابتدا آیتم‌های مربوط به تمدید روز را جدا می‌کنیم
-        day_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if v.get('days', 0) > 0 and v.get('gb', 0) == 0}
-        
-        # سپس آیتم‌های مربوط به حجم را جدا می‌کنیم
-        data_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if k not in day_items}
-
-        # تابع کمکی برای ساخت دکمه‌ها
         def create_button(item_key, item_data):
-            # شرط نمایش آیتم بر اساس دسترسی کاربر
             target = item_data.get('target')
             show_item = False
             if target == 'all' or (target == 'de' and has_de_access) or (target == 'fr_tr' and has_fr_tr_access):
@@ -170,23 +163,26 @@ class Menu:
                 is_affordable = user_points >= item_data['cost']
                 emoji = "✅" if is_affordable else "❌"
                 button_text = f"{emoji} {item_data['name']} ({item_data['cost']})"
-                callback_data = f"shop:buy:{item_key}" if is_affordable else "shop:insufficient_points"
+                callback_data = f"shop:confirm:{item_key}" if is_affordable else "shop:insufficient_points"
                 return types.InlineKeyboardButton(button_text, callback_data=callback_data)
             return None
 
-        # اضافه کردن آیتم‌های حجم
+        # --- نمایش دکمه‌ها بر اساس دسته‌بندی ---
         data_buttons = [create_button(k, v) for k, v in data_items.items() if create_button(k, v)]
         if data_buttons:
             kb.add(types.InlineKeyboardButton("افزایش حجم (گیگابایت)", callback_data="noop"))
-            kb.add(*data_buttons) # کتابخانه تلگرام به صورت خودکار این دکمه‌ها را دو ستونه می‌چیند
+            kb.add(*data_buttons)
 
-        # اضافه کردن آیتم‌های روز
         day_buttons = [create_button(k, v) for k, v in day_items.items() if create_button(k, v)]
         if day_buttons:
             kb.add(types.InlineKeyboardButton("تمدید سرویس (روز)", callback_data="noop"))
             kb.add(*day_buttons)
-
-        # --- END OF NEW LOGIC ---
+            
+        lottery_buttons = [create_button(k, v) for k, v in lottery_items.items() if create_button(k, v)]
+        if lottery_buttons:
+            kb.add(types.InlineKeyboardButton("🎉 سرگرمی و شانس", callback_data="noop"))
+            kb.add(*lottery_buttons)
+        # -----------------------------------------
 
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به سرویس‌ها", callback_data="view_plans"))
         return kb
@@ -271,18 +267,34 @@ class Menu:
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
         return kb
 
+
     def wallet_main_menu(self, balance: float, lang_code: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         balance_str = "{:,.0f}".format(balance)
-        
-        # نمایش موجودی در یک دکمه غیرقابل کلیک
+
         kb.add(types.InlineKeyboardButton(f"موجودی شما: {balance_str} تومان", callback_data="noop"))
-        
+
         kb.add(
-            types.InlineKeyboardButton(f"➕ {get_string('charge_wallet', lang_code)}", callback_data="wallet:charge"),
-            types.InlineKeyboardButton(f"📜 {get_string('transaction_history', lang_code)}", callback_data="wallet:history")
+            types.InlineKeyboardButton(f"📜 {get_string('transaction_history', lang_code)}", callback_data="wallet:history"),
+            types.InlineKeyboardButton(f"➕ {get_string('charge_wallet', lang_code)}", callback_data="wallet:charge")
+            
         )
+        kb.add(
+            types.InlineKeyboardButton("💸 انتقال موجودی", callback_data="wallet:transfer_start"),
+            types.InlineKeyboardButton("⚙️ تمدید خودکار", callback_data="wallet:settings")
+        )
+        kb.add(types.InlineKeyboardButton("🎁 خرید برای دیگران", callback_data="wallet:gift_start"))
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
+        return kb
+
+
+    def wallet_settings_menu(self, auto_renew_status: bool, lang_code: str) -> types.InlineKeyboardMarkup:
+        """منوی تنظیمات تمدید خودکار را ایجاد می‌کند."""
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        status_text = "✅ فعال" if auto_renew_status else "❌ غیرفعال"
+
+        kb.add(types.InlineKeyboardButton(f"تمدید خودکار: {status_text}", callback_data="wallet:toggle_auto_renew"))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="wallet:main"))
         return kb
 
     def settings(self, settings_dict: dict, lang_code: str, access: dict) -> types.InlineKeyboardMarkup:
@@ -486,6 +498,7 @@ class Menu:
         kb.add(btn_back)
         return kb
 
+
     def admin_reports_menu(self) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
@@ -495,10 +508,12 @@ class Menu:
         kb.add(
             types.InlineKeyboardButton("💳 پرداخت‌ها", callback_data="admin:list:payments:0"),
             types.InlineKeyboardButton("🤖 لیست کاربران ربات", callback_data="admin:list:bot_users:0"))
-        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"),
-               types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
+        kb.add(
+            types.InlineKeyboardButton("💰 موجودی کاربران", callback_data="admin:list:balances:0"), 
+            types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
         kb.add(types.InlineKeyboardButton("🏆 رتبه‌بندی امتیازها", callback_data="admin:list:leaderboard:0"),
-               types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
+                types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
+        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 

@@ -10,7 +10,7 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks, fmt_leaderboard_list
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks, fmt_leaderboard_list, fmt_user_balances_list
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
 from ..utils import _safe_edit, escape_markdown, load_service_plans, parse_volume_string
@@ -153,6 +153,8 @@ def handle_paginated_list(call, params):
             users = sorted_users[:100]
         elif list_type == "bot_users": 
             users = db.get_all_bot_users()
+        elif list_type == "balances":
+            users = db.get_all_users_with_balance()
         elif list_type == "birthdays": 
             users = list(db.get_users_with_birthdays())
         elif list_type == "payments":
@@ -166,6 +168,7 @@ def handle_paginated_list(call, params):
         "never_connected": {"format": lambda u, pg, p_type: fmt_users_list(u, 'never_connected', pg), "back": "panel_reports"},
         "top_consumers": {"format": fmt_top_consumers, "back": "reports_menu"},
         "bot_users": {"format": fmt_bot_users_list, "back": "reports_menu"},
+        'balances': {"format": lambda u, pg, p_type: fmt_user_balances_list(u, pg), "back": "reports_menu"},
         "birthdays": {"format": fmt_birthdays_list, "back": "reports_menu"},
         "payments": {"format": fmt_payments_report_list, "back": "reports_menu"},
         "leaderboard": {"format": fmt_leaderboard_list, "back": "reports_menu"}

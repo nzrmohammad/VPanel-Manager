@@ -10,7 +10,7 @@ from .language import get_string
 
 from . import combined_handler
 from .database import db
-from .utils import escape_markdown, format_daily_usage, load_json_file, find_best_plan_upgrade
+from .utils import escape_markdown, format_daily_usage, load_json_file, find_best_plan_upgrade, load_service_plans, parse_volume_string
 from .menu import menu
 from .admin_formatters import fmt_admin_report, fmt_online_users_list, fmt_weekly_admin_summary, fmt_achievement_leaderboard, fmt_lottery_participants_list, fmt_daily_achievements_report
 from .user_formatters import fmt_user_report, fmt_user_weekly_report
@@ -827,6 +827,107 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"Failed to generate daily achievements report: {e}", exc_info=True)
 
+
+    def _check_auto_renewals_and_warnings(self) -> None:
+        """
+        هر روز اجرا شده و وضعیت تمدید خودکار و هشدارهای کمبود موجودی را بررسی می‌کند.
+        """
+        logger.info("SCHEDULER: Starting auto-renewal and low balance check job.")
+
+        # فقط کاربرانی که تمدید خودکار را فعال کرده‌اند را بررسی می‌کنیم
+        users_with_auto_renew = [u for u in db.get_all_user_ids() if (ud := db.user(u)) and ud.get('auto_renew')]
+
+        for user_id in users_with_auto_renew:
+            try:
+                user_uuids = db.uuids(user_id)
+                if not user_uuids: continue
+
+                uuid_record = user_uuids[0]
+                user_info = combined_handler.get_combined_user_info(uuid_record['uuid'])
+
+                if not user_info or not user_info.get('expire'): continue
+
+                expire_days = user_info['expire']
+                user_balance = (db.user(user_id) or {}).get('wallet_balance', 0.0)
+                plan_price = db.get_user_latest_plan_price(uuid_record['id'])
+
+                # سناریو ۱: تمدید خودکار
+                if expire_days == 1 and plan_price and user_balance >= plan_price:
+                    plan_info = next((p for p in load_service_plans() if p.get('price') == plan_price), None)
+                    if not plan_info: continue
+
+                    add_days = parse_volume_string(plan_info.get('duration', '0'))
+                    # (منطق اعمال تغییرات مشابه تابع خرید است)
+                    # ...
+
+                    # کسر هزینه از کیف پول و ثبت لاگ
+                    db.update_wallet_balance(user_id, -plan_price, 'auto_renewal', f"تمدید خودکار سرویس")
+
+                    # اطلاع‌رسانی به کاربر
+                    self._notify_user(user_id, f"✅ سرویس شما با موفقیت به صورت خودکار تمدید شد. مبلغ {plan_price:,.0f} تومان از حساب شما کسر گردید.")
+
+                # سناریو ۲: هشدار کمبود موجودی
+                elif 1 < expire_days <= 3 and plan_price and user_balance < plan_price:
+                    if not db.has_recent_warning(uuid_record['id'], 'low_balance_for_renewal', hours=72):
+                        needed_amount = plan_price - user_balance
+                        msg = (
+                            f"⚠️ *هشدار کمبود موجودی برای تمدید خودکار*\n\n"
+                            f"اعتبار سرویس شما رو به اتمام است اما موجودی کیف پول شما برای تمدید خودکار کافی نیست.\n\n"
+                            f"برای تمدید، نیاز به شارژ حساب به مبلغ حداقل *{needed_amount:,.0f} تومان* دارید."
+                        )
+                        if self._send_warning_message(user_id, msg):
+                            db.log_warning(uuid_record['id'], 'low_balance_for_renewal')
+
+            except Exception as e:
+                logger.error(f"Error during auto-renewal check for user {user_id}: {e}", exc_info=True)
+
+    def _run_monthly_lottery(self) -> None:
+        """قرعه‌کشی ماهانه را اجرا کرده، به برنده جایزه می‌دهد و به همه اطلاع‌رسانی می‌کند."""
+
+        # --- تشخیص اولین جمعه ماه شمسی ---
+        today_jalali = jdatetime.datetime.now(self.tz)
+        if today_jalali.weekday() != 6 or today_jalali.day > 7:
+            return
+        # ------------------------------------
+
+        logger.info("SCHEDULER: Running monthly lottery.")
+        participants = db.get_lottery_participants()
+
+        if not participants:
+            logger.info("LOTTERY: No participants this month.")
+            for admin_id in ADMIN_IDS:
+                self._notify_user(admin_id, "ℹ️ قرعه‌کشی ماهانه به دلیل عدم وجود شرکت‌کننده، این ماه انجام نشد.")
+            return
+
+        import random
+        winner_id = random.choice(participants)
+        winner_info = db.get_user_by_telegram_id(winner_id)
+        winner_name = escape_markdown(winner_info.get('first_name', f"کاربر {winner_id}"))
+
+        # تعریف جایزه (مثلاً یک سرویس Gold 🥇 رایگان)
+        prize_plan = next((p for p in load_service_plans() if p['name'] == 'Gold 🥇'), None)
+        if prize_plan:
+            winner_uuids = db.uuids(winner_id)
+            if winner_uuids:
+                winner_main_uuid = winner_uuids[0]['uuid']
+                add_days = parse_volume_string(prize_plan.get('duration', '0'))
+                add_gb_de = parse_volume_string(prize_plan.get('volume_de', '0'))
+                add_gb_fr_tr = parse_volume_string(prize_plan.get('volume_fr', '0'))
+
+                combined_handler.modify_user_on_all_panels(winner_main_uuid, add_gb=add_gb_de, add_days=add_days, target_panel_type='hiddify')
+                combined_handler.modify_user_on_all_panels(winner_main_uuid, add_gb=add_gb_fr_tr, add_days=add_days, target_panel_type='marzban')
+
+        # اطلاع‌رسانی به برنده و ادمین‌ها
+        winner_message = f"🎉 *{escape_markdown('شما برنده قرعه‌کشی ماهانه شدید!')}* 🎉\n\n{escape_markdown(f'تبریک! جایزه شما (سرویس {prize_plan["name"]}) به صورت خودکار به اکانتتان اضافه شد.')}"
+        self._notify_user(winner_id, winner_message)
+
+        admin_message = f"🏆 *{escape_markdown('نتیجه قرعه‌کشی ماهانه')}*\n\n{escape_markdown('برنده این ماه:')} *{winner_name}* (`{winner_id}`)\n{escape_markdown('جایزه با موفقیت به ایشان اهدا شد.')}"
+        for admin_id in ADMIN_IDS:
+            self._notify_user(admin_id, admin_message)
+
+        # پاک کردن بلیط‌ها برای دوره بعد
+        db.clear_lottery_tickets()
+
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
         if datetime.now(self.tz).day == 1:
@@ -855,10 +956,12 @@ class SchedulerManager:
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)
         schedule.every().friday.at("21:00", self.tz_str).do(self._run_lucky_lottery)
+        schedule.every().friday.at("21:05", self.tz_str).do(self._send_lucky_badge_summary)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._update_online_reports)
         schedule.every().day.at("00:05", self.tz_str).do(self._birthday_gifts_job)
         schedule.every().day.at("02:00", self.tz_str).do(self._check_achievements_and_anniversary)
         schedule.every().day.at("00:15", self.tz_str).do(self._check_for_special_occasions)
+        schedule.every().day.at("04:30", self.tz_str).do(self._check_auto_renewals_and_warnings)
         schedule.every(12).hours.do(self._sync_users_with_panels)
         schedule.every(8).hours.do(self._cleanup_old_reports)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_monthly_vacuum)
