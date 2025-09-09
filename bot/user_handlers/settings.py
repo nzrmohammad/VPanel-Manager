@@ -33,19 +33,12 @@ def show_settings(call: types.CallbackQuery):
     msg_id = call.message.message_id
     lang_code = db.get_user_language(uid)
     settings_data = db.get_user_settings(uid)
-    
-    user_uuids = db.uuids(uid)
-    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
-    if user_uuids:
-        first_uuid_record = db.uuid_by_id(uid, user_uuids[0]['id'])
-        if first_uuid_record:
-            access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
-            access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
-            access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
-    
+
+    access_rights = db.get_user_access_rights(uid)
+
     title_text = f'*{escape_markdown(get_string("settings_title", lang_code))}*'
     reply_markup = menu.settings(settings_data, lang_code=lang_code, access=access_rights)
-    
+
     _safe_edit(uid, msg_id, text=title_text, reply_markup=reply_markup)
 
 

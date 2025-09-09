@@ -1,3 +1,5 @@
+# nzrmohammad/vpanel-manager/VPanel-Manager-ed20ef2bbbe3f15e1933c87064cf40d68b1942a2/bot/database.py
+
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -13,6 +15,7 @@ db_lock = threading.RLock()
 class DatabaseManager:
     def __init__(self, path: str = "bot_data.db"):
         self.path = path
+        self._user_cache = {} #  <--  کش اینجا اضافه شد
         self._init_db()
 
     def _conn(self) -> sqlite3.Connection:
@@ -22,13 +25,20 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         return conn
 
+    # متد جدید برای پاک کردن کش کاربر
+    def clear_user_cache(self, user_id: int):
+        """کش اطلاعات یک کاربر خاص را پاک می‌کند."""
+        if user_id in self._user_cache:
+            del self._user_cache[user_id]
+            logger.info(f"CACHE: Cleared cache for user_id {user_id}.")
+
     def _init_db(self) -> None:
         with self.write_conn() as c:
             try:
                 # --- START: Migration Logic ---
                 cursor = c.execute("PRAGMA table_info(users);")
                 columns = [row['name'] for row in cursor.fetchall()]
-                
+
                 # Rename old columns if they exist
                 if 'data_warning_hiddify' in columns and 'data_warning_de' not in columns:
                     c.execute("ALTER TABLE users RENAME COLUMN data_warning_hiddify TO data_warning_de;")
@@ -59,7 +69,7 @@ class DatabaseManager:
                     data_warning_de INTEGER DEFAULT 1,
                     data_warning_fr INTEGER DEFAULT 1,
                     data_warning_tr INTEGER DEFAULT 1,
-                    show_info_config INTEGER DEFAULT 1,        
+                    show_info_config INTEGER DEFAULT 1,
                     admin_note TEXT,
                     lang_code TEXT,
                     weekly_reports INTEGER DEFAULT 1,
@@ -70,8 +80,7 @@ class DatabaseManager:
                     achievement_points INTEGER DEFAULT 0,
                     achievement_alerts INTEGER DEFAULT 1,
                     promotional_alerts INTEGER DEFAULT 1,
-                    wallet_balance REAL DEFAULT 0.0,
-                    auto_renew INTEGER DEFAULT 0             
+                    wallet_balance REAL DEFAULT 0.0
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +96,7 @@ class DatabaseManager:
                     is_vip INTEGER DEFAULT 0,
                     has_access_de INTEGER DEFAULT 1,
                     has_access_fr INTEGER DEFAULT 0,
-                    has_access_tr INTEGER DEFAULT 0,        
+                    has_access_tr INTEGER DEFAULT 0,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
                     UNIQUE(user_id, uuid)
                 );
@@ -210,7 +219,7 @@ class DatabaseManager:
                     gift_year INTEGER NOT NULL,
                     given_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(user_id, gift_year)
-                );       
+                );
                 CREATE TABLE IF NOT EXISTS wallet_transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
@@ -229,34 +238,11 @@ class DatabaseManager:
                     is_pending INTEGER DEFAULT 1,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
-                CREATE TABLE IF NOT EXISTS wallet_transfers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sender_user_id INTEGER NOT NULL,
-                receiver_user_id INTEGER NOT NULL,
-                amount REAL NOT NULL,
-                transferred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(sender_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-                FOREIGN KEY(receiver_user_id) REFERENCES users(user_id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS auto_renewal_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    uuid_id INTEGER NOT NULL,
-                    plan_price REAL NOT NULL,
-                    renewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS lottery_tickets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
-                );    
-                    CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
-                    CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
-                    CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
-                    CREATE INDEX IF NOT EXISTS idx_snapshots_uuid_id_taken_at ON usage_snapshots(uuid_id, taken_at);
-                """)
+                CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
+                CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
+                CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
+                CREATE INDEX IF NOT EXISTS idx_snapshots_uuid_id_taken_at ON usage_snapshots(uuid_id, taken_at);
+            """)
         logger.info("SQLite schema is fresh and ready.")
 
     def write_conn(self):
@@ -309,7 +295,7 @@ class DatabaseManager:
                 "SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
             ).fetchone()
-            
+
             total_h_usage = 0.0
             if hiddify_end_row and hiddify_end_row['hiddify_usage_gb'] is not None:
                 end_h = hiddify_end_row['hiddify_usage_gb']
@@ -317,7 +303,7 @@ class DatabaseManager:
                     first_snap_today = c.execute("SELECT hiddify_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1", (uuid_id, today_midnight_utc)).fetchone()
                     if first_snap_today and first_snap_today['hiddify_usage_gb'] is not None:
                         start_h = first_snap_today['hiddify_usage_gb']
-                
+
                 if end_h >= start_h:
                     total_h_usage = end_h - start_h
 
@@ -334,7 +320,7 @@ class DatabaseManager:
                 "SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
             ).fetchone()
-            
+
             total_m_usage = 0.0
             if marzban_end_row and marzban_end_row['marzban_usage_gb'] is not None:
                 end_m = marzban_end_row['marzban_usage_gb']
@@ -386,18 +372,18 @@ class DatabaseManager:
 
             return {'hiddify': total_h_usage, 'marzban': total_m_usage}
 
-    
+
     def get_panel_usage_in_intervals(self, uuid_id: int, panel_name: str) -> Dict[int, float]:
         if panel_name not in ['hiddify_usage_gb', 'marzban_usage_gb']:
             return {}
 
         now_utc = datetime.now(pytz.utc)
         intervals = {3: 0.0, 6: 0.0, 12: 0.0, 24: 0.0}
-        
+
         with self.write_conn() as c:
             for hours in intervals.keys():
                 time_ago = now_utc - timedelta(hours=hours)
-                
+
                 query = f"""
                     SELECT
                         (SELECT {panel_name} FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1) as start_usage,
@@ -405,12 +391,12 @@ class DatabaseManager:
                 """
                 params = (uuid_id, time_ago, uuid_id, time_ago)
                 row = c.execute(query, params).fetchone()
-                
+
                 if row and row['start_usage'] is not None and row['end_usage'] is not None:
                     intervals[hours] = max(0, row['end_usage'] - row['start_usage'])
-                    
+
         return intervals
-        
+
     def log_warning(self, uuid_id: int, warning_type: str):
         with self.write_conn() as c:
             c.execute(
@@ -435,7 +421,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             rows = c.execute(query, uuids).fetchall()
             return [row['user_id'] for row in rows]
-        
+
     def get_uuid_id_by_uuid(self, uuid_str: str) -> Optional[int]:
         with self.write_conn() as c:
             row = c.execute("SELECT id FROM user_uuids WHERE uuid = ?", (uuid_str,)).fetchone()
@@ -465,11 +451,17 @@ class DatabaseManager:
     def delete_scheduled_message(self, job_id: int):
         with self.write_conn() as c:
             c.execute("DELETE FROM scheduled_messages WHERE id=?", (job_id,))
-            
+
     def user(self, user_id: int) -> Optional[Dict[str, Any]]:
+        #  <--  استفاده از کش
+        if user_id in self._user_cache:
+            return self._user_cache[user_id]
         with self.write_conn() as c:
             row = c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-            return dict(row) if row else None
+            user_data = dict(row) if row else None
+            if user_data:
+                self._user_cache[user_id] = user_data #  <--  ذخیره در کش
+            return user_data
 
     def add_or_update_user(self, user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> bool:
         """
@@ -485,6 +477,7 @@ class DatabaseManager:
                 "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name, last_name=excluded.last_name",
                 (user_id, username, first, last),
             )
+            self.clear_user_cache(user_id) #  <-- پاک کردن کش
             return not existing_user
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
@@ -493,7 +486,7 @@ class DatabaseManager:
             if row:
                 row_dict = dict(row)
                 return {
-                    'daily_reports': bool(row_dict.get('daily_reports', True)), 
+                    'daily_reports': bool(row_dict.get('daily_reports', True)),
                     'weekly_reports': bool(row_dict.get('weekly_reports', True)),
                     'expiry_warnings': bool(row_dict.get('expiry_warnings', True)),
                     'data_warning_de': bool(row_dict.get('data_warning_de', True)),
@@ -505,7 +498,7 @@ class DatabaseManager:
                     'promotional_alerts': bool(row_dict.get('promotional_alerts', True))
                 }
             return {
-                'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True, 
+                'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True,
                 'data_warning_de': True, 'data_warning_fr': True, 'data_warning_tr': True,
                 'show_info_config': True, 'auto_delete_reports': False,
                 'achievement_alerts': True, 'promotional_alerts': True
@@ -513,18 +506,17 @@ class DatabaseManager:
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
         valid_settings = [
-            'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config', 
+            'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
             'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
             'data_warning_de', 'data_warning_fr', 'data_warning_tr'
         ]
-        
+
         if setting in valid_settings:
             with self.write_conn() as c:
                 c.execute(f"UPDATE users SET {setting}=? WHERE user_id=?", (int(value), user_id))
+            self.clear_user_cache(user_id) #  <-- پاک کردن کش
         else:
             logger.warning(f"Attempted to update an invalid setting '{setting}' for user {user_id}.")
-
-
 
     def add_uuid(self, user_id: int, uuid_str: str, name: str) -> any:
             uuid_str = uuid_str.lower()
@@ -548,7 +540,7 @@ class DatabaseManager:
                             "owner_id": existing_active['user_id'],
                             "uuid_id": existing_active['id']
                         }
-                
+
                 # اگر اکانت اصلاً وجود نداشت یا غیرفعال و متعلق به دیگری بود، یک رکورد جدید می‌سازد
                 c.execute(
                     "INSERT INTO user_uuids (user_id, uuid, name) VALUES (?, ?, ?)",
@@ -565,7 +557,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             # بررسی می‌کند آیا کاربر قبلاً این اکانت را داشته و غیرفعال کرده است
             existing_inactive = c.execute("SELECT * FROM user_uuids WHERE user_id = ? AND uuid = ? AND is_active = 0", (user_id, uuid_str)).fetchone()
-            
+
             if existing_inactive:
                 # اگر وجود داشت، آن را دوباره فعال می‌کند
                 c.execute("UPDATE user_uuids SET is_active = 1, name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, existing_inactive['id']))
@@ -601,24 +593,25 @@ class DatabaseManager:
             cursor = c.execute("SELECT id, user_id, uuid, created_at, first_connection_time, welcome_message_sent, renewal_reminder_sent FROM user_uuids WHERE is_active=1")
             for row in cursor:
                 yield dict(row)
-            
+
     def get_all_user_ids(self):
         """تمام شناسه‌های کاربری را به صورت جریانی (generator) برمی‌گرداند."""
         with self.write_conn() as c:
             cursor = c.execute("SELECT user_id FROM users")
             for row in cursor:
                 yield row['user_id']
-        
+
     def get_all_bot_users(self):
         """تمام کاربران ربات را به صورت لیست برمی‌گرداند."""
         with self.write_conn() as c:
             cursor = c.execute("SELECT user_id, username, first_name, last_name FROM users ORDER BY user_id")
             # FIX: The generator is converted to a list before being returned.
             return [dict(r) for r in cursor.fetchall()]
-        
+
     def update_user_birthday(self, user_id: int, birthday_date: datetime.date):
         with self.write_conn() as c:
             c.execute("UPDATE users SET birthday = ? WHERE user_id = ?", (birthday_date, user_id))
+        self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def get_users_with_birthdays(self):
         """کاربران دارای تاریخ تولد را به صورت جریانی (generator) برمی‌گرداند."""
@@ -630,7 +623,7 @@ class DatabaseManager:
             """)
             for row in cursor:
                 yield dict(row)
-        
+
     def get_user_id_by_uuid(self, uuid: str) -> Optional[int]:
         with self.write_conn() as c:
             row = c.execute("SELECT user_id FROM user_uuids WHERE uuid = ?", (uuid,)).fetchone()
@@ -639,12 +632,13 @@ class DatabaseManager:
     def reset_user_birthday(self, user_id: int) -> None:
         with self.write_conn() as c:
             c.execute("UPDATE users SET birthday = NULL WHERE user_id = ?", (user_id,))
+        self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def delete_user_snapshots(self, uuid_id: int) -> int:
         with self.write_conn() as c:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE uuid_id = ?", (uuid_id,))
             return cursor.rowcount
-    
+
     def get_todays_birthdays(self) -> list:
         today = datetime.now(pytz.utc)
         today_month_day = f"{today.month:02d}-{today.day:02d}"
@@ -674,7 +668,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             rows = c.execute("SELECT uuid, user_id FROM user_uuids WHERE is_active=1").fetchall()
             return {row['uuid']: row['user_id'] for row in rows}
-        
+
     def get_uuid_to_bot_user_map(self) -> Dict[str, Dict[str, Any]]:
         query = """
             SELECT uu.uuid, u.user_id, u.first_name, u.username
@@ -689,7 +683,7 @@ class DatabaseManager:
                 if row['uuid'] not in result_map:
                     result_map[row['uuid']] = dict(row)
         return result_map
-    
+
     def delete_daily_snapshots(self, uuid_id: int) -> None:
         """Deletes all usage snapshots for a given uuid_id that were taken today (UTC)."""
         today_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -760,7 +754,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
-        
+
     def get_user_payment_history(self, uuid_id: int) -> List[Dict[str, Any]]:
             """تمام رکوردهای پرداخت برای یک کاربر خاص را برمی‌گرداند."""
             with self.write_conn() as c:
@@ -794,6 +788,7 @@ class DatabaseManager:
         """Updates or removes the admin note for a given user."""
         with self.write_conn() as c:
             c.execute("UPDATE users SET admin_note = ? WHERE user_id = ?", (note, user_id))
+        self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def add_batch_templates(self, templates: list[str]) -> int:
         """
@@ -803,7 +798,7 @@ class DatabaseManager:
         """
         if not templates:
             return 0
-        
+
         with self.write_conn() as c:
             cursor = c.cursor()
             # استفاده از INSERT ساده برای افزودن تمام موارد
@@ -812,7 +807,7 @@ class DatabaseManager:
                 [(tpl,) for tpl in templates]
             )
             return cursor.rowcount
-        
+
     def update_template(self, template_id: int, new_template_str: str):
         """محتوای یک قالب کانفیگ مشخص را در دیتابیس به‌روزرسانی می‌کند."""
         # در اینجا مشکل برطرف شده و از متد صحیح _conn() استفاده می‌شود
@@ -871,7 +866,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             row = c.execute("SELECT * FROM user_uuids WHERE uuid = ? AND is_active = 1", (uuid_str,)).fetchone()
             return dict(row) if row else None
-        
+
     def get_all_user_uuids(self) -> List[Dict[str, Any]]:
         """
         تمام رکوردهای UUID را از دیتابیس برمی‌گرداند.
@@ -886,7 +881,7 @@ class DatabaseManager:
             """
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
-        
+
     def check_connection(self) -> bool:
         """بررسی می‌کند که آیا اتصال به دیتابیس برقرار است یا نه."""
         try:
@@ -941,17 +936,17 @@ class DatabaseManager:
             JOIN RelevantSnapshots rs ON uu.id = rs.uuid_id
             WHERE uu.is_active = 1;
         """
-        
+
         usage_map = {}
         with self.write_conn() as c:
             rows = c.execute(query, (today_midnight_utc, today_midnight_utc, today_midnight_utc)).fetchall()
             for row in rows:
                 h_start, m_start = (row['h_start'] or 0.0), (row['m_start'] or 0.0)
                 h_end, m_end = (row['h_end'] or 0.0), (row['m_end'] or 0.0)
-                
+
                 h_usage = h_end if h_end < h_start else h_end - h_start
                 m_usage = m_end if m_end < m_start else m_end - m_start
-                
+
                 usage_map[row['uuid']] = {'hiddify': max(0, h_usage), 'marzban': max(0, m_usage)}
         return usage_map
 
@@ -963,14 +958,14 @@ class DatabaseManager:
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
         summary = []
-        
+
         with self.write_conn() as c:
             for i in range(days - 1, -1, -1):
                 # 1. محدوده زمانی روز مورد نظر را مشخص می‌کنیم
                 target_date = now_in_tehran.date() - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
-                
+
                 # 2. آخرین مصرف ثبت‌شده هر کاربر *قبل* از شروع این روز را به عنوان نقطه شروع (baseline) پیدا می‌کنیم
                 prev_day_snapshots_query = """
                     SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
@@ -994,17 +989,17 @@ class DatabaseManager:
                     WHERE taken_at >= ? AND taken_at < ?
                 """
                 daily_rows = c.execute(daily_snapshots_query, (day_start_utc, day_end_utc)).fetchall()
-                
+
                 daily_usage_by_user = {}
                 for row in daily_rows:
                     uuid_id = row['uuid_id']
                     if uuid_id not in daily_usage_by_user:
                         daily_usage_by_user[uuid_id] = {}
-                    
+
                     if row['rn_asc'] == 1:
                         daily_usage_by_user[uuid_id]['h_first'] = row['hiddify_usage_gb']
                         daily_usage_by_user[uuid_id]['m_first'] = row['marzban_usage_gb']
-                    
+
                     if row['rn_desc'] == 1:
                         daily_usage_by_user[uuid_id]['h_end'] = row['hiddify_usage_gb']
                         daily_usage_by_user[uuid_id]['m_end'] = row['marzban_usage_gb']
@@ -1013,32 +1008,32 @@ class DatabaseManager:
                 day_total_gb = 0.0
                 for uuid_id, daily_data in daily_usage_by_user.items():
                     baseline = baseline_usage.get(uuid_id)
-                    
+
                     h_start = baseline['h_start'] if baseline else daily_data.get('h_first', 0.0)
                     m_start = baseline['m_start'] if baseline else daily_data.get('m_first', 0.0)
-                    
+
                     h_end = daily_data.get('h_end', 0.0)
                     m_end = daily_data.get('m_end', 0.0)
-                    
+
                     h_diff = (h_end or 0.0) - (h_start or 0.0)
                     m_diff = (m_end or 0.0) - (m_start or 0.0)
-                    
+
                     day_total_gb += max(0, h_diff)
                     day_total_gb += max(0, m_diff)
-                
+
                 summary.append({
                     'date': target_date.strftime('%Y-%m-%d'),
                     'total_gb': round(day_total_gb, 2)
                 })
-                
+
         return summary
-        
+
     def update_config_name(self, uuid_id: int, new_name: str) -> bool:
         """نام نمایشی یک کانفیگ (UUID) را در دیتابیس تغییر می‌دهد."""
         if not new_name or len(new_name) < 2:
             # جلوگیری از ثبت نام‌های خالی یا بسیار کوتاه
             return False
-        
+
         with self.write_conn() as c:
             cursor = c.execute(
                 "UPDATE user_uuids SET name = ? WHERE id = ?",
@@ -1078,7 +1073,7 @@ class DatabaseManager:
             rows = c.execute(query).fetchall()
             # Reverse the result to have it in ascending order for the chart
             return [dict(r) for r in reversed(rows)]
-        
+
     def get_revenue_by_month(self, months: int = 6) -> List[Dict[str, Any]]:
         """درآمد ماهانه را برای نمودار MRR محاسبه می‌کند."""
         # نکته: فرض شده هر پرداخت معادل یک واحد درآمد است.
@@ -1148,20 +1143,20 @@ class DatabaseManager:
                 (start_date, end_date)
             ).fetchone()
             return row['count'] if row else 0
-        
+
     def get_daily_usage_per_panel(self, days: int = 30) -> list[dict[str, Any]]:
         """
         مصرف روزانه تفکیک شده برای هر پنل را جهت استفاده در نمودار جدید برمی‌گرداند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         summary = []
-        
+
         # تاریخ‌ها را از امروز به گذشته محاسبه می‌کنیم
         for i in range(days - 1, -1, -1):
             target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
             day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
             day_end_utc = day_start_utc + timedelta(days=1)
-            
+
             query = """
                 SELECT
                     SUM(COALESCE(h_diff, 0)) as total_h,
@@ -1220,7 +1215,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
-        
+
     def toggle_user_vip(self, uuid: str) -> None:
         """وضعیت VIP یک کاربر را بر اساس UUID تغییر می‌دهد."""
         with self.write_conn() as c:
@@ -1259,12 +1254,13 @@ class DatabaseManager:
                 # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
             except Exception as e:
                 logger.error(f"DB WRITE: FAILED to set lang_code for user_id={user_id}. Error: {e}", exc_info=True)
+        self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def get_user_language(self, user_id: int) -> str:
         """کد زبان کاربر را از دیتابیس می‌خواند."""
         with self._conn() as c:  # <--- اصلاحیه: استفاده از کانکشن فقط خواندنی
             row = c.execute("SELECT lang_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
-            
+
             # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
             lang_code = row['lang_code'] if row and row['lang_code'] else 'fa'
             logger.info(f"DB: Fetched lang_code for user {user_id}. Result: '{lang_code}' (Raw value was: {row['lang_code'] if row else 'No row'})")
@@ -1293,7 +1289,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             row = c.execute("SELECT hiddify_uuid FROM marzban_mapping WHERE marzban_username = ?", (marzban_username,)).fetchone()
             return row['hiddify_uuid'] if row else None
-            
+
     def get_all_marzban_mappings(self) -> List[Dict[str, str]]:
         """تمام ارتباط‌های مرزبان را برای نمایش در پنل وب برمی‌گرداند."""
         with self.write_conn() as c:
@@ -1305,7 +1301,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             res = c.execute("DELETE FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),))
             return res.rowcount > 0
-        
+
     def purge_user_by_telegram_id(self, user_id: int) -> bool:
         """
         یک کاربر را به طور کامل از جدول users بر اساس شناسه تلگرام حذف می‌کند.
@@ -1313,6 +1309,7 @@ class DatabaseManager:
         """
         with self.write_conn() as c:
             cursor = c.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            self.clear_user_cache(user_id) #  <-- پاک کردن کش
             return cursor.rowcount > 0
 
     def get_user_daily_usage_history(self, uuid_id: int, days: int = 7) -> list:
@@ -1324,7 +1321,7 @@ class DatabaseManager:
                 target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
-                
+
                 query = """
                     SELECT
                         (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
@@ -1333,10 +1330,10 @@ class DatabaseManager:
                     WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
                 """
                 row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
-                
+
                 h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
                 m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
-                
+
                 history.append({
                     "date": target_date,
                     "total_usage": h_usage + m_usage
@@ -1356,7 +1353,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             # ابتدا توکن‌های منقضی شده را حذف می‌کنیم
             c.execute("DELETE FROM login_tokens WHERE created_at < ?", (five_minutes_ago,))
-            
+
             # سپس توکن معتبر را پیدا می‌کنیم
             row = c.execute("SELECT uuid FROM login_tokens WHERE token = ?", (token,)).fetchone()
             if row:
@@ -1457,9 +1454,9 @@ class DatabaseManager:
         """Updates a user's access status for a specific server."""
         if server not in ['de', 'fr', 'tr']:
             return False
-        
+
         column_name = f"has_access_{server}"
-        
+
         with self.write_conn() as c:
             cursor = c.execute(
                 f"UPDATE user_uuids SET {column_name} = ? WHERE id = ?",
@@ -1472,20 +1469,20 @@ class DatabaseManager:
         with self.write_conn() as c:
             row = c.execute("SELECT * FROM panels WHERE name = ?", (name,)).fetchone()
             return dict(row) if row else None
-        
+
     def toggle_template_random_pool(self, template_id: int) -> bool:
         """وضعیت عضویت یک قالب در استخر انتخاب تصادفی را تغییر می‌دهد."""
         with self.write_conn() as c:
             cursor = c.execute("UPDATE config_templates SET is_random_pool = 1 - is_random_pool WHERE id = ?", (template_id,))
             return cursor.rowcount > 0
-        
+
     def get_templates_by_pool_status(self) -> tuple[list[dict], list[dict]]:
         """قالب‌ها را به دو دسته عضو و غیرعضو در استخر تصادفی تقسیم می‌کند."""
         all_templates = self.get_active_config_templates()
         random_pool = [tpl for tpl in all_templates if tpl.get('is_random_pool')]
         fixed_pool = [tpl for tpl in all_templates if not tpl.get('is_random_pool')]
         return random_pool, fixed_pool
-    
+
     def get_user_daily_usage_history_by_panel(self, uuid_id: int, days: int = 7) -> list:
         """تاریخچه مصرف روزانه کاربر را به تفکیک هر پنل برای تعداد روز مشخص شده برمی‌گرداند."""
         tehran_tz = pytz.timezone("Asia/Tehran")
@@ -1495,7 +1492,7 @@ class DatabaseManager:
                 target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
-                
+
                 query = """
                     SELECT
                         (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
@@ -1504,10 +1501,10 @@ class DatabaseManager:
                     WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
                 """
                 row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
-                
+
                 h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
                 m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
-                
+
                 history.append({
                     "date": target_date,
                     "hiddify_usage": h_usage,
@@ -1564,13 +1561,13 @@ class DatabaseManager:
     def record_user_agent(self, uuid_id: int, user_agent: str):
         """(نسخه نهایی) به صورت هوشمند دستگاه را ثبت یا به‌روزرسانی می‌کند."""
         from .utils import parse_user_agent # Import محلی برای جلوگیری از خطای وابستگی چرخه‌ای
-        
+
         new_parsed = parse_user_agent(user_agent)
         if not new_parsed or not new_parsed.get('client'):
             return # اگر User-Agent قابل تحلیل نبود، از آن صرف نظر کن
 
         existing_agents = self.get_user_agents_for_uuid(uuid_id)
-        
+
         # تلاش برای یافتن یک دستگاه مشابه (همان برنامه روی همان سیستم‌عامل)
         for agent in existing_agents:
             existing_parsed = parse_user_agent(agent['user_agent'])
@@ -1578,8 +1575,8 @@ class DatabaseManager:
                 # اگر پیدا شد، رکورد قدیمی را با اطلاعات جدید به‌روزرسانی می‌کنیم
                 with self.write_conn() as c:
                     c.execute("""
-                        UPDATE client_user_agents 
-                        SET user_agent = ?, last_seen = ? 
+                        UPDATE client_user_agents
+                        SET user_agent = ?, last_seen = ?
                         WHERE uuid_id = ? AND user_agent = ?
                     """, (user_agent, datetime.now(pytz.utc), uuid_id, agent['user_agent']))
                 return # عملیات تمام است
@@ -1612,7 +1609,7 @@ class DatabaseManager:
                 WHERE uuid_id = ? ORDER BY last_seen DESC
             """, (uuid_id,)).fetchall()
             return [dict(r) for r in rows]
-        
+
     def get_all_user_agents(self) -> List[Dict[str, Any]]:
         """
         تمام دستگاه‌های ثبت‌شده (user-agents) را به همراه اطلاعات کاربر مربوطه
@@ -1639,7 +1636,7 @@ class DatabaseManager:
             with self.write_conn() as c:
                 row = c.execute("SELECT COUNT(id) FROM client_user_agents WHERE uuid_id = ?", (uuid_id,)).fetchone()
             return row[0] if row else 0
-    
+
     def delete_user_agents_by_uuid_id(self, uuid_id: int) -> int:
         """Deletes all user agent records for a given uuid_id."""
         with self.write_conn() as c:
@@ -1697,7 +1694,7 @@ class DatabaseManager:
             row = c.execute(query, (uuid_id, time_limit)).fetchone()
             if not row:
                 return 0.0
-            
+
             h_usage = max(0, row['h_usage'] or 0)
             m_usage = max(0, row['m_usage'] or 0)
             return h_usage + m_usage
@@ -1706,7 +1703,7 @@ class DatabaseManager:
         """آمار مصرف شبانه (۰۰:۰۰ تا ۰۶:۰۰) را در N روز گذشته محاسبه می‌کند."""
         time_limit = datetime.now(pytz.utc) - timedelta(days=days)
         tehran_tz = pytz.timezone("Asia/Tehran")
-        
+
         with self.write_conn() as c:
             query = """
                 SELECT hiddify_usage_gb, marzban_usage_gb, taken_at
@@ -1715,11 +1712,11 @@ class DatabaseManager:
                 ORDER BY taken_at ASC
             """
             snapshots = c.execute(query, (uuid_id, time_limit)).fetchall()
-            
+
             total_usage = 0
             night_usage = 0
             last_h, last_m = 0, 0
-            
+
             # مقدار اولیه را از آخرین اسنپ‌شات قبل از دوره می‌گیریم
             prev_snap = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, time_limit)).fetchone()
             if prev_snap:
@@ -1730,13 +1727,13 @@ class DatabaseManager:
                 m_diff = max(0, (snap['marzban_usage_gb'] or 0) - (last_m or 0))
                 diff = h_diff + m_diff
                 total_usage += diff
-                
+
                 snap_time_tehran = snap['taken_at'].astimezone(tehran_tz)
                 if 0 <= snap_time_tehran.hour < 6:
                     night_usage += diff
-                
+
                 last_h, last_m = snap['hiddify_usage_gb'], snap['marzban_usage_gb']
-            
+
             return {'total': total_usage, 'night': night_usage}
 
 
@@ -1772,7 +1769,7 @@ class DatabaseManager:
                 latest_snap_time = latest_snap['taken_at']
                 if latest_snap_time.tzinfo is None:
                     latest_snap_time = pytz.utc.localize(latest_snap_time)
-                
+
                 if latest_snap_time < time_limit:
                     continue
 
@@ -1805,6 +1802,7 @@ class DatabaseManager:
                     new_code = "REF-" + secrets.token_urlsafe(4).upper().replace("_", "").replace("-", "")
                     if not c.execute("SELECT 1 FROM users WHERE referral_code = ?", (new_code,)).fetchone():
                         c.execute("UPDATE users SET referral_code = ? WHERE user_id = ?", (new_code, user_id))
+                        self.clear_user_cache(user_id) #  <-- پاک کردن کش
                         return new_code
 
     def set_referrer(self, user_id: int, referrer_code: str):
@@ -1814,6 +1812,7 @@ class DatabaseManager:
             if referrer:
                 c.execute("UPDATE users SET referred_by_user_id = ? WHERE user_id = ?", (referrer['user_id'], user_id))
                 logger.info(f"User {user_id} was referred by user {referrer['user_id']} (code: {referrer_code}).")
+                self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def get_referrer_info(self, user_id: int) -> Optional[dict]:
         """اطلاعات کاربر معرف را (در صورت وجود) برمی‌گرداند."""
@@ -1830,6 +1829,7 @@ class DatabaseManager:
         """وضعیت پاداش معرفی را برای جلوگیری از اهدای مجدد، ثبت می‌کند."""
         with self.write_conn() as c:
             c.execute("UPDATE users SET referral_reward_applied = 1 WHERE user_id = ?", (user_id,))
+        self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def get_last_transfer_timestamp(self, sender_uuid_id: int) -> Optional[datetime]:
         """آخرین زمان انتقال ترافیک توسط یک کاربر را برمی‌گرداند."""
@@ -1856,7 +1856,7 @@ class DatabaseManager:
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
         report = {'top_10_overall': [], 'top_daily': {}}
-        
+
         # ابتدا مصرف را بر اساس uuid_id جمع‌آوری می‌کنیم
         weekly_usage_by_uuid = {}
         daily_usage_by_uuid = {i: {} for i in range(7)}
@@ -1894,7 +1894,7 @@ class DatabaseManager:
         # حالا مصرف را بر اساس user_id تجمیع می‌کنیم
         user_id_map = {row['id']: row['user_id'] for row in self.get_all_user_uuids()}
         user_info_map = {user['user_id']: user for user in self.get_all_bot_users()}
-        
+
         weekly_usage_by_user_id = {}
         for uuid_id, total_usage in weekly_usage_by_uuid.items():
             user_id = user_id_map.get(uuid_id)
@@ -1912,7 +1912,7 @@ class DatabaseManager:
 
         for day_index, daily_data in daily_usage_by_uuid.items():
             if not daily_data: continue
-            
+
             daily_usage_by_user_id = {}
             for uuid_id, usage in daily_data.items():
                 user_id = user_id_map.get(uuid_id)
@@ -1921,10 +1921,10 @@ class DatabaseManager:
                     daily_usage_by_user_id[user_id] += usage
 
             if not daily_usage_by_user_id: continue
-            
+
             top_user_id = max(daily_usage_by_user_id, key=daily_usage_by_user_id.get)
             top_usage = daily_usage_by_user_id[top_user_id]
-            
+
             if top_usage > 0.01:
                 top_user_info = user_info_map.get(top_user_id)
                 top_user_name = top_user_info.get('first_name', 'کاربر ناشناس') if top_user_info else 'کاربر ناشناس'
@@ -1936,6 +1936,7 @@ class DatabaseManager:
             """امتیاز به حساب یک کاربر اضافه می‌کند."""
             with self.write_conn() as c:
                 c.execute("UPDATE users SET achievement_points = achievement_points + ? WHERE user_id = ?", (points, user_id))
+            self.clear_user_cache(user_id) #  <-- پاک کردن کش
 
     def spend_achievement_points(self, user_id: int, points: int) -> bool:
         """امتیاز را از حساب کاربر کم می‌کند و موفقیت عملیات را برمی‌گرداند."""
@@ -1943,6 +1944,7 @@ class DatabaseManager:
             current_points = c.execute("SELECT achievement_points FROM users WHERE user_id = ?", (user_id,)).fetchone()
             if current_points and current_points['achievement_points'] >= points:
                 c.execute("UPDATE users SET achievement_points = achievement_points - ? WHERE user_id = ?", (points, user_id))
+                self.clear_user_cache(user_id) #  <-- پاک کردن کش
                 return True
             return False
 
@@ -2029,10 +2031,10 @@ class DatabaseManager:
             with self.write_conn() as c:
                 query = "SELECT hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC"
                 snapshots = c.execute(query, (uuid_id, week_start_utc)).fetchall()
-                
+
                 # دیکشنری برای نگهداری مصرف در بازه‌های مختلف
                 time_of_day_usage = {"morning": 0.0, "afternoon": 0.0, "evening": 0.0, "night": 0.0}
-                
+
                 prev_snap = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
                 last_h = prev_snap['hiddify_usage_gb'] if prev_snap and prev_snap['hiddify_usage_gb'] else 0.0
                 last_m = prev_snap['marzban_usage_gb'] if prev_snap and prev_snap['marzban_usage_gb'] else 0.0
@@ -2041,7 +2043,7 @@ class DatabaseManager:
                     h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
                     m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
                     diff = h_diff + m_diff
-                    
+
                     snap_time_tehran = snap['taken_at'].astimezone(tehran_tz)
                     hour = snap_time_tehran.hour
 
@@ -2054,9 +2056,9 @@ class DatabaseManager:
                         time_of_day_usage["evening"] += diff
                     else: # 22:00 to 05:59
                         time_of_day_usage["night"] += diff
-                    
+
                     last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
-                
+
                 return time_of_day_usage
 
     def get_user_latest_plan_price(self, uuid_id: int) -> Optional[int]:
@@ -2122,6 +2124,7 @@ class DatabaseManager:
         """امتیاز تمام کاربران را به ۰ ریست می‌کند."""
         with self.write_conn() as c:
             cursor = c.execute("UPDATE users SET achievement_points = 0;")
+            self._user_cache.clear() #  <-- پاک کردن کل کش
             return cursor.rowcount
 
     def delete_all_achievements(self) -> int:
@@ -2157,21 +2160,22 @@ class DatabaseManager:
                 if current_balance_row is None:
                     logger.error(f"Attempted to update wallet for non-existent user_id: {user_id}")
                     return False
-                
+
                 current_balance = current_balance_row['wallet_balance']
-                
+
                 # بررسی می‌کنیم آیا موجودی برای خرید کافی است یا نه
                 if trans_type == 'purchase' and current_balance < abs(amount):
                     return False # موجودی کافی نیست
 
                 # موجودی جدید را محاسبه و به‌روزرسانی می‌کنیم
                 c.execute("UPDATE users SET wallet_balance = wallet_balance + ? WHERE user_id = ?", (amount, user_id))
-                
+
                 # تراکنش را ثبت می‌کنیم
                 c.execute(
                     "INSERT INTO wallet_transactions (user_id, amount, type, description) VALUES (?, ?, ?, ?)",
                     (user_id, amount, trans_type, description)
                 )
+                self.clear_user_cache(user_id) #  <-- پاک کردن کش
                 return True
             except Exception as e:
                 logger.error(f"Error updating wallet for user {user_id}: {e}", exc_info=True)
@@ -2284,5 +2288,17 @@ class DatabaseManager:
         """تمام بلیط‌های قرعه‌کشی را برای شروع دوره جدید پاک می‌کند."""
         with self.write_conn() as c:
             c.execute("DELETE FROM lottery_tickets")
+
+    def get_user_access_rights(self, user_id: int) -> dict:
+        """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
+        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
+        user_uuids = self.uuids(user_id)
+        if user_uuids:
+            first_uuid_record = self.uuid_by_id(user_id, user_uuids[0]['id'])
+            if first_uuid_record:
+                access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
+                access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
+                access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
+        return access_rights
 
 db = DatabaseManager()

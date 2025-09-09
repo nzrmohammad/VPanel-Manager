@@ -229,26 +229,15 @@ def handle_referral_callbacks(call: types.CallbackQuery):
 # =============================================================================
 # 4. Shop, Connection Doctor & "Coming Soon"
 # =============================================================================
-
-# در فایل bot/user_handlers/various.py
-
 def handle_shop_callbacks(call: types.CallbackQuery):
     """تمام callback های مربوط به فروشگاه دستاوردها را با منطق جدید و هوشمند مدیریت می‌کند."""
     uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
-    from ..config import ACHIEVEMENT_SHOP_ITEMS
-    
+
     if data == "shop:main":
         user = db.user(uid)
         user_points = user.get('achievement_points', 0) if user else 0
-        
-        user_uuids = db.uuids(uid)
-        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
-        if user_uuids:
-            first_uuid_record = db.uuid_by_id(uid, user_uuids[0]['id'])
-            if first_uuid_record:
-                access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
-                access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
-                access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
+
+        access_rights = db.get_user_access_rights(uid)
 
         prompt = (
             f"🛍️ *{escape_markdown('فروشگاه دستاوردها')}*\n\n"
@@ -257,75 +246,51 @@ def handle_shop_callbacks(call: types.CallbackQuery):
         )
         _safe_edit(uid, msg_id, prompt, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
 
-    elif data.startswith("shop:confirm:"):
+    elif data.startswith("shop:buy:"):
+        from ..config import ACHIEVEMENT_SHOP_ITEMS
         item_key = data.split(":")[2]
         item = ACHIEVEMENT_SHOP_ITEMS.get(item_key)
-        if not item: return
 
-        confirm_text = (
-            f"❓ *{escape_markdown('تایید خرید از فروشگاه')}*\n\n"
-            f"{escape_markdown(f'آیا از خرج کردن {item["cost"]} امتیاز برای خرید «{item["name"]}» اطمینان دارید؟')}"
-        )
-        kb = types.InlineKeyboardMarkup(row_width=2)
-        kb.add(
-            types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"shop:execute:{item_key}"),
-            types.InlineKeyboardButton("❌ انصراف", callback_data="shop:main")
-        )
-        _safe_edit(uid, msg_id, confirm_text, reply_markup=kb)
-
-    elif data.startswith("shop:execute:"):
-        item_key = data.split(":")[2]
-        item = ACHIEVEMENT_SHOP_ITEMS.get(item_key)
-        
         if not item: return
 
         if db.spend_achievement_points(uid, item['cost']):
-            bot.answer_callback_query(call.id) # پاسخ به کلیک کاربر برای تجربه کاربری بهتر
-            
             user_uuids = db.uuids(uid)
             if user_uuids:
                 user_main_uuid = user_uuids[0]['uuid']
-                
+                purchase_successful = False
+
                 target = item.get("target")
                 add_gb = item.get("gb", 0)
                 add_days = item.get("days", 0)
-                target_panel = 'hiddify' if target == 'de' else 'marzban' if target == 'fr_tr' else None
-                
+
+                target_panel = None
+                if target == 'de':
+                    target_panel = 'hiddify'
+                elif target == 'fr_tr':
+                    target_panel = 'marzban'
+
                 purchase_successful = combined_handler.modify_user_on_all_panels(
                     user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel
                 )
 
                 if purchase_successful:
                     db.log_shop_purchase(uid, item_key, item['cost'])
-                    
-                    # --- تغییر اصلی برای نمایش پیام موفقیت در پایین منو ---
+                    bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
+
                     user = db.user(uid)
                     user_points = user.get('achievement_points', 0) if user else 0
-                    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
-                    first_uuid_record = db.uuid_by_id(uid, user_uuids[0]['id'])
-                    if first_uuid_record:
-                        access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
-                        access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
-                        access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
+                    
+                    access_rights = db.get_user_access_rights(uid)
 
-                    prompt = (
-                        f"🛍️ *{escape_markdown('فروشگاه دستاوردها')}*\n\n"
-                        f"{escape_markdown('با امتیازهای خود می‌توانید جوایز زیر را خریداری کنید.')}\n\n"
-                        f"💰 *{escape_markdown('موجودی امتیاز شما:')} {user_points}*"
+                    purchased_item_name = escape_markdown(item['name'])
+                    success_message = (
+                        f"✅ *خرید با موفقیت انجام شد*\\!\n\n"
+                        f"شما آیتم «*{purchased_item_name}*» را خریداری کردید و تغییرات روی سرویس شما اعمال شد\\.\n\n"
+                        f"💰 *موجودی امتیاز فعلی:* {user_points}"
                     )
-                    
-                    # ساخت فوتر موفقیت به روشی کاملاً امن
-                    purchased_item_name = item['name']
-                    success_footer = (
-                        f"\n`──────────────────`\n"
-                        f"✅ {escape_markdown(f'خرید «{purchased_item_name}» با موفقیت انجام شد.')}"
-                    )
-                    
-                    final_message = prompt + success_footer
-                    _safe_edit(uid, msg_id, final_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
-                    # ----------------------------------------------------
+                    _safe_edit(uid, msg_id, success_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
                 else:
-                    db.add_achievement_points(uid, item['cost']) # بازگرداندن امتیاز
+                    db.add_achievement_points(uid, item['cost'])
                     bot.answer_callback_query(call.id, "❌ خطایی در اعمال تغییرات رخ داد. امتیاز شما بازگردانده شد.", show_alert=True)
         else:
             bot.answer_callback_query(call.id, "❌ امتیاز شما کافی نیست.", show_alert=True)

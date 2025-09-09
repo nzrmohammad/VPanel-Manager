@@ -41,9 +41,9 @@ def show_manage_menu(call: types.CallbackQuery = None, message: types.Message = 
     """لیست اکانت‌های فعال کاربر را به همراه دکمه افزودن اکانت جدید نمایش می‌دهد."""
     uid = target_user_id or (call.from_user.id if call else message.from_user.id)
     msg_id = target_msg_id or (call.message.message_id if call else (message.message_id if message else None))
-    
+
     lang_code = db.get_user_language(uid)
-    
+
     user_uuids = db.uuids(uid)
     user_accounts_details = []
     if user_uuids:
@@ -51,11 +51,11 @@ def show_manage_menu(call: types.CallbackQuery = None, message: types.Message = 
             if (info := combined_handler.get_combined_user_info(row["uuid"])):
                 info['id'] = row['id']
                 user_accounts_details.append(info)
-    
+
     text = f'*{escape_markdown(get_string("account_list_title", lang_code))}*'
     if override_text:
         text = escape_markdown(override_text)
-        
+
     reply_markup = menu.accounts(user_accounts_details, lang_code)
 
     if msg_id:
@@ -69,7 +69,7 @@ def show_account_details(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     uuid_id = int(call.data.split("_")[1])
-    
+
     row = db.uuid_by_id(uid, uuid_id)
     if row and (info := combined_handler.get_combined_user_info(row["uuid"])):
         daily_usage_data = db.get_usage_since_midnight(uuid_id)
@@ -102,9 +102,9 @@ def show_user_account_page(call: types.CallbackQuery):
     """صفحه کامل حساب کاربری را نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    
+
     text = fmt_user_account_page(uid, lang_code)
-    
+
     kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
     _safe_edit(uid, msg_id, text, reply_markup=kb)
 
@@ -118,7 +118,7 @@ def handle_get_links_request(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     uuid_id = int(call.data.split("_")[1])
-    
+
     raw_text = get_string("prompt_get_links", lang_code)
     lines = [escape_markdown(line) for line in raw_text.split('\n')]
     text_to_send = "\n".join(lines).replace('Normal:', '*Normal:*').replace('Base64:', '*Base64:*')
@@ -158,14 +158,14 @@ def send_subscription_link(call: types.CallbackQuery):
         stream = io.BytesIO()
         qr_img.save(stream, 'PNG')
         stream.seek(0)
-        
+
         raw_template = get_string("msg_link_ready", lang_code)
         escaped_link = f"`{escape_markdown(final_sub_link)}`"
         message_text = (f'*{escape_markdown(raw_template.splitlines()[0].format(link_type=link_type.capitalize()))}*\n\n'
                         f'{escape_markdown(raw_template.splitlines()[2])}\n{escaped_link}')
 
         kb = types.InlineKeyboardMarkup(row_width=2)
-        
+
         def create_redirect_button(app_name: str, deep_link: str):
             params = {'url': deep_link, 'app_name': app_name}
             query_string = urllib.parse.urlencode(params)
@@ -177,7 +177,7 @@ def send_subscription_link(call: types.CallbackQuery):
         if link_type == 'b64':
             streisand_deep_link = f"streisand://import/{b64_sub_link}"
             v2box_deep_link = f"v2box://import/?url={urllib.parse.quote(b64_sub_link)}"
-            
+
             kb.add(create_redirect_button("Streisand", streisand_deep_link))
             kb.add(create_redirect_button("V2Box", v2box_deep_link))
 
@@ -189,7 +189,7 @@ def send_subscription_link(call: types.CallbackQuery):
             kb.add(create_redirect_button("HAPP", happ_deep_link))
 
         kb.add(create_redirect_button("Hiddify", hiddify_deep_link))
-        
+
         kb.add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
 
         try:
@@ -222,7 +222,7 @@ def handle_web_login_request(call: types.CallbackQuery):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("ورود به پنل کاربری", url=login_url))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
-    
+
     _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode=None)
 
 
@@ -234,9 +234,9 @@ def handle_payment_history(call: types.CallbackQuery):
     """سابقه پرداخت‌های یک اکانت را به صورت صفحه‌بندی شده نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    parts = call.data.split('_'); 
+    parts = call.data.split('_');
     uuid_id, page = int(parts[2]), int(parts[3])
-    
+
     row = db.uuid_by_id(uid, uuid_id)
     if row:
         payment_history = db.get_user_payment_history(uuid_id)
@@ -252,7 +252,7 @@ def handle_usage_history(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     uuid_id = int(call.data.split("_")[2])
-    
+
     row = db.uuid_by_id(uid, uuid_id)
     if row:
         history = db.get_user_daily_usage_history(uuid_id)
@@ -269,10 +269,9 @@ def show_plan_categories(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     prompt = get_string("prompt_select_plan_category", lang_code)
-    
-    # تغییر اصلی اینجا اتفاق افتاده است:
-    reply_markup = menu.plan_categories_menu(lang_code=lang_code)
-    
+
+    # حالا این تابع بدون نیاز به آرگومان اضافه فراخوانی می‌شود و خطا نمی‌دهد
+    reply_markup = menu.plan_category_menu(lang_code=lang_code)
     _safe_edit(uid, msg_id, prompt, reply_markup=reply_markup, parse_mode=None)
 
 
@@ -283,7 +282,7 @@ def show_filtered_plans(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     plan_type = call.data.split(":")[1]
-    
+
     # دریافت موجودی کاربر و لیست پلن‌ها
     user_data = db.user(uid)
     user_balance = user_data.get('wallet_balance', 0.0) if user_data else 0.0
@@ -292,7 +291,7 @@ def show_filtered_plans(call: types.CallbackQuery):
 
     # ساخت متن پیام با استفاده از فرمت‌کننده
     text = fmt_service_plans(plans_to_show, plan_type, lang_code=lang_code)
-    
+
     # ساخت دکمه‌های خرید
     kb = types.InlineKeyboardMarkup(row_width=1)
     for plan in plans_to_show:
@@ -301,13 +300,13 @@ def show_filtered_plans(call: types.CallbackQuery):
         emoji = "✅" if is_affordable else "❌"
         price_str = "{:,.0f}".format(price)
         button_text = f"{emoji} خرید {plan.get('name')} ({price_str} تومان)"
-        
+
         # اگر موجودی کافی بود، به صفحه تایید خرید می‌رود، در غیر این صورت به کاربر اطلاع می‌دهد
         callback_data = f"wallet:buy_confirm:{plan.get('name')}" if is_affordable else "wallet:insufficient"
         kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
 
     kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
-    
+
     _safe_edit(uid, msg_id, text, reply_markup=kb)
 
 
@@ -315,7 +314,7 @@ def show_payment_options_menu(call: types.CallbackQuery):
     """منوی انتخاب روش پرداخت را نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    
+
     text = f"*{escape_markdown(get_string('prompt_select_payment_method', lang_code))}*"
     _safe_edit(uid, msg_id, text, reply_markup=menu.payment_options_menu(lang_code=lang_code), parse_mode="MarkdownV2")
 
@@ -324,7 +323,7 @@ def handle_show_card_details(call: types.CallbackQuery):
     """اطلاعات پرداخت کارت به کارت را نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    
+
     if not (CARD_PAYMENT_INFO and CARD_PAYMENT_INFO.get("card_number")):
         return
 
@@ -344,7 +343,7 @@ def handle_show_card_details(call: types.CallbackQuery):
     support_url = f"https://t.me/{ADMIN_SUPPORT_CONTACT.replace('@', '')}"
     kb.add(types.InlineKeyboardButton(f"💬 {get_string('btn_contact_support', lang_code)}", url=support_url))
     kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="show_payment_options"))
-    
+
     _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
 
 # =============================================================================
@@ -355,17 +354,19 @@ def handle_periodic_usage_menu(call: types.CallbackQuery):
     """منوی انتخاب سرور برای مشاهده مصرف بازه‌ای را نمایش می‌دهد."""
     uid, msg_id, lang_code = call.from_user.id, call.message.message_id, db.get_user_language(call.from_user.id)
     uuid_id = int(call.data.split("_")[2])
-    row = db.uuid_by_id(uid, uuid_id)
-    if row:
-        text = get_string("prompt_select_server_stats", lang_code)
-        reply_markup = menu.server_selection_menu(
-            uuid_id,
-            show_germany=bool(row.get('has_access_de')),
-            show_france=bool(row.get('has_access_fr')),
-            show_turkey=bool(row.get('has_access_tr')),
-            lang_code=lang_code
-        )
-        _safe_edit(uid, msg_id, text, reply_markup=reply_markup, parse_mode=None)
+    
+    #  <--  استفاده از تابع جدید
+    access_rights = db.get_user_access_rights(uid)
+
+    text = get_string("prompt_select_server_stats", lang_code)
+    reply_markup = menu.server_selection_menu(
+        uuid_id,
+        show_germany=access_rights['has_access_de'],
+        show_france=access_rights['has_access_fr'],
+        show_turkey=access_rights['has_access_tr'],
+        lang_code=lang_code
+    )
+    _safe_edit(uid, msg_id, text, reply_markup=reply_markup, parse_mode=None)
 
 
 def show_panel_periodic_usage(call: types.CallbackQuery):
@@ -389,15 +390,15 @@ def handle_connection_doctor(call: types.CallbackQuery):
     """
     uid, msg_id, lang_code = call.from_user.id, call.message.message_id, db.get_user_language(call.from_user.id)
     _safe_edit(uid, msg_id, escape_markdown(get_string("doctor_checking_status", lang_code)), reply_markup=None)
-    
+
     report = [f"*{escape_markdown(get_string('doctor_report_title', lang_code))}*", "`──────────────────`"]
-    
+
     user_uuids = db.uuids(uid)
     if not user_uuids:
         from ..user_router import go_back_to_main
         go_back_to_main(call=call)
         return
-        
+
     user_info = combined_handler.get_combined_user_info(user_uuids[0]['uuid'])
     account_status_label = escape_markdown(get_string('doctor_account_status_label', lang_code))
     is_ok = user_info and user_info.get('is_active') and (user_info.get('expire') is None or user_info.get('expire') >= 0)
@@ -408,19 +409,19 @@ def handle_connection_doctor(call: types.CallbackQuery):
     for panel in active_panels:
         panel_name_raw = panel.get('name', '...')
         server_status_label = escape_markdown(get_string('doctor_server_status_label', lang_code).format(panel_name=panel_name_raw))
-        
+
         handler_class = HiddifyAPIHandler if panel['panel_type'] == 'hiddify' else MarzbanAPIHandler
         handler = handler_class(panel)
         is_online = handler.check_connection()
         status_text = f"*{escape_markdown(get_string('server_status_online' if is_online else 'server_status_offline', lang_code))}*"
         report.append(f"{'✅' if is_online else '🚨'} {server_status_label} {status_text}")
-    
+
     try:
         from ..database import db as db_instance
         activity_stats = db_instance.count_recently_active_users(minutes=15)
         analysis_title = escape_markdown(get_string('doctor_analysis_title', lang_code))
         line_template = get_string('doctor_online_users_line', lang_code)
-        
+
         report.extend([
             "`──────────────────`",
             f"📈 *{analysis_title}*",
@@ -435,6 +436,6 @@ def handle_connection_doctor(call: types.CallbackQuery):
         "`──────────────────`",
         f"💡 *{escape_markdown(get_string('doctor_suggestion_title', lang_code))}*\n{escape_markdown(get_string('doctor_suggestion_body', lang_code))}"
     ])
-    
+
     kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
     _safe_edit(uid, msg_id, "\n".join(report), reply_markup=kb)
