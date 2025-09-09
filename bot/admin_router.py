@@ -10,7 +10,8 @@ from .admin_handlers import (
     backup, 
     group_actions, 
     plan_management, 
-    panel_management
+    panel_management,
+    wallet as wallet_admin_handler
 )
 
 from .admin_hiddify_handlers import (_start_add_hiddify_user_convo, initialize_hiddify_handlers, handle_add_user_back_step)
@@ -34,6 +35,7 @@ def register_admin_handlers(bot, scheduler):
     backup.initialize_backup_handlers(bot)
     plan_management.initialize_plan_management_handlers(bot, admin_conversations)
     panel_management.initialize_panel_management_handlers(bot, admin_conversations)
+    wallet_admin_handler.initialize_wallet_handlers(bot, admin_conversations)
 
     # ===================================================================
     # Test Commands (Corrected and Completed)
@@ -260,6 +262,8 @@ ADMIN_CALLBACK_HANDLERS = {
     "reset_all_points_exec": user_management.handle_reset_all_points_execute,
     "delete_all_devices_confirm": user_management.handle_delete_all_devices_confirm,
     "delete_all_devices_exec": user_management.handle_delete_all_devices_execute,
+    "charge_confirm": wallet_admin_handler.handle_charge_request_callback,
+    "charge_reject": wallet_admin_handler.handle_charge_request_callback,
 }
 
 def handle_admin_callbacks(call: types.CallbackQuery):

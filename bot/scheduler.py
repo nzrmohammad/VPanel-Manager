@@ -54,7 +54,7 @@ class SchedulerManager:
     def _send_warning_message(self, user_id: int, message_template: str, **kwargs):
         """
         A central function to format and send all warning messages,
-        and handle cases where the user has blocked the bot.
+        and handle cases where the user has blocked the bot or is deactivated.
         """
         try:
             escaped_kwargs = {k: escape_markdown(v) for k, v in kwargs.items()}
@@ -62,8 +62,8 @@ class SchedulerManager:
             self.bot.send_message(user_id, formatted_message, parse_mode="MarkdownV2")
             return True
         except apihelper.ApiTelegramException as e:
-            if "bot was blocked by the user" in e.description:
-                logger.warning(f"SCHEDULER: User {user_id} has blocked the bot. Deactivating all their UUIDs.")
+            if "bot was blocked by the user" in e.description or "user is deactivated" in e.description:
+                logger.warning(f"SCHEDULER: User {user_id} has blocked the bot or is deactivated. Deactivating all their UUIDs.")
                 user_uuids = db.uuids(user_id)
                 for u in user_uuids:
                     db.deactivate_uuid(u['id'])

@@ -7,7 +7,7 @@ from .config import ADMIN_IDS
 from .menu import menu
 from .language import get_string
 from .utils import get_loyalty_progress_message, escape_markdown, _safe_edit
-from .user_handlers import account, info, settings, various
+from .user_handlers import account, info, settings, various, wallet
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -25,6 +25,7 @@ def initialize_user_handlers(b_instance, conversations_dict):
     info.initialize_handlers(b_instance)
     settings.initialize_handlers(b_instance)
     various.initialize_handlers(b_instance, conversations_dict)
+    wallet.initialize_handlers(b_instance, conversations_dict)
 
 
 def go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None, original_msg_id: int = None):
@@ -122,9 +123,14 @@ def handle_user_callbacks(call: types.CallbackQuery):
         elif data == "back_to_start_menu": various.show_initial_menu(call.from_user.id, call.message.message_id)
         return
     
+    if data.startswith("wallet:"):
+        wallet.handle_wallet_callbacks(call)
+        return
+
     # --- Fallback to Main Menu ---
     if data == "back":
         go_back_to_main(call)
+
 
 
 def register_user_handlers(b: telebot.TeleBot):

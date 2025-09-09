@@ -14,6 +14,7 @@ class Menu:
         btn_manage_account = types.InlineKeyboardButton(f"{EMOJIS['key']} {get_string('manage_account', lang_code)}", callback_data="manage")
         btn_quick_stats = types.InlineKeyboardButton(f"{EMOJIS['lightning']} {get_string('quick_stats', lang_code)}", callback_data="quick_stats")
         btn_services = types.InlineKeyboardButton(f"🛒 {get_string('view_plans', lang_code)}", callback_data="view_plans")
+        btn_wallet = types.InlineKeyboardButton(f"💳 {get_string('wallet', lang_code)}", callback_data="wallet:main")
         btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
         btn_doctor = types.InlineKeyboardButton(f"🩺 {get_string('btn_connection_doctor', lang_code)}", callback_data="connection_doctor")
         btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
@@ -25,11 +26,12 @@ class Menu:
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_manage_account, btn_quick_stats)
-        kb.add(btn_services, btn_support)
+        kb.add(btn_services, btn_wallet)
         kb.add(btn_doctor, btn_tutorials)
         kb.add(btn_user_account, btn_referral)
         kb.add(btn_achievements, btn_settings)
-        kb.add(btn_birthday, btn_web_login)
+        kb.add(btn_birthday,btn_support)
+        kb.add(btn_web_login)
 
         if is_admin:
             kb.add(types.InlineKeyboardButton(f"{EMOJIS['crown']} پنل مدیریت", callback_data="admin:panel"))
@@ -218,27 +220,66 @@ class Menu:
         return kb
 
     def tutorial_os_menu(self, os_type: str, lang_code: str) -> types.InlineKeyboardMarkup:
-        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb = types.InlineKeyboardMarkup(row_width=2)
         
+        buttons = []
         if os_type == 'android':
-            kb.add(types.InlineKeyboardButton(get_string('app_v2rayng', lang_code), callback_data="tutorial_app:android:v2rayng"))
-            kb.add(types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:android:hiddify"))
-            kb.add(types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:android:happ"))
-
+            buttons.extend([
+                types.InlineKeyboardButton(get_string('app_v2rayng', lang_code), callback_data="tutorial_app:android:v2rayng"),
+                types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:android:hiddify"),
+                types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:android:happ")
+            ])
         elif os_type == 'windows':
-            kb.add(types.InlineKeyboardButton(get_string('app_v2rayn', lang_code), callback_data="tutorial_app:windows:v2rayn"))
-            kb.add(types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:windows:hiddify"))
-            
+            buttons.extend([
+                types.InlineKeyboardButton(get_string('app_v2rayn', lang_code), callback_data="tutorial_app:windows:v2rayn"),
+                types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:windows:hiddify")
+            ])
         elif os_type == 'ios':
-            kb.add(types.InlineKeyboardButton(get_string('app_shadowrocket', lang_code), callback_data="tutorial_app:ios:shadowrocket"))
-            kb.add(types.InlineKeyboardButton(get_string('app_streisand', lang_code), callback_data="tutorial_app:ios:streisand"))
-            kb.add(types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:ios:hiddify"))
-            kb.add(types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:ios:happ"))
+            buttons.extend([
+                types.InlineKeyboardButton(get_string('app_shadowrocket', lang_code), callback_data="tutorial_app:ios:shadowrocket"),
+                types.InlineKeyboardButton(get_string('app_streisand', lang_code), callback_data="tutorial_app:ios:streisand"),
+                types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:ios:hiddify"),
+                types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:ios:happ")
+            ])
 
+        kb.add(*buttons)
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('btn_back_to_os', lang_code)}", callback_data="tutorials"))
         return kb
 
-    # bot/menu.py
+    def plan_category_menu(self, lang_code: str, user_balance: float, plans: list) -> types.InlineKeyboardMarkup:
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        
+        # نمایش موجودی کیف پول در بالای منو
+        balance_str = "{:,.0f}".format(user_balance)
+        kb.add(types.InlineKeyboardButton(f" موجودی: {balance_str} تومان ", callback_data="wallet:main"))
+        
+        # دکمه‌های خرید با کیف پول
+        for plan in plans:
+            price = plan.get('price', 0)
+            is_affordable = user_balance >= price
+            emoji = "✅" if is_affordable else "❌"
+            price_str = "{:,.0f}".format(price)
+            button_text = f"{emoji} {plan.get('name')} ({price_str} تومان)"
+            callback_data = f"wallet:buy_confirm:{plan.get('name')}" if is_affordable else "wallet:insufficient"
+            kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+
+        kb.add(types.InlineKeyboardButton(f"➕ {get_string('charge_wallet', lang_code)}", callback_data="wallet:charge"))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
+        return kb
+
+    def wallet_main_menu(self, balance: float, lang_code: str) -> types.InlineKeyboardMarkup:
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        balance_str = "{:,.0f}".format(balance)
+        
+        # نمایش موجودی در یک دکمه غیرقابل کلیک
+        kb.add(types.InlineKeyboardButton(f"موجودی شما: {balance_str} تومان", callback_data="noop"))
+        
+        kb.add(
+            types.InlineKeyboardButton(f"➕ {get_string('charge_wallet', lang_code)}", callback_data="wallet:charge"),
+            types.InlineKeyboardButton(f"📜 {get_string('transaction_history', lang_code)}", callback_data="wallet:history")
+        )
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
+        return kb
 
     def settings(self, settings_dict: dict, lang_code: str, access: dict) -> types.InlineKeyboardMarkup:
         """
@@ -250,47 +291,47 @@ class Menu:
             return '✅' if settings_dict.get(key, True) else '❌'
 
         # --- بخش گزارش‌ها ---
-        # تیتر در یک ردیف کامل
-        kb.add(types.InlineKeyboardButton("🗓️ گزارش‌های دوره‌ای", callback_data="noop"))
+        kb.add(types.InlineKeyboardButton(f"🗓️ {get_string('reports_category', lang_code)}", callback_data="noop"))
         kb.row(
             types.InlineKeyboardButton(
-                f"📊 روزانه {get_status_emoji('daily_reports')}",
+                f"📊 {get_string('daily_report', lang_code)} {get_status_emoji('daily_reports')}",
                 callback_data="toggle_daily_reports"
             ),
             types.InlineKeyboardButton(
-                f"📅 هفتگی {get_status_emoji('weekly_reports')}",
+                f"📅 {get_string('weekly_report', lang_code)} {get_status_emoji('weekly_reports')}",
                 callback_data="toggle_weekly_reports"
             )
         )
 
         # --- بخش هشدار حجم ---
-        kb.add(types.InlineKeyboardButton(f"\u200f🪫 هشدار اتمام حجم", callback_data="noop"))        
+        kb.add(types.InlineKeyboardButton(f"\u200f🪫 {get_string('alerts_category', lang_code)}", callback_data="noop"))
+        
         data_warning_buttons = []
         if access.get('has_access_de'):
             data_warning_buttons.append(
-                types.InlineKeyboardButton(f"{get_status_emoji('data_warning_de')} 🇩🇪", callback_data="toggle_data_warning_de")
+                types.InlineKeyboardButton(f"🇩🇪 {get_status_emoji('data_warning_de')}", callback_data="toggle_data_warning_de")
             )
         if access.get('has_access_fr'):
             data_warning_buttons.append(
-                types.InlineKeyboardButton(f"{get_status_emoji('data_warning_fr')} 🇫🇷", callback_data="toggle_data_warning_fr")
+                types.InlineKeyboardButton(f"🇫🇷 {get_status_emoji('data_warning_fr')}", callback_data="toggle_data_warning_fr")
             )
         if access.get('has_access_tr'):
             data_warning_buttons.append(
-                types.InlineKeyboardButton(f"{get_status_emoji('data_warning_tr')} 🇹🇷", callback_data="toggle_data_warning_tr")
+                types.InlineKeyboardButton(f"🇹🇷 {get_status_emoji('data_warning_tr')} ", callback_data="toggle_data_warning_tr")
             )
         
         if data_warning_buttons:
             kb.row(*data_warning_buttons)
 
         # --- بخش اعلان‌های عمومی ---
-        kb.add(types.InlineKeyboardButton("📢 اطلاع‌رسانی‌های عمومی", callback_data="noop"))
+        kb.add(types.InlineKeyboardButton(f"📢 {get_string('general_notifications_category', lang_code)}", callback_data="noop"))
         kb.row(
             types.InlineKeyboardButton(
-                f"🏆 دستاوردها {get_status_emoji('achievement_alerts')}",
+                f"🏆 {get_string('achievement_alerts', lang_code)} {get_status_emoji('achievement_alerts')}",
                 callback_data="toggle_achievement_alerts"
             ),
             types.InlineKeyboardButton(
-                f"🎁 هدایا و تخفیف‌ها {get_status_emoji('promotional_alerts')}",
+                f"🎁 {get_string('promotional_alerts', lang_code)} {get_status_emoji('promotional_alerts')}",
                 callback_data="toggle_promotional_alerts"
             )
         )
@@ -298,8 +339,12 @@ class Menu:
         # --- بخش سایر هشدارها ---
         kb.add(
             types.InlineKeyboardButton(
-                f"⏰ انقضای سرویس {get_status_emoji('expiry_warnings')}",
+                f"⏰ {get_string('expiry_warning', lang_code)} {get_status_emoji('expiry_warnings')}",
                 callback_data="toggle_expiry_warnings"
+            ),
+            types.InlineKeyboardButton(
+                f"\u200fℹ️ {get_string('info_config', lang_code)} {get_status_emoji('show_info_config')}",
+                callback_data="toggle_show_info_config"
             )
         )
 
@@ -310,7 +355,6 @@ class Menu:
         )
         
         return kb
-
     # =============================================================================
     # Admin Panel Menus
     # =============================================================================

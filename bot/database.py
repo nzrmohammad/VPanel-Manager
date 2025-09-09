@@ -69,7 +69,8 @@ class DatabaseManager:
                     referral_reward_applied INTEGER DEFAULT 0,
                     achievement_points INTEGER DEFAULT 0,
                     achievement_alerts INTEGER DEFAULT 1,
-                    promotional_alerts INTEGER DEFAULT 1              
+                    promotional_alerts INTEGER DEFAULT 1,
+                    wallet_balance REAL DEFAULT 0.0             
                 );
                 CREATE TABLE IF NOT EXISTS user_uuids (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,6 +209,24 @@ class DatabaseManager:
                     gift_year INTEGER NOT NULL,
                     given_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(user_id, gift_year)
+                );       
+                CREATE TABLE IF NOT EXISTS wallet_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    type TEXT NOT NULL, -- 'deposit', 'purchase', 'refund'
+                    description TEXT,
+                    transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS charge_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_pending INTEGER DEFAULT 1,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );            
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
@@ -2101,6 +2120,47 @@ class DatabaseManager:
         """
         with self.write_conn() as c:
             rows = c.execute(query, (user_id, start_date)).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_wallet_balance(self, user_id: int, amount: float, trans_type: str, description: str) -> bool:
+        """
+        موجودی کیف پول کاربر را به‌روز کرده و یک تراکنش ثبت می‌کند.
+        """
+        with self.write_conn() as c:
+            try:
+                # ابتدا موجودی فعلی را می‌خوانیم
+                current_balance_row = c.execute("SELECT wallet_balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
+                if current_balance_row is None:
+                    logger.error(f"Attempted to update wallet for non-existent user_id: {user_id}")
+                    return False
+                
+                current_balance = current_balance_row['wallet_balance']
+                
+                # بررسی می‌کنیم آیا موجودی برای خرید کافی است یا نه
+                if trans_type == 'purchase' and current_balance < abs(amount):
+                    return False # موجودی کافی نیست
+
+                # موجودی جدید را محاسبه و به‌روزرسانی می‌کنیم
+                c.execute("UPDATE users SET wallet_balance = wallet_balance + ? WHERE user_id = ?", (amount, user_id))
+                
+                # تراکنش را ثبت می‌کنیم
+                c.execute(
+                    "INSERT INTO wallet_transactions (user_id, amount, type, description) VALUES (?, ?, ?, ?)",
+                    (user_id, amount, trans_type, description)
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Error updating wallet for user {user_id}: {e}", exc_info=True)
+                # در صورت بروز خطا، تراکنش را بازگردانی می‌کنیم (رول‌بک خودکار است)
+                return False
+
+    def get_wallet_history(self, user_id: int) -> list:
+        """تاریخچه تراکنش‌های کیف پول یک کاربر را برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT amount, type, description, transaction_date FROM wallet_transactions WHERE user_id = ? ORDER BY transaction_date DESC",
+                (user_id,)
+            ).fetchall()
             return [dict(r) for r in rows]
 
 db = DatabaseManager()

@@ -154,12 +154,12 @@ LUCKY_LOTTERY_BADGE_REQUIREMENT = 20
 
 ACHIEVEMENT_SHOP_ITEMS = {
     # آیتم‌های عمومی (برای همه سرورها)
-    "buy_7days":       {"name": "تمدید ۷ روز (همه)", "cost": 150, "days": 7, "target": "all"},
-    "buy_30days":      {"name": "تمدید ۳۰ روز (همه)", "cost": 450, "days": 30, "target": "all"},
+    "buy_7days":       {"name": "۷ روز", "cost": 150, "days": 7, "target": "all"},
+    "buy_30days":      {"name": "۳۰ روز", "cost": 450, "days": 30, "target": "all"},
     
     # آیتم‌های مخصوص آلمان (Hiddify)
-    "buy_de_1day_60gb": {"name": "۱ روز (۶۰ گیگ) 🇩🇪", "cost": 180, "gb": 60, "days": 1, "target": "de"},
-    "buy_de_15gb":     {"name": "۱۵ گیگ (فقط 🇩🇪)", "cost": 120, "gb": 15, "target": "de"},
+    "buy_de_15gb":     {"name": "۱۵ گیگ (🇩🇪)", "cost": 120, "gb": 15, "target": "de"},
+    "buy_de_60gb": {"name": "۶۰ گیگ (🇩🇪)", "cost": 180, "gb": 60, "target": "de"},
     
     # آیتم‌های مخصوص فرانسه/ترکیه (Marzban)
     "buy_fr_tr_10gb":  {"name": "۱۰ گیگ (🇫🇷🇹🇷)", "cost": 120, "gb": 10, "target": "fr_tr"},
