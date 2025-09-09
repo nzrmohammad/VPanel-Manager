@@ -1139,3 +1139,36 @@ def handle_delete_all_devices_execute(call, params):
         logger.error(f"Error while deleting all user agents: {e}", exc_info=True)
         error_msg = escape_markdown("❌ خطا در هنگام حذف دستگاه‌ها. لطفاً لاگ‌ها را بررسی کنید.")
         _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+def handle_reset_all_balances_confirm(call, params):
+    """از ادمین برای ریست کردن موجودی تمام کاربران تاییدیه می‌گیرد."""
+    prompt = (
+        f"⚠️ *{escape_markdown('توجه بسیار بسیار مهم!')}*\n\n"
+        f"{escape_markdown('آیا مطمئن هستید که می‌خواهید موجودی کیف پول و تاریخچه تراکنش‌های')} "
+        f"*{escape_markdown('تمام کاربران')}* {escape_markdown('را برای همیشه پاک کنید؟')}\n\n"
+        f"*{escape_markdown('این عمل به هیچ عنوان قابل بازگشت نیست.')}*"
+    )
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، ریست کن", callback_data="admin:reset_all_balances_exec"),
+        types.InlineKeyboardButton("❌ انصراف", callback_data="admin:system_tools_menu")
+    )
+    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
+
+def handle_reset_all_balances_execute(call, params):
+    """موجودی تمام کاربران را ریست می‌کند."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال ریست کردن موجودی تمام کاربران..."), reply_markup=None)
+
+    try:
+        reset_count = db.reset_all_wallet_balances()
+        success_msg = (
+            f"✅ *{escape_markdown('عملیات با موفقیت کامل شد.')}*\n\n"
+            f"{escape_markdown('موجودی کیف پول برای')} `{reset_count}` {escape_markdown('کاربر صفر شد و تمام تاریخچه تراکنش‌ها پاک گردید.')}"
+        )
+        _safe_edit(uid, msg_id, success_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+    except Exception as e:
+        logger.error(f"Error while resetting all wallet balances: {e}", exc_info=True)
+        error_msg = escape_markdown("❌ خطا در هنگام ریست کردن موجودی‌ها. لطفاً لاگ‌ها را بررسی کنید.")
+        _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")

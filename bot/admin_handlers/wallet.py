@@ -1,9 +1,10 @@
-# nzrmohammad/vpanel-manager/VPanel-Manager-063e72609384d4f0fb543665c1d1c7f6335ca45d/bot/admin_handlers/wallet.py
 import logging
 from telebot import types
 from ..database import db
 from ..utils import escape_markdown, _safe_edit
 from ..menu import menu
+from .. import combined_handler
+from ..admin_formatters import fmt_admin_user_summary
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -160,9 +161,120 @@ def handle_manual_charge_execution(call: types.CallbackQuery, params: list):
         _safe_edit(admin_id, msg_id, "❌ خطا در به‌روزرسانی موجودی کاربر در دیتابیس.", reply_markup=menu.admin_panel())
 
 def handle_manual_charge_cancel(call: types.CallbackQuery, params: list):
-    """عملیات شارژ دستی را لغو می‌کند."""
+    """(نسخه اصلاح شده) عملیات شارژ دستی را لغو کرده و به صفحه کاربر بازمی‌گردد."""
     admin_id = call.from_user.id
-    if admin_id in admin_conversations:
-        convo = admin_conversations.pop(admin_id)
-        msg_id = convo.get('msg_id')
-        _safe_edit(admin_id, msg_id, "❌ عملیات شارژ دستی لغو شد.", reply_markup=menu.admin_panel())
+    if admin_id not in admin_conversations: return
+    
+    convo = admin_conversations.pop(admin_id)
+    msg_id = convo.get('msg_id')
+    identifier = convo.get('identifier')
+    context = convo.get('context')
+
+    # اگر اطلاعات کافی برای بازگشت نداریم، به منوی اصلی برمی‌گردیم
+    if not all([msg_id, identifier]):
+        cancel_text = escape_markdown("❌ عملیات شارژ دستی لغو شد.")
+        _safe_edit(admin_id, msg_id, cancel_text, reply_markup=menu.admin_panel())
+        return
+
+    # --- START OF FIX: Rebuild the user summary view ---
+    info = combined_handler.get_combined_user_info(identifier)
+    if info:
+        db_user = None
+        if info.get('uuid'):
+            user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+            if user_telegram_id:
+                db_user = db.user(user_telegram_id)
+        
+        # متن اصلی اطلاعات کاربر به همراه پیام لغو عملیات
+        text = fmt_admin_user_summary(info, db_user) + "\n\n" + escape_markdown("❌ عملیات شارژ دستی لغو شد.")
+        
+        # ساخت دکمه‌های مدیریت کاربر با back_callback صحیح
+        panel_type = 'hiddify' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'marzban'
+        back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
+        kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel_type, back_callback=back_callback)
+
+        _safe_edit(admin_id, msg_id, text, reply_markup=kb)
+    else:
+        # اگر به هر دلیلی اطلاعات کاربر یافت نشد، به منوی جستجو برمی‌گردیم
+        cancel_text = escape_markdown("❌ عملیات لغو شد و اطلاعات کاربر یافت نشد.")
+        _safe_edit(admin_id, msg_id, cancel_text, reply_markup=menu.admin_search_menu())
+
+def handle_manual_withdraw_request(call: types.CallbackQuery, params: list):
+    """شروع فرآیند برداشت وجه / صفر کردن موجودی توسط ادمین."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 's' else None
+    
+    from .. import combined_handler
+    user_info = combined_handler.get_combined_user_info(identifier)
+    if not user_info or not user_info.get('uuid'):
+        bot.answer_callback_query(call.id, "کاربر یافت نشد.", show_alert=True)
+        return
+
+    user_id = db.get_user_id_by_uuid(user_info['uuid'])
+    user_db = db.user(user_id)
+    balance = user_db.get('wallet_balance', 0.0) if user_db else 0.0
+
+    if balance == 0:
+        bot.answer_callback_query(call.id, "موجودی این کاربر در حال حاضر صفر است.", show_alert=True)
+        return
+
+    admin_conversations[uid] = {
+        'action_type': 'manual_withdraw',
+        'msg_id': msg_id,
+        'identifier': identifier,
+        'context': context,
+        'target_user_id': user_id,
+        'current_balance': balance,
+        'user_name': user_info.get('name', 'کاربر ناشناس')
+    }
+    
+    prompt = (f"موجودی فعلی کاربر *{escape_markdown(user_info.get('name', ''))}* مبلغ *{balance:,.0f} تومان* است\\.\n\n"
+              f"آیا از صفر کردن موجودی و ثبت تراکنش برداشت برای این کاربر اطمینان دارید؟")
+
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، تایید برداشت", callback_data="admin:manual_withdraw_exec"),
+        types.InlineKeyboardButton("❌ خیر، لغو", callback_data="admin:manual_withdraw_cancel")
+    )
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+def handle_manual_withdraw_execution(call: types.CallbackQuery, params: list):
+    """برداشت وجه را نهایی می‌کند."""
+    admin_id = call.from_user.id
+    if admin_id not in admin_conversations: return
+    
+    convo = admin_conversations.pop(admin_id, {})
+    msg_id = convo.get('msg_id')
+    target_user_id = convo.get('target_user_id')
+    amount_withdrawn = convo.get('current_balance', 0.0)
+
+    if not all([msg_id, target_user_id]):
+        _safe_edit(admin_id, msg_id, "❌ اطلاعات ناقص است. عملیات لغو شد.", reply_markup=menu.admin_panel())
+        return
+        
+    if db.set_wallet_balance(target_user_id, 0.0, 'withdraw', "برداشت توسط مدیریت"):
+        success_msg_raw = f"✅ موجودی کاربر با موفقیت صفر شد. تراکنش برداشت به مبلغ {amount_withdrawn:,.0f} تومان ثبت گردید."
+        success_msg = escape_markdown(success_msg_raw)
+        _safe_edit(admin_id, msg_id, success_msg, reply_markup=menu.admin_panel())
+        
+        try:
+            user_notification_raw = f"✅ مبلغ {amount_withdrawn:,.0f} تومان از کیف پول شما برداشت و موجودی شما صفر شد."
+            bot.send_message(target_user_id, escape_markdown(user_notification_raw), parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.warning(f"Could not send manual withdraw notification to user {target_user_id}: {e}")
+    else:
+        _safe_edit(admin_id, msg_id, "❌ خطا در صفر کردن موجودی کاربر در دیتابیس.", reply_markup=menu.admin_panel())
+
+
+def handle_manual_withdraw_cancel(call: types.CallbackQuery, params: list):
+    """عملیات برداشت وجه را لغو می‌کند و به صفحه کاربر بازمی‌گردد."""
+    admin_id = call.from_user.id
+    if admin_id not in admin_conversations: return
+    
+    convo = admin_conversations.pop(admin_id)
+    msg_id = convo.get('msg_id')
+    identifier = convo.get('identifier')
+    
+    from ..admin_handlers.user_management import handle_show_user_summary # Import in-function
+    handle_show_user_summary(call, [None, identifier, convo.get('context')])

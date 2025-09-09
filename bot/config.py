@@ -73,7 +73,8 @@ TUTORIAL_LINKS = {
     },
     "windows": {
         "v2rayn": "https://telegra.ph/V2rayN-08-18-2",
-        "hiddify": "https://telegra.ph/Hiddify-08-19"
+        "hiddify": "https://telegra.ph/Hiddify-08-19",
+        "happ": "https://telegra.ph/Happ-08-08-5"
     },
     "ios": {
         "streisand": "https://telegra.ph/Your-Streisand-Tutorial-Link-Here-01-01",

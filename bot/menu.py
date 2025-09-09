@@ -121,21 +121,25 @@ class Menu:
 
     def plan_categories_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
         """
-        منوی انتخاب دسته‌بندی سرویس‌ها (سرورهای مختلف) را ایجاد می‌کند.
+        (نسخه نهایی) منوی انتخاب دسته‌بندی سرویس‌ها را با دکمه "خرید افزودنی" ایجاد می‌کند.
         """
         kb = types.InlineKeyboardMarkup(row_width=2)
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
         btn_turkey = types.InlineKeyboardButton(f"🇹🇷 {get_string('btn_cat_tr', lang_code)}", callback_data="show_plans:turkey")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
+        
+        btn_addons = types.InlineKeyboardButton("➕ حجم یا زمان", callback_data="show_addons")
         btn_payment_methods = types.InlineKeyboardButton(get_string('btn_payment_methods', lang_code), callback_data="show_payment_options")
+        
         btn_achievement_shop = types.InlineKeyboardButton("🛍️ فروشگاه دستاوردها", callback_data="shop:main")
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
 
-        # چیدمان دکمه‌ها برای ظاهر بهتر
+        # چیدمان جدید دکمه‌ها
         kb.add(btn_turkey, btn_france)
         kb.add(btn_combined, btn_germany)
-        kb.add(btn_achievement_shop, btn_payment_methods)
+        kb.add(btn_addons, btn_achievement_shop)
+        kb.add(btn_payment_methods)
         kb.add(btn_back)
         return kb
 
@@ -232,7 +236,8 @@ class Menu:
         elif os_type == 'windows':
             buttons.extend([
                 types.InlineKeyboardButton(get_string('app_v2rayn', lang_code), callback_data="tutorial_app:windows:v2rayn"),
-                types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:windows:hiddify")
+                types.InlineKeyboardButton(get_string('app_hiddify', lang_code), callback_data="tutorial_app:windows:hiddify"),
+                types.InlineKeyboardButton(get_string('app_happ', lang_code), callback_data="tutorial_app:windows:happ")
             ])
         elif os_type == 'ios':
             buttons.extend([
@@ -405,6 +410,7 @@ class Menu:
                types.InlineKeyboardButton("🔄 ریست مصرف امروز همه کاربران", callback_data="admin:reset_all_daily_usage_confirm"))
         kb.add(types.InlineKeyboardButton("🏆 ریست امتیازات و دستاوردها", callback_data="admin:reset_all_points_confirm"),
                types.InlineKeyboardButton("🗑️ حذف تمام دستگاه‌های ثبت‌شده", callback_data="admin:delete_all_devices_confirm"))
+        kb.add(types.InlineKeyboardButton("💸 ریست موجودی تمام کاربران", callback_data="admin:reset_all_balances_confirm"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 
@@ -436,38 +442,41 @@ class Menu:
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به انتخاب پنل", callback_data="admin:management_menu"))
         return kb
 
+
     def admin_user_interactive_management(self, identifier: str, is_active: bool, panel: str, back_callback: str | None = None) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         
         context_suffix = ""
         if back_callback and back_callback.endswith("search_menu"):
-            context_suffix = ":search"
+            context_suffix = ":s"
 
         status_text = "⚙️ تغییر وضعیت"
         panel_short = 'h' if panel == 'hiddify' else 'm'
         
         kb.add(
-            types.InlineKeyboardButton(status_text, callback_data=f"admin:tgl:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("📝 یادداشت ادمین", callback_data=f"admin:note:{identifier}{context_suffix}:{panel_short}")
+            types.InlineKeyboardButton(status_text, callback_data=f"admin:us_tgl:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("📝 یادداشت ادمین", callback_data=f"admin:us_note:{identifier}{context_suffix}:{panel_short}")
         )
         kb.add(
-            types.InlineKeyboardButton("💳 ثبت پرداخت", callback_data=f"admin:log_payment:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("📜 سابقه پرداخت", callback_data=f"admin:phist:{identifier}:0{context_suffix}")
+            types.InlineKeyboardButton("💳 ثبت پرداخت", callback_data=f"admin:us_lpay:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("📜 سابقه پرداخت", callback_data=f"admin:us_phist:{identifier}:0{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("💰 شارژ کیف پول", callback_data=f"admin:manual_charge:{identifier}{context_suffix}:{panel_short}"),
-            types.InlineKeyboardButton("🔧 ویرایش کاربر", callback_data=f"admin:edt:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("💰 شارژ کیف پول", callback_data=f"admin:us_mchg:{identifier}{context_suffix}:{panel_short}"),
+            types.InlineKeyboardButton("💸 برداشت وجه", callback_data=f"admin:us_wdrw:{identifier}{context_suffix}") # <-- دکمه جدید
         )
         kb.add(
-            types.InlineKeyboardButton("🔄 ریست مصرف", callback_data=f"admin:rusg_m:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:del_cfm:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("🔧 ویرایش کاربر", callback_data=f"admin:us_edt:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("🔄 ریست مصرف", callback_data=f"admin:us_rusg:{identifier}{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:del_devs:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:reset_transfer:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:us_delc:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:us_ddev:{identifier}{context_suffix}")
         )
-        kb.add(types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:rb:{identifier}{context_suffix}"))
-
+        kb.add(
+             types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}"),
+             types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}")
+        )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))

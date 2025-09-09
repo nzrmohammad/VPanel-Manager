@@ -537,7 +537,7 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
 def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     """
     (نسخه نهایی و اصلاح شده) گزارش جامع و کامل ادمین را با تمام جزئیات درخواستی تولید می‌کند.
-    این نسخه شامل آمار دقیق، قالب‌بندی صحیح و رفع باگ‌های مربوط به کاراکترهای خاص است.
+    این نسخه شامل آمار دقیق، قالب‌بندی صحیح، نمایش آیکون دستاوردها و ترجمه هشدارها است.
     """
     if not all_users_from_api:
         return "هیچ کاربری در پنل یافت نشد"
@@ -586,7 +586,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     payments_today_count = db_manager.get_total_payments_in_range(start_of_today_utc, now_utc)
     achievements_today = db_manager.get_daily_achievements()
 
-    # --- بخش ۲: ساخت متن گزارش (هدر از اینجا حذف شد) ---
+    # --- بخش ۲: ساخت متن گزارش ---
     report_lines = [
         f"*{escape_markdown('⚙️ خلاصه وضعیت کل پنل')}*",
         f"👤 تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
@@ -598,7 +598,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         f" 🇫🇷🇹🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
 
-    # --- بخش ۳: افزودن لیست‌های جزئی (بدون تغییر) ---
+    # --- بخش ۳: افزودن لیست‌های جزئی ---
     if active_today_users:
         report_lines.append("───────────────")
         report_lines.append(f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*")
@@ -641,8 +641,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         for user_id, data in users_achievements.items():
             name = escape_markdown(data['first_name'])
             points_today = sum(ACHIEVEMENTS.get(b, {}).get('points', 0) for b in data['badges'])
-            badge_names = ', '.join([escape_markdown(ACHIEVEMENTS.get(b, {}).get('name', b)) for b in data['badges']])
-            report_lines.append(f"• {name} \\({escape_markdown(badge_names)}\\) \\(\\+{points_today} امتیاز\\)")
+            badge_icons = ' '.join([ACHIEVEMENTS.get(b, {}).get('icon', '🎖️') for b in data['badges']])
+            report_lines.append(f"• {name} \\({badge_icons}\\) \\(\\+{points_today} امتیاز\\)")
 
     if expiring_soon_users:
         report_lines.append("───────────────")
@@ -664,7 +664,14 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     sent_warnings = db_manager.get_sent_warnings_since_midnight()
     if sent_warnings:
         report_lines.append("───────────────")
-        warning_map = {"expiry": "انقضای سرویس", "low_data_hiddify": "اتمام حجم 🇩🇪", "low_data_marzban": "اتمام حجم 🇫🇷", "unusual_daily_usage": "مصرف غیرعادی", "too_many_devices": "تعداد دستگاه بالا"}
+        warning_map = {
+            "expiry": "انقضای سرویس", 
+            "low_data_hiddify": "اتمام حجم 🇩🇪", 
+            "low_data_marzban": "اتمام حجم 🇫🇷", 
+            "unusual_daily_usage": "مصرف غیرعادی", 
+            "too_many_devices": "تعداد دستگاه بالا",
+            "inactive_user_reminder": "یادآوری عدم فعالیت"
+        }
         user_warnings = [f"• {escape_markdown(w.get('name', 'N/A'))} : {escape_markdown(warning_map.get(w.get('warning_type'), w.get('warning_type')))}" for w in sent_warnings]
         report_lines.append(f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*")
         report_lines.extend(user_warnings)
@@ -977,7 +984,9 @@ def fmt_daily_achievements_report(daily_achievements: list) -> str:
             badge_info = ACHIEVEMENTS.get(badge_code, {})
             points = badge_info.get('points', 0)
             total_points_today += points
-            lines.append(f"  `•` {badge_info.get('icon', '🎖️')} {escape_markdown(badge_info.get('name', badge_code))} \\( \\+{points} امتیاز \\)")        
+            badge_name = escape_markdown(badge_info.get('name', badge_code))
+            lines.append(f"  `•` {badge_info.get('icon', '🎖️')} {badge_name} \\(\\+{points} امتیاز\\)")
+                    
         lines.append(f"  💰 *مجموع امتیاز امروز: {total_points_today}*")
         lines.append("") 
 

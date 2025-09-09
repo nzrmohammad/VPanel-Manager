@@ -85,7 +85,7 @@ def handle_user_callbacks(call: types.CallbackQuery):
         return
 
     # --- Information Display Callbacks ---
-    if any(data.startswith(prefix) for prefix in ["manage", "acc_", "quick_stats", "qstats_acc_page_", "getlinks_", "getlink_", "payment_history_", "usage_history_", "view_plans", "show_plans:", "show_payment_options", "show_card_details", "web_login", "user_account", "win_select_", "win_hiddify_", "win_marzban_"]):
+    if any(data.startswith(prefix) for prefix in ["manage", "acc_", "quick_stats", "qstats_acc_page_", "getlinks_", "getlink_", "payment_history_", "usage_history_", "view_plans", "show_plans:", "show_payment_options", "show_card_details", "web_login", "user_account", "win_select_", "win_hiddify_", "win_marzban_", "show_addons", "addon_confirm:", "addon_execute:"]):
         if data == "manage": info.show_manage_menu(call)
         elif data.startswith("acc_"): info.show_account_details(call)
         elif data == "quick_stats": info.show_quick_stats(call)
@@ -96,6 +96,9 @@ def handle_user_callbacks(call: types.CallbackQuery):
         elif data.startswith("usage_history_"): info.handle_usage_history(call)
         elif data == "view_plans": info.show_plan_categories(call)
         elif data.startswith("show_plans:"): info.show_filtered_plans(call)
+        elif data == "show_addons": info.show_addons_page(call)
+        elif data.startswith("addon_confirm:"): info.confirm_addon_purchase(call)
+        elif data.startswith("addon_execute:"): info.execute_addon_purchase(call)
         elif data == "show_payment_options": info.show_payment_options_menu(call)
         elif data == "show_card_details": info.handle_show_card_details(call)
         elif data == "web_login": info.handle_web_login_request(call)

@@ -19,6 +19,16 @@ def initialize_handlers(b, conv_dict):
     bot = b
     admin_conversations = conv_dict
 
+def _notify_user(user_id, message):
+    """یک پیام را برای کاربر مشخصی ارسال می‌کند و خطاهای احتمالی را مدیریت می‌کند."""
+    if not user_id:
+        return
+    try:
+        bot.send_message(user_id, message, parse_mode="MarkdownV2")
+        logger.info(f"Sent notification to user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to send notification to user {user_id}: {e}")
+
 def handle_wallet_callbacks(call: types.CallbackQuery):
     """مسیریاب اصلی برای تمام callback های مربوط به کیف پول."""
     try:
@@ -469,7 +479,7 @@ def get_transfer_amount(message: types.Message):
         bot.register_next_step_handler(message, get_transfer_amount)
 
 def execute_wallet_transfer(call: types.CallbackQuery):
-    """انتقال موجودی را نهایی می‌کند."""
+    """(نسخه نهایی) انتقال موجودی را نهایی کرده و پیام موفقیت را با دکمه صحیح نمایش می‌دهد."""
     sender_id = call.from_user.id
     if sender_id not in admin_conversations or admin_conversations[sender_id].get('action') != 'transfer_get_amount':
         return
@@ -484,12 +494,20 @@ def execute_wallet_transfer(call: types.CallbackQuery):
     db.log_wallet_transfer(sender_id, recipient_id, amount)
 
     sender_name = escape_markdown(call.from_user.first_name)
-    _safe_edit(sender_id, msg_id, escape_markdown(f"✅ مبلغ {amount:,.0f} تومان با موفقیت انتقال یافت."), reply_markup=menu.user_cancel_action("wallet:main", db.get_user_language(sender_id)))
+    sender_message = escape_markdown(f"✅ مبلغ {amount:,.0f} تومان با موفقیت انتقال یافت.")
+    
+    back_to_wallet_kb = types.InlineKeyboardMarkup().add(
+        types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(sender_id))}", callback_data="wallet:main")
+    )
+    
+    _safe_edit(sender_id, msg_id, sender_message, reply_markup=back_to_wallet_kb)
 
     try:
-        bot.send_message(recipient_id, f"🎁 شما مبلغ *{amount:,.0f} تومان* از طرف کاربر *{sender_name}* دریافت کردید.", parse_mode="MarkdownV2")
+        recipient_message = f"🎁 شما مبلغ *{amount:,.0f} تومان* از طرف کاربر *{sender_name}* دریافت کردید\\."
+        bot.send_message(recipient_id, recipient_message, parse_mode="MarkdownV2")
     except Exception as e:
         logger.warning(f"Could not send transfer notification to recipient {recipient_id}: {e}")
+
 
 
 def start_gift_flow(call: types.CallbackQuery):
@@ -569,7 +587,7 @@ def confirm_gift_purchase(call: types.CallbackQuery, plan_name: str):
     _safe_edit(uid, call.message.message_id, confirm_prompt, reply_markup=kb)
 
 def execute_gift_purchase(call: types.CallbackQuery):
-    """خرید هدیه را نهایی کرده و به طرفین اطلاع می‌دهد."""
+    """(نسخه نهایی) خرید هدیه را نهایی کرده و سناریوی عدم دسترسی را به درستی مدیریت می‌کند."""
     sender_id = call.from_user.id
     if sender_id not in admin_conversations: return
 
@@ -579,36 +597,92 @@ def execute_gift_purchase(call: types.CallbackQuery):
     plan_to_buy = convo['plan_to_buy']
     price = plan_to_buy.get('price', 0)
 
+    # ۱. کسر هزینه و ثبت لاگ
     db.update_wallet_balance(sender_id, -price, 'gift_purchase', f"خرید هدیه برای کاربر {recipient_id}")
 
     recipient_uuids = db.uuids(recipient_id)
     recipient_main_uuid = recipient_uuids[0]['uuid']
-
-    add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
-    if add_days > 0:
-        combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_days=add_days)
-
+    recipient_uuid_record = db.get_user_uuid_record(recipient_main_uuid)
     plan_type = plan_to_buy.get('type')
-    if plan_type == 'combined':
-        add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
-        add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
-        combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_gb=add_gb_de, target_panel_type='hiddify')
-        combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_gb=add_gb_fr_tr, target_panel_type='marzban')
-    else:
-        target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
-        volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
-        add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
-        combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_gb=add_gb, target_panel_type=target_panel)
+
+    # ۲. بررسی دسترسی کاربر مقصد به سرورهای پلن
+    has_access = False
+    if plan_type == 'germany' and recipient_uuid_record.get('has_access_de'):
+        has_access = True
+    elif plan_type in ['france', 'turkey'] and (recipient_uuid_record.get('has_access_fr') or recipient_uuid_record.get('has_access_tr')):
+        has_access = True
+    elif plan_type == 'combined' and recipient_uuid_record.get('has_access_de') and (recipient_uuid_record.get('has_access_fr') or recipient_uuid_record.get('has_access_tr')):
+        has_access = True
 
     sender_name = escape_markdown(call.from_user.first_name)
     recipient_name = escape_markdown(convo.get('recipient_name', ''))
     plan_name_escaped = escape_markdown(plan_to_buy.get('name', ''))
 
-    _safe_edit(sender_id, msg_id, f"✅ هدیه شما \\(پلن *{plan_name_escaped}*\\) با موفقیت برای *{recipient_name}* ارسال شد.",
-               reply_markup=menu.user_cancel_action("wallet:main", db.get_user_language(sender_id)))
+    # کیبورد بازگشت برای پیام‌های موفقیت‌آمیز
+    back_to_wallet_kb = types.InlineKeyboardMarkup().add(
+        types.InlineKeyboardButton(f"🔙 {get_string('back', db.get_user_language(sender_id))}", callback_data="wallet:main")
+    )
 
-    try:
-        bot.send_message(recipient_id, f"🎁 شما یک هدیه \\(پلن *{plan_name_escaped}*\\) از طرف کاربر *{sender_name}* دریافت کردید. این پلن به سرویس شما اضافه شد.",
-                         parse_mode="MarkdownV2")
-    except Exception as e:
-        logger.warning(f"Could not send gift notification to recipient {recipient_id}: {e}")
+    # ۳. اجرای سناریوی مناسب بر اساس دسترسی
+    if has_access:
+        # اگر کاربر دسترسی داشت، هم حجم و هم روز را اضافه کن
+        add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
+        if add_days > 0:
+            combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_days=add_days)
+
+        if plan_type == 'combined':
+            add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
+            add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
+            combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_gb=add_gb_de, target_panel_type='hiddify')
+            combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_gb=add_gb_fr_tr, target_panel_type='marzban')
+        else:
+            target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
+            volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
+            add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
+            combined_handler.modify_user_on_all_panels(recipient_main_uuid, add_gb=add_gb, target_panel_type=target_panel)
+        
+        # اطلاع‌رسانی به طرفین
+        sender_message = f"✅ هدیه شما \\(پلن *{plan_name_escaped}*\\) با موفقیت برای *{recipient_name}* فعال شد\\."
+        _safe_edit(sender_id, msg_id, sender_message, reply_markup=back_to_wallet_kb)
+        
+        try:
+            recipient_message = f"🎁 شما یک هدیه \\(پلن *{plan_name_escaped}*\\) از طرف کاربر *{sender_name}* دریافت کردید\\. این پلن به سرویس شما اضافه شد\\."
+            bot.send_message(recipient_id, recipient_message, parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.warning(f"Could not send gift notification to recipient {recipient_id}: {e}")
+
+    else:
+        # --- START OF FIX: Do not add anything automatically if user lacks access ---
+        # اگر کاربر دسترسی نداشت، هیچ تغییری در اکانت او ایجاد نمی‌شود. فقط اطلاع‌رسانی کن.
+        import time
+        tracking_code = f"GIFT-{recipient_id}-{int(time.time())}"
+        support_link = f"https://t.me/{ADMIN_SUPPORT_CONTACT.replace('@', '')}"
+
+        # پیام به فرستنده
+        sender_message = (
+            f"✅ هدیه شما برای *{recipient_name}* ثبت شد\\.\n\n"
+            f"از آنجایی که ایشان به سرور این پلن دسترسی ندارند، پیامی برایشان ارسال شد تا برای فعال‌سازی با پشتیبانی تماس بگیرند\\."
+        )
+        _safe_edit(sender_id, msg_id, sender_message, reply_markup=back_to_wallet_kb)
+        
+        # پیام به گیرنده
+        recipient_message = (
+            f"🎁 شما یک هدیه \\(پلن *{plan_name_escaped}*\\) از طرف کاربر *{sender_name}* دریافت کرده‌اید\\!\n\n"
+            f"برای فعال‌سازی کامل این هدیه \\(حجم و روز\\)، لطفاً با پشتیبانی تماس بگیرید و کد پیگیری زیر را ارسال کنید:\n\n"
+            f"`{tracking_code}`"
+        )
+        kb_recipient = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💬 تماس با پشتیبانی", url=support_link))
+        try:
+            bot.send_message(recipient_id, recipient_message, parse_mode="MarkdownV2", reply_markup=kb_recipient)
+        except Exception as e:
+            logger.warning(f"Could not send 'activate gift' notification to recipient {recipient_id}: {e}")
+
+        admin_message = (
+            f"🔵 *نیاز به فعال‌سازی کامل هدیه*\n\n"
+            f"کاربر *{sender_name}* \\(`{sender_id}`\\) پلن *{plan_name_escaped}* را برای کاربر *{recipient_name}* \\(`{recipient_id}`\\) هدیه خریده است\\.\n"
+            f"کاربر مقصد به سرورهای این پلن دسترسی ندارد\\.\n\n"
+            f"کد پیگیری: `{tracking_code}`\n\n"
+            f"لطفاً پس از تماس کاربر، دسترسی لازم را فعال کرده و **کل پلن \\(حجم و روز\\)** را به صورت دستی برایش اعمال کنید\\."
+        )
+        for admin_id in ADMIN_IDS:
+            _notify_user(admin_id, admin_message)

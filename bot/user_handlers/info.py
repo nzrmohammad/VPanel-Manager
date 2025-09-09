@@ -12,7 +12,7 @@ import jdatetime
 from ..database import db
 from .. import combined_handler
 from ..menu import menu
-from ..utils import escape_markdown, _safe_edit, load_service_plans
+from ..utils import escape_markdown, _safe_edit, load_service_plans, load_json_file
 from ..language import get_string
 from ..user_formatters import (
     fmt_one, quick_stats, fmt_service_plans, fmt_panel_quick_stats,
@@ -269,10 +269,139 @@ def show_plan_categories(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
     prompt = get_string("prompt_select_plan_category", lang_code)
+    reply_markup = menu.plan_categories_menu(lang_code=lang_code)
 
-    # حالا این تابع بدون نیاز به آرگومان اضافه فراخوانی می‌شود و خطا نمی‌دهد
-    reply_markup = menu.plan_category_menu(lang_code=lang_code)
     _safe_edit(uid, msg_id, prompt, reply_markup=reply_markup, parse_mode=None)
+
+def show_addons_page(call: types.CallbackQuery):
+    """(نسخه نهایی) صفحه خرید بسته‌های افزودنی را بر اساس دسترسی کاربر نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    lang_code = db.get_user_language(uid)
+
+    all_addons = load_json_file('addons.json')
+    user_data = db.user(uid)
+    user_balance = user_data.get('wallet_balance', 0.0) if user_data else 0.0
+    access_rights = db.get_user_access_rights(uid)
+
+    prompt = (f"*{escape_markdown('➕ خرید بسته‌های افزودنی')}*\n\n"
+              f"{escape_markdown('در این بخش می‌توانید به سرویس فعلی خود حجم یا زمان اضافه کنید.')}\n\n"
+              f"💰 *{escape_markdown('موجودی شما:')} {user_balance:,.0f} تومان*")
+
+    kb = types.InlineKeyboardMarkup(row_width=2)
+
+    def create_addon_buttons(addons):
+        buttons = []
+        for addon in addons:
+            price = addon.get('price', 0)
+            is_affordable = user_balance >= price
+            emoji = "✅" if is_affordable else "❌"
+            price_str = "{:,.0f}".format(price)
+            button_text = f"{emoji} {addon.get('name')} ({price_str} تومان)"
+            callback_data = f"addon_confirm:{addon.get('type')}:{addon.get('name')}" if is_affordable else "wallet:insufficient"
+            buttons.append(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+        return buttons
+
+    # نمایش بسته‌های حجم آلمان
+    if access_rights.get('has_access_de'):
+        data_addons_de = [a for a in all_addons if a.get("type") == "data_de"]
+        if data_addons_de:
+            kb.add(types.InlineKeyboardButton("حجم 🇩🇪", callback_data="noop"))
+            kb.add(*create_addon_buttons(data_addons_de))
+
+    # نمایش بسته‌های حجم فرانسه/ترکیه
+    if access_rights.get('has_access_fr') or access_rights.get('has_access_tr'):
+        data_addons_fr_tr = [a for a in all_addons if a.get("type") == "data_fr_tr"]
+        if data_addons_fr_tr:
+            kb.add(types.InlineKeyboardButton("حجم 🇫🇷🇹🇷", callback_data="noop"))
+            kb.add(*create_addon_buttons(data_addons_fr_tr))
+    
+    # نمایش بسته‌های زمانی (برای همه)
+    time_addons = [a for a in all_addons if a.get("type") == "time"]
+    if time_addons:
+        kb.add(types.InlineKeyboardButton("زمان", callback_data="noop"))
+        kb.add(*create_addon_buttons(time_addons))
+    
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+def confirm_addon_purchase(call: types.CallbackQuery):
+    """از کاربر برای خرید بسته افزودنی تاییدیه می‌گیرد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    parts = call.data.split(':')
+    addon_type, addon_name = parts[1], parts[2]
+
+    all_addons = load_json_file('addons.json')
+    addon_to_buy = next((a for a in all_addons if a.get("type") == addon_type and a.get("name") == addon_name), None)
+    
+    if not addon_to_buy:
+        bot.answer_callback_query(call.id, "بسته مورد نظر یافت نشد.", show_alert=True)
+        return
+
+    price = addon_to_buy.get('price', 0)
+    
+    confirm_prompt = (
+        f"❓ *{escape_markdown('تایید نهایی')}*\n\n"
+        f"{escape_markdown(f'آیا از خرید بسته «{addon_name}» به مبلغ {price:,.0f} تومان اطمینان دارید؟')}"
+    )
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"addon_execute:{addon_type}:{addon_name}"),
+        types.InlineKeyboardButton("❌ انصراف", callback_data="show_addons")
+    )
+    _safe_edit(uid, msg_id, confirm_prompt, reply_markup=kb)
+
+def execute_addon_purchase(call: types.CallbackQuery):
+    """(نسخه نهایی) خرید بسته افزودنی را بر اساس نوع آن نهایی می‌کند."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    parts = call.data.split(':')
+    addon_type, addon_name = parts[1], parts[2]
+
+    all_addons = load_json_file('addons.json')
+    addon = next((a for a in all_addons if a.get("type") == addon_type and a.get("name") == addon_name), None)
+
+    if not addon:
+        bot.answer_callback_query(call.id, "بسته یافت نشد.", show_alert=True)
+        return
+
+    price = addon.get('price', 0)
+    
+    if not db.update_wallet_balance(uid, -price, 'addon_purchase', f"خرید افزودنی: {addon_name}"):
+        bot.answer_callback_query(call.id, "موجودی شما کافی نیست.", show_alert=True)
+        return
+
+    user_uuids = db.uuids(uid)
+    if not user_uuids:
+        db.update_wallet_balance(uid, price, 'refund', f"بازگشت وجه به دلیل نبود اکانت: {addon_name}")
+        bot.answer_callback_query(call.id, "شما اکانت فعالی برای اعمال بسته ندارید. وجه به حساب شما بازگردانده شد.", show_alert=True)
+        return
+        
+    user_main_uuid = user_uuids[0]['uuid']
+    add_gb = addon.get('gb', 0)
+    add_days = addon.get('days', 0)
+
+    # --- START OF NEW LOGIC: Apply addon based on addon_type ---
+    target_panel_type = None
+    if addon_type == 'data_de':
+        target_panel_type = 'hiddify'
+    elif addon_type == 'data_fr_tr':
+        target_panel_type = 'marzban'
+    # For 'time' addons, target_panel_type remains None, so it applies to all panels.
+
+    success = combined_handler.modify_user_on_all_panels(
+        identifier=user_main_uuid, 
+        add_gb=add_gb, 
+        add_days=add_days,
+        target_panel_type=target_panel_type
+    )
+    # --- END OF NEW LOGIC ---
+
+    if success:
+        bot.answer_callback_query(call.id, f"✅ بسته «{addon_name}» با موفقیت اعمال شد.", show_alert=True)
+        show_addons_page(call)
+    else:
+        db.update_wallet_balance(uid, price, 'refund', f"بازگشت وجه به دلیل خطا در اعمال: {addon_name}")
+        bot.answer_callback_query(call.id, "خطایی در اعمال بسته رخ داد. وجه به حساب شما بازگردانده شد.", show_alert=True)
 
 
 def show_filtered_plans(call: types.CallbackQuery):

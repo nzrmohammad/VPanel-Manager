@@ -2182,6 +2182,30 @@ class DatabaseManager:
                 # در صورت بروز خطا، تراکنش را بازگردانی می‌کنیم (رول‌بک خودکار است)
                 return False
 
+    def set_wallet_balance(self, user_id: int, new_balance: float, trans_type: str, description: str) -> bool:
+        """
+        موجودی کیف پول کاربر را به یک مقدار مشخص تغییر داده و تراکنش را ثبت می‌کند.
+        """
+        with self.write_conn() as c:
+            try:
+                current_balance_row = c.execute("SELECT wallet_balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
+                if current_balance_row is None:
+                    logger.error(f"Attempted to set wallet for non-existent user_id: {user_id}")
+                    return False
+
+                amount_changed = new_balance - current_balance_row['wallet_balance']
+
+                c.execute("UPDATE users SET wallet_balance = ? WHERE user_id = ?", (new_balance, user_id))
+                c.execute(
+                    "INSERT INTO wallet_transactions (user_id, amount, type, description) VALUES (?, ?, ?, ?)",
+                    (user_id, amount_changed, trans_type, description)
+                )
+                self.clear_user_cache(user_id)
+                return True
+            except Exception as e:
+                logger.error(f"Error setting wallet balance for user {user_id}: {e}", exc_info=True)
+                return False
+
     def get_wallet_history(self, user_id: int) -> list:
         """تاریخچه تراکنش‌های کیف پول یک کاربر را برمی‌گرداند."""
         with self._conn() as c:
@@ -2288,6 +2312,18 @@ class DatabaseManager:
         """تمام بلیط‌های قرعه‌کشی را برای شروع دوره جدید پاک می‌کند."""
         with self.write_conn() as c:
             c.execute("DELETE FROM lottery_tickets")
+
+    def reset_all_wallet_balances(self) -> int:
+        """موجودی کیف پول تمام کاربران را صفر می‌کند."""
+        with self.write_conn() as c:
+            # ابتدا تمام تراکنش‌ها را پاک می‌کنیم تا سابقه مالی صفر شود
+            c.execute("DELETE FROM wallet_transactions;")
+            c.execute("DELETE FROM charge_requests;")
+            # سپس موجودی همه را صفر می‌کنیم
+            cursor = c.execute("UPDATE users SET wallet_balance = 0;")
+            self._user_cache.clear()
+            return cursor.rowcount
+
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
