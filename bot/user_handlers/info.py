@@ -266,18 +266,48 @@ def handle_usage_history(call: types.CallbackQuery):
 
 def show_plan_categories(call: types.CallbackQuery):
     """منوی دسته‌بندی پلن‌های فروش را نمایش می‌دهد."""
-    lang_code = db.get_user_language(call.from_user.id)
+    uid, msg_id = call.from_user.id, call.message.message_id
+    lang_code = db.get_user_language(uid)
     prompt = get_string("prompt_select_plan_category", lang_code)
-    _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=menu.plan_category_menu(lang_code=lang_code), parse_mode=None)
+    
+    # حالا این تابع بدون نیاز به آرگومان اضافه فراخوانی می‌شود و خطا نمی‌دهد
+    reply_markup = menu.plan_category_menu(lang_code=lang_code)
+    _safe_edit(uid, msg_id, prompt, reply_markup=reply_markup, parse_mode=None)
 
 
 def show_filtered_plans(call: types.CallbackQuery):
-    """پلن‌های یک دسته‌بندی خاص را نمایش می‌دهد."""
-    lang_code = db.get_user_language(call.from_user.id)
+    """
+    پلن‌های یک دسته‌بندی خاص را به همراه دکمه‌های خرید نمایش می‌دهد.
+    """
+    uid, msg_id = call.from_user.id, call.message.message_id
+    lang_code = db.get_user_language(uid)
     plan_type = call.data.split(":")[1]
-    text = fmt_service_plans([p for p in load_service_plans() if p.get("type") == plan_type], plan_type, lang_code=lang_code)
-    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
-    _safe_edit(call.from_user.id, call.message.message_id, text, reply_markup=kb)
+    
+    # دریافت موجودی کاربر و لیست پلن‌ها
+    user_data = db.user(uid)
+    user_balance = user_data.get('wallet_balance', 0.0) if user_data else 0.0
+    all_plans = load_service_plans()
+    plans_to_show = [p for p in all_plans if p.get("type") == plan_type]
+
+    # ساخت متن پیام با استفاده از فرمت‌کننده
+    text = fmt_service_plans(plans_to_show, plan_type, lang_code=lang_code)
+    
+    # ساخت دکمه‌های خرید
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    for plan in plans_to_show:
+        price = plan.get('price', 0)
+        is_affordable = user_balance >= price
+        emoji = "✅" if is_affordable else "❌"
+        price_str = "{:,.0f}".format(price)
+        button_text = f"{emoji} خرید {plan.get('name')} ({price_str} تومان)"
+        
+        # اگر موجودی کافی بود، به صفحه تایید خرید می‌رود، در غیر این صورت به کاربر اطلاع می‌دهد
+        callback_data = f"wallet:buy_confirm:{plan.get('name')}" if is_affordable else "wallet:insufficient"
+        kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+
+    kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
+    
+    _safe_edit(uid, msg_id, text, reply_markup=kb)
 
 
 def show_payment_options_menu(call: types.CallbackQuery):

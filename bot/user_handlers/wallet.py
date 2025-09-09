@@ -32,10 +32,10 @@ def handle_wallet_callbacks(call: types.CallbackQuery):
         elif action == 'history':
             show_wallet_history(call)
         elif action == 'buy_confirm':
-            plan_name = action_parts[2]
+            plan_name = ":".join(action_parts[2:]) # نام پلن ممکن است شامل ':' باشد
             confirm_purchase(call, plan_name)
         elif action == 'buy_execute':
-            plan_name = action_parts[2]
+            plan_name = ":".join(action_parts[2:]) # نام پلن ممکن است شامل ':' باشد
             execute_purchase(call, plan_name)
         elif action == 'insufficient':
             bot.answer_callback_query(call.id, "موجودی کیف پول شما کافی نیست. لطفاً ابتدا حساب خود را شارژ کنید.", show_alert=True)
@@ -213,8 +213,8 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"wallet:buy_execute:{plan_name}"),
-        types.InlineKeyboardButton("❌ انصراف", callback_data="view_plans")
-    )
+        types.InlineKeyboardButton("❌ انصراف", callback_data=f"show_plans:{plan_to_buy.get('type')}")) # بازگشت به لیست همان دسته
+    
     _safe_edit(uid, call.message.message_id, confirm_text, reply_markup=kb)
 
 def execute_purchase(call: types.CallbackQuery, plan_name: str):
@@ -235,16 +235,29 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
         
     if db.update_wallet_balance(uid, -price, 'purchase', f"خرید پلن: {plan_name}"):
         user_main_uuid = user_uuids[0]['uuid']
-        add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
-        add_gb_fr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
+        
+        # تعیین حجم و روز بر اساس نوع پلن
+        add_gb, add_days = 0, 0
+        plan_type = plan_to_buy.get('type')
         add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
         
-        combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_de, add_days=add_days, target_panel_type='hiddify')
-        combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr, add_days=add_days, target_panel_type='marzban')
+        # اعمال تغییرات بر اساس پنل‌های مختلف
+        if plan_type == 'combined':
+            add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
+            add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
+            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_de, add_days=add_days, target_panel_type='hiddify')
+            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr_tr, add_days=add_days, target_panel_type='marzban')
+        else: # پلن‌های اختصاصی
+            target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
+            volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
+            add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
+            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel)
         
         success_text = f"✅ خرید شما با موفقیت انجام شد! پلن *{escape_markdown(plan_name)}* برای شما فعال گردید."
         _safe_edit(uid, call.message.message_id, success_text, reply_markup=menu.user_cancel_action("back", db.get_user_language(uid)))
     else:
         bot.answer_callback_query(call.id, "خطا: موجودی کیف پول شما در لحظه آخر کافی نبود. لطفاً دوباره تلاش کنید.", show_alert=True)
-        from .info import show_plan_categories
-        show_plan_categories(call)
+        # بازگشت به لیست پلن‌های همان دسته
+        from .info import show_filtered_plans
+        call.data = f"show_plans:{plan_to_buy.get('type')}"
+        show_filtered_plans(call)

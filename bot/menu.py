@@ -120,6 +120,9 @@ class Menu:
 
 
     def plan_category_menu(self, lang_code: str) -> types.InlineKeyboardMarkup:
+        """
+        منوی انتخاب دسته‌بندی سرویس‌ها (سرورهای مختلف) را ایجاد می‌کند.
+        """
         kb = types.InlineKeyboardMarkup(row_width=2)
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
@@ -127,8 +130,9 @@ class Menu:
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
         btn_payment_methods = types.InlineKeyboardButton(get_string('btn_payment_methods', lang_code), callback_data="show_payment_options")
         btn_achievement_shop = types.InlineKeyboardButton("🛍️ فروشگاه دستاوردها", callback_data="shop:main")
-
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
+
+        # چیدمان دکمه‌ها برای ظاهر بهتر
         kb.add(btn_turkey, btn_france)
         kb.add(btn_combined, btn_germany)
         kb.add(btn_achievement_shop, btn_payment_methods)
@@ -304,7 +308,7 @@ class Menu:
         )
 
         # --- بخش هشدار حجم ---
-        kb.add(types.InlineKeyboardButton(f"\u200f🪫 {get_string('alerts_category', lang_code)}", callback_data="noop"))
+        kb.add(types.InlineKeyboardButton(f"🪫 {get_string('alerts_category', lang_code)}", callback_data="noop"))
         
         data_warning_buttons = []
         if access.get('has_access_de'):
@@ -343,7 +347,7 @@ class Menu:
                 callback_data="toggle_expiry_warnings"
             ),
             types.InlineKeyboardButton(
-                f"\u200fℹ️ {get_string('info_config', lang_code)} {get_status_emoji('show_info_config')}",
+                f"ℹ️ {get_string('info_config', lang_code)} {get_status_emoji('show_info_config')}",
                 callback_data="toggle_show_info_config"
             )
         )
