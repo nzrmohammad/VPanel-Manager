@@ -1,8 +1,8 @@
-# bot/admin_handlers/wallet.py
 import logging
 from telebot import types
 from ..database import db
-from ..utils import escape_markdown
+from ..utils import escape_markdown, _safe_edit
+from ..menu import menu
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -13,41 +13,149 @@ def initialize_wallet_handlers(b, conv_dict):
     bot = b
     admin_conversations = conv_dict
 
+# nzrmohammad/vpanel-manager/VPanel-Manager-74c8743978a2fdd23c822ea48ec6aa0bc5eadbde/bot/admin_handlers/wallet.py
+
 def handle_charge_request_callback(call: types.CallbackQuery, params: list):
-    """پاسخ ادمین به درخواست شارژ را مدیریت می‌کند."""
+    """پاسخ ادمین به درخواست شارژ را مدیریت می‌کند و پیام کاربر را ویرایش می‌کند."""
     admin_id = call.from_user.id
     original_caption = call.message.caption or ""
     
-    # ✅ FIX: Determine action from call.data and parse params safely
     action_parts = call.data.split(':')
-    decision = action_parts[1]  # 'charge_confirm' or 'charge_reject'
-    user_id = int(action_parts[2])
+    decision = action_parts[1]
+    request_id = int(action_parts[2])
+
+    charge_request = db.get_charge_request_by_id(request_id)
+    if not charge_request or not charge_request['is_pending']:
+        bot.answer_callback_query(call.id, "این درخواست قبلاً پردازش شده است.", show_alert=True)
+        bot.edit_message_caption(caption=f"{original_caption}\n\n⚠️ این درخواست قبلا پردازش شده است.", chat_id=admin_id, message_id=call.message.message_id)
+        return
+
+    user_id = charge_request['user_id']
+    amount = charge_request['amount']
+    user_message_id = charge_request['message_id']
+    lang_code = db.get_user_language(user_id)
 
     try:
         if decision == 'charge_confirm':
-            amount = float(action_parts[3])
-            if db.update_wallet_balance(user_id, amount, 'deposit', f"شارژ توسط ادمین {admin_id}"):
-                try:
-                    bot.send_message(user_id, f"✅ حساب شما به مبلغ {amount:,.0f} تومان با موفقیت شارژ شد.")
-                    bot.edit_message_caption(caption=f"{original_caption}\n\n✅ تایید شد توسط شما.", chat_id=admin_id, message_id=call.message.message_id)
-                    bot.answer_callback_query(call.id, f"✅ شارژ حساب کاربر {user_id} تایید شد.", show_alert=True)
-                except Exception as e:
-                    logger.error(f"Failed to send confirmation message to user {user_id}: {e}")
-                    bot.edit_message_caption(caption=f"{original_caption}\n\n⚠️ شارژ ثبت شد، اما ارسال پیام به کاربر ناموفق بود.", chat_id=admin_id, message_id=call.message.message_id)
-                    bot.answer_callback_query(call.id, f"⚠️ شارژ ثبت شد، اما ارسال پیام به کاربر ناموفق بود.", show_alert=True)
+            if db.update_wallet_balance(user_id, amount, 'deposit', f"شارژ توسط ادمین {admin_id} (درخواست #{request_id})"):
+                db.update_charge_request_status(request_id, is_pending=False)
+                # ✅ **ویرایش پیام کاربر**
+                success_text = f"✅ حساب شما به مبلغ *{amount:,.0f} تومان* با موفقیت شارژ شد."
+                _safe_edit(user_id, user_message_id, success_text, reply_markup=menu.user_cancel_action("wallet:main", lang_code))
+                
+                bot.edit_message_caption(caption=f"{original_caption}\n\n✅ تایید شد توسط شما.", chat_id=admin_id, message_id=call.message.message_id)
+                bot.answer_callback_query(call.id, "شارژ حساب کاربر تایید شد.", show_alert=True)
             else:
                 bot.edit_message_caption(caption=f"{original_caption}\n\n❌ خطا در ثبت شارژ در دیتابیس.", chat_id=admin_id, message_id=call.message.message_id)
                 bot.answer_callback_query(call.id, f"❌ خطا در شارژ حساب کاربر {user_id}.", show_alert=True)
                 
         elif decision == 'charge_reject':
-            try:
-                bot.send_message(user_id, "❌ درخواست شارژ حساب شما توسط ادمین رد شد. لطفاً با پشتیبانی تماس بگیرید.")
-                bot.edit_message_caption(caption=f"{original_caption}\n\n❌ توسط شما رد شد.", chat_id=admin_id, message_id=call.message.message_id)
-                bot.answer_callback_query(call.id, f"❌ درخواست شارژ کاربر {user_id} رد شد.", show_alert=True)
-            except Exception as e:
-                logger.error(f"Failed to send rejection message to user {user_id}: {e}")
-                bot.edit_message_caption(caption=f"{original_caption}\n\n⚠️ درخواست رد شد، اما ارسال پیام به کاربر ناموفق بود.", chat_id=admin_id, message_id=call.message.message_id)
-                bot.answer_callback_query(call.id, "پیام رد درخواست به کاربر ارسال نشد.", show_alert=True)
+            db.update_charge_request_status(request_id, is_pending=False)
+            # ✅ **ویرایش پیام کاربر**
+            reject_text = "❌ درخواست شارژ حساب شما توسط ادمین رد شد. لطفاً با پشتیبانی تماس بگیرید."
+            _safe_edit(user_id, user_message_id, escape_markdown(reject_text), reply_markup=menu.user_cancel_action("wallet:main", lang_code))
+
+            bot.edit_message_caption(caption=f"{original_caption}\n\n❌ توسط شما رد شد.", chat_id=admin_id, message_id=call.message.message_id)
+            bot.answer_callback_query(call.id, "درخواست شارژ کاربر رد شد.", show_alert=True)
+            
     except Exception as e:
-        logger.error(f"Could not edit admin charge confirmation message: {e}")
-        bot.answer_callback_query(call.id, "عملیات انجام شد اما پیام اصلی قابل ویرایش نبود.", show_alert=False)
+        logger.error(f"Could not edit messages for charge request {request_id}: {e}")
+        bot.answer_callback_query(call.id, "عملیات انجام شد اما پیام‌ها قابل ویرایش نبودند.", show_alert=False)
+
+def handle_manual_charge_request(call: types.CallbackQuery, params: list):
+    """شروع فرآیند شارژ دستی کیف پول توسط ادمین."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    identifier = params[0] # UUID یا username کاربر
+    context = "search" if len(params) > 1 and params[1] == 'search' else None
+    
+    prompt = "لطفاً مبلغ مورد نظر برای شارژ دستی کیف پول کاربر را به تومان وارد کنید:"
+    admin_conversations[uid] = {
+        'action_type': 'manual_charge',
+        'msg_id': msg_id,
+        'identifier': identifier,
+        'context': context
+    }
+    
+    panel_short = params[2] if len(params) > 2 else 'h'
+    back_cb = f"admin:us:{panel_short}:{identifier}"
+    if context:
+        back_cb += f":{context}"
+
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.admin_cancel_action(back_cb))
+    bot.register_next_step_handler_by_chat_id(uid, _get_manual_charge_amount)
+
+def _get_manual_charge_amount(message: types.Message):
+    """مبلغ شارژ دستی را از ادمین دریافت و تاییدیه می‌گیرد."""
+    admin_id, text = message.from_user.id, message.text.strip()
+    bot.delete_message(admin_id, message.message_id)
+    if admin_id not in admin_conversations: return
+    
+    convo = admin_conversations[admin_id]
+    msg_id = convo['msg_id']
+    
+    try:
+        amount = float(text)
+        convo['amount'] = amount
+        
+        from .. import combined_handler
+        user_info = combined_handler.get_combined_user_info(convo['identifier'])
+        if not user_info or not user_info.get('uuid'):
+            raise ValueError("کاربر یافت نشد یا UUID ندارد.")
+            
+        user_id = db.get_user_id_by_uuid(user_info['uuid'])
+        if not user_id:
+            raise ValueError("کاربر در دیتابیس ربات یافت نشد.")
+            
+        convo['target_user_id'] = user_id
+        user_name = user_info.get('name', 'کاربر ناشناس')
+        
+        confirm_prompt = (f"آیا از شارژ کیف پول کاربر *{escape_markdown(user_name)}* \\(`{user_id}`\\) "
+                          f"به مبلغ *{amount:,.0f} تومان* اطمینان دارید؟")
+        
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            types.InlineKeyboardButton("✅ بله، تایید", callback_data="admin:manual_charge_exec"),
+            types.InlineKeyboardButton("❌ خیر، لغو", callback_data="admin:manual_charge_cancel")
+        )
+        _safe_edit(admin_id, msg_id, confirm_prompt, reply_markup=kb)
+
+    except (ValueError, TypeError):
+        _safe_edit(admin_id, msg_id, "❌ مقدار وارد شده نامعتبر است. لطفاً فقط عدد وارد کنید.", reply_markup=menu.admin_panel())
+        admin_conversations.pop(admin_id, None)
+    except Exception as e:
+        _safe_edit(admin_id, msg_id, f"❌ خطایی رخ داد: {escape_markdown(str(e))}", reply_markup=menu.admin_panel())
+        admin_conversations.pop(admin_id, None)
+
+def handle_manual_charge_execution(call: types.CallbackQuery, params: list):
+    """شارژ دستی را نهایی می‌کند."""
+    admin_id = call.from_user.id
+    if admin_id not in admin_conversations: return
+    
+    convo = admin_conversations.pop(admin_id, {})
+    msg_id = convo.get('msg_id')
+    target_user_id = convo.get('target_user_id')
+    amount = convo.get('amount')
+    identifier = convo.get('identifier')
+
+    if not all([msg_id, target_user_id, amount, identifier]):
+        _safe_edit(admin_id, msg_id, "❌ اطلاعات ناقص است. عملیات لغو شد.", reply_markup=menu.admin_panel())
+        return
+
+    if db.update_wallet_balance(target_user_id, amount, 'deposit', f"شارژ دستی توسط ادمین {admin_id}"):
+        success_msg = f"✅ کیف پول کاربر با موفقیت به مبلغ *{amount:,.0f} تومان* شارژ شد."
+        _safe_edit(admin_id, msg_id, success_msg, reply_markup=menu.admin_panel())
+        
+        try:
+            bot.send_message(target_user_id, f"✅ حساب شما به مبلغ *{amount:,.0f} تومان* توسط مدیریت شارژ شد.", parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.warning(f"Could not send manual charge notification to user {target_user_id}: {e}")
+    else:
+        _safe_edit(admin_id, msg_id, "❌ خطا در به‌روزرسانی موجودی کاربر در دیتابیس.", reply_markup=menu.admin_panel())
+
+def handle_manual_charge_cancel(call: types.CallbackQuery, params: list):
+    """عملیات شارژ دستی را لغو می‌کند."""
+    admin_id = call.from_user.id
+    if admin_id in admin_conversations:
+        convo = admin_conversations.pop(admin_id)
+        msg_id = convo.get('msg_id')
+        _safe_edit(admin_id, msg_id, "❌ عملیات شارژ دستی لغو شد.", reply_markup=menu.admin_panel())

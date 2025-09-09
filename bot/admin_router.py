@@ -264,6 +264,9 @@ ADMIN_CALLBACK_HANDLERS = {
     "delete_all_devices_exec": user_management.handle_delete_all_devices_execute,
     "charge_confirm": wallet_admin_handler.handle_charge_request_callback,
     "charge_reject": wallet_admin_handler.handle_charge_request_callback,
+    "manual_charge": wallet_admin_handler.handle_manual_charge_request,
+    "manual_charge_exec": wallet_admin_handler.handle_manual_charge_execution,
+    "manual_charge_cancel": wallet_admin_handler.handle_manual_charge_cancel,
 }
 
 def handle_admin_callbacks(call: types.CallbackQuery):

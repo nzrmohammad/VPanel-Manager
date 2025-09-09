@@ -7,6 +7,8 @@ from ..utils import escape_markdown, _safe_edit, load_service_plans, to_shamsi, 
 from ..language import get_string
 from ..config import ADMIN_IDS, CARD_PAYMENT_INFO
 from .. import combined_handler
+from telebot.apihelper import ApiTelegramException
+
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -55,8 +57,7 @@ def start_charge_flow(call: types.CallbackQuery):
     """از کاربر می‌خواهد مبلغ مورد نظر برای شارژ را وارد کند."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
-    # ✅ FIX: Escape the prompt text to handle parentheses
-    prompt = escape_markdown("لطفاً مبلغی که می‌خواهید کیف پول خود را شارژ کنید (به تومان) وارد نمایید:")
+    prompt = "لطفاً مبلغی که می‌خواهید کیف پول خود را شارژ کنید \\(به تومان\\) وارد نمایید:\n\n*مثال: 50000*"
     _safe_edit(uid, call.message.message_id, prompt,
                reply_markup=menu.user_cancel_action("wallet:main", lang_code=lang_code))
     bot.register_next_step_handler(call.message, get_charge_amount, original_msg_id=call.message.message_id)
@@ -64,6 +65,7 @@ def start_charge_flow(call: types.CallbackQuery):
 def get_charge_amount(message: types.Message, original_msg_id: int):
     """مبلغ شارژ را دریافت کرده و اطلاعات کارت را برای کاربر ارسال می‌کند."""
     uid = message.from_user.id
+    lang_code = db.get_user_language(uid)
     try:
         bot.delete_message(uid, message.message_id)
     except Exception:
@@ -71,10 +73,10 @@ def get_charge_amount(message: types.Message, original_msg_id: int):
 
     try:
         amount = int(message.text.strip())
-        if amount < 1000: # حداقل مبلغ شارژ
-            raise ValueError("Amount too low")
+        if amount < 1000: 
+            raise ValueError("مبلغ کمتر از حد مجاز است")
         
-        admin_conversations[uid] = {'action': 'awaiting_receipt', 'amount': amount}
+        db.create_charge_request(uid, amount, original_msg_id)
         
         card_info = (
             f"*{escape_markdown('اطلاعات پرداخت')}*\n\n"
@@ -84,35 +86,42 @@ def get_charge_amount(message: types.Message, original_msg_id: int):
             f"⚠️ {escape_markdown('توجه: پس از ارسال رسید، باید منتظر تایید ادمین بمانید.')}"
         )
         _safe_edit(uid, original_msg_id, card_info,
-                         reply_markup=menu.user_cancel_action("wallet:main", db.get_user_language(uid)))
+                         reply_markup=menu.user_cancel_action("wallet:main", lang_code))
         bot.register_next_step_handler(message, get_receipt, original_msg_id=original_msg_id)
 
     except (ValueError, TypeError):
-        bot.send_message(message.chat.id, escape_markdown("مبلغ وارد شده نامعتبر است. لطفاً فقط عدد و حداقل ۱,۰۰۰ تومان وارد کنید."))
+        error_prompt = escape_markdown("❌ مبلغ وارد شده نامعتبر است. لطفاً فقط عدد و حداقل ۱,۰۰۰ تومان وارد کنید.\n\n*مثال صحیح: 50000*")
+        _safe_edit(uid, original_msg_id, error_prompt, 
+                   reply_markup=menu.user_cancel_action("wallet:main", lang_code))
         bot.register_next_step_handler(message, get_charge_amount, original_msg_id=original_msg_id)
 
 def get_receipt(message: types.Message, original_msg_id: int):
     """رسید پرداخت را از کاربر دریافت کرده و برای ادمین ارسال می‌کند."""
     uid = message.from_user.id
-    if uid not in admin_conversations or not message.photo:
-        bot.reply_to(message, escape_markdown("لطفاً یک تصویر معتبر از رسید پرداخت ارسال کنید."))
-        bot.register_next_step_handler(message, get_receipt, original_msg_id=original_msg_id)
+    lang_code = db.get_user_language(uid)
+    try:
+        bot.delete_message(uid, message.message_id)
+    except Exception:
+        pass
+
+    charge_request = db.get_pending_charge_request(uid, original_msg_id)
+    if not charge_request or not message.photo:
+        bot.clear_step_handler_by_chat_id(uid)
         return
 
-    convo = admin_conversations.pop(uid)
-    amount = convo.get('amount')
+    amount = charge_request['amount']
     
-    _safe_edit(uid, original_msg_id, escape_markdown("✅ رسید شما دریافت شد. پس از تایید توسط ادمین، حساب شما شارژ خواهد شد."), 
-               reply_markup=menu.user_cancel_action("wallet:main", db.get_user_language(uid)))
+    wait_message = escape_markdown("✅ رسید شما دریافت شد. پس از تایید توسط ادمین، حساب شما شارژ خواهد شد.")
+    _safe_edit(uid, original_msg_id, wait_message, 
+               reply_markup=menu.user_cancel_action("wallet:main", lang_code))
     
-    # --- START OF THE FIX ---
     user_info = message.from_user
     user_db_data = db.user(uid)
     current_balance = user_db_data.get('wallet_balance', 0.0) if user_db_data else 0.0
 
-    # Building the caption with the desired format
     caption_lines = [
         "💸 *درخواست شارژ کیف پول جدید*",
+        f"🆔 *شناسه درخواست:* `{charge_request['id']}`",
         "",
         f"👤 *نام کاربر:* {escape_markdown(user_info.first_name)}",
         f"🆔 *ایدی:* `{user_info.id}`"
@@ -127,12 +136,11 @@ def get_receipt(message: types.Message, original_msg_id: int):
     ])
     
     caption = "\n".join(caption_lines)
-    # --- END OF THE FIX ---
     
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        types.InlineKeyboardButton("✅ تایید", callback_data=f"admin:charge_confirm:{uid}:{amount}"),
-        types.InlineKeyboardButton("❌ رد", callback_data=f"admin:charge_reject:{uid}")
+        types.InlineKeyboardButton("✅ تایید", callback_data=f"admin:charge_confirm:{charge_request['id']}"),
+        types.InlineKeyboardButton("❌ رد", callback_data=f"admin:charge_reject:{charge_request['id']}")
     )
     
     for admin_id in ADMIN_IDS:

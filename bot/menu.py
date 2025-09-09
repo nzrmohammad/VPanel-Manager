@@ -428,27 +428,30 @@ class Menu:
             context_suffix = ":search"
 
         status_text = "⚙️ تغییر وضعیت"
+        panel_short = 'h' if panel == 'hiddify' else 'm'
         
         kb.add(
             types.InlineKeyboardButton(status_text, callback_data=f"admin:tgl:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("📝 یادداشت ادمین", callback_data=f"admin:note:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("📝 یادداشت ادمین", callback_data=f"admin:note:{identifier}{context_suffix}:{panel_short}")
         )
         kb.add(
             types.InlineKeyboardButton("💳 ثبت پرداخت", callback_data=f"admin:log_payment:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("📜 سابقه پرداخت", callback_data=f"admin:phist:{identifier}:0{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("🔄 ریست مصرف", callback_data=f"admin:rusg_m:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:del_cfm:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("💰 شارژ کیف پول", callback_data=f"admin:manual_charge:{identifier}{context_suffix}:{panel_short}"),
+            types.InlineKeyboardButton("🔧 ویرایش کاربر", callback_data=f"admin:edt:{identifier}{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("🔧 ویرایش کاربر", callback_data=f"admin:edt:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:rb:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("🔄 ریست مصرف", callback_data=f"admin:rusg_m:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:del_cfm:{identifier}{context_suffix}")
         )
         kb.add(
             types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:del_devs:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:reset_transfer:{identifier}{context_suffix}")
         )
+        kb.add(types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:rb:{identifier}{context_suffix}"))
+
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))
@@ -641,12 +644,12 @@ class Menu:
         return kb
 
     def admin_search_menu(self) -> types.InlineKeyboardMarkup:
-        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
             types.InlineKeyboardButton("🔎 جست و جوی جامع کاربر", callback_data="admin:sg"),
-            types.InlineKeyboardButton("🆔 جست و جو با آیدی تلگرام", callback_data="admin:search_by_tid"),
-            types.InlineKeyboardButton("🔥 پاکسازی کامل کاربر با آیدی", callback_data="admin:purge_user")
+            types.InlineKeyboardButton("🆔 جست و جو با آیدی تلگرام", callback_data="admin:search_by_tid")
         )
+        kb.add(types.InlineKeyboardButton("🔥 پاکسازی کامل کاربر با آیدی", callback_data="admin:purge_user"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 

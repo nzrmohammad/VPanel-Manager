@@ -227,7 +227,7 @@ class DatabaseManager:
                     request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_pending INTEGER DEFAULT 1,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
-                );            
+                );          
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
                 CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
@@ -2162,5 +2162,34 @@ class DatabaseManager:
                 (user_id,)
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def create_charge_request(self, user_id: int, amount: float, message_id: int) -> int:
+        """یک درخواست شارژ جدید ثبت کرده و شناسه آن را برمی‌گرداند."""
+        with self.write_conn() as c:
+            cursor = c.execute(
+                "INSERT INTO charge_requests (user_id, amount, message_id) VALUES (?, ?, ?)",
+                (user_id, amount, message_id)
+            )
+            return cursor.lastrowid
+
+    def get_pending_charge_request(self, user_id: int, message_id: int) -> Optional[Dict[str, Any]]:
+        """یک درخواست شارژ در حال انتظار را بر اساس شناسه کاربر و پیام برمی‌گرداند."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM charge_requests WHERE user_id = ? AND message_id = ? AND is_pending = 1 ORDER BY request_date DESC LIMIT 1",
+                (user_id, message_id)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_charge_request_by_id(self, request_id: int) -> Optional[Dict[str, Any]]:
+        """یک درخواست شارژ را با شناسه یکتای آن بازیابی می‌کند."""
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM charge_requests WHERE id = ?", (request_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_charge_request_status(self, request_id: int, is_pending: bool):
+        """وضعیت یک درخواست شارژ را به‌روزرسانی می‌کند."""
+        with self.write_conn() as c:
+            c.execute("UPDATE charge_requests SET is_pending = ? WHERE id = ?", (int(is_pending), request_id))
 
 db = DatabaseManager()
