@@ -1,4 +1,4 @@
-# bot/user_handlers/wallet.py
+# nzrmohammad/vpanel-manager/VPanel-Manager-063e72609384d4f0fb543665c1d1c7f6335ca45d/bot/user_handlers/wallet.py
 import logging
 from telebot import types
 from ..database import db
@@ -91,8 +91,9 @@ def get_charge_amount(message: types.Message, original_msg_id: int):
 
     except (ValueError, TypeError):
         error_prompt = escape_markdown("❌ مبلغ وارد شده نامعتبر است. لطفاً فقط عدد و حداقل ۱,۰۰۰ تومان وارد کنید.\n\n*مثال صحیح: 50000*")
+        # ✅ اصلاح اصلی: parse_mode="MarkdownV2" اضافه شد تا استایل صحیح اعمال شود
         _safe_edit(uid, original_msg_id, error_prompt, 
-                   reply_markup=menu.user_cancel_action("wallet:main", lang_code))
+                   reply_markup=menu.user_cancel_action("wallet:main", lang_code), parse_mode="MarkdownV2")
         bot.register_next_step_handler(message, get_charge_amount, original_msg_id=original_msg_id)
 
 def get_receipt(message: types.Message, original_msg_id: int):
@@ -177,7 +178,6 @@ def show_wallet_history(call: types.CallbackQuery):
     
     lines = [f"📜 *{escape_markdown(get_string('transaction_history', lang_code))}*"]
     if not history:
-        # ✅ FIX: Escape the no-history message
         lines.append(f"\n{escape_markdown('هیچ تراکنشی برای نمایش وجود ندارد.')}")
     else:
         for trans in history:

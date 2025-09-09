@@ -384,46 +384,21 @@ def handle_connection_doctor(call: types.CallbackQuery):
         status_text = f"*{escape_markdown(get_string('server_status_online' if is_online else 'server_status_offline', lang_code))}*"
         report.append(f"{'✅' if is_online else '🚨'} {server_status_label} {status_text}")
     
-    # --- START OF FIX ---
     try:
-        online_counts = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0}
-        all_users = combined_handler.get_all_users_combined()
-        
-        # از زمان حال آگاه از منطقه زمانی استفاده می‌کنیم
-        now_utc = datetime.now(pytz.utc)
-        online_deadline = now_utc - timedelta(minutes=15)
-
-        for user in all_users:
-            last_online = user.get('last_online')
-            if not last_online or not isinstance(last_online, datetime):
-                continue
-            
-            # اطمینان حاصل می‌کنیم که زمان 'last_online' نیز آگاه از منطقه زمانی است
-            last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
-
-            if last_online_aware > online_deadline:
-                db_record = db.get_user_uuid_record(user.get('uuid'))
-                if db_record:
-                    if db_record.get('has_access_de'):
-                        online_counts['hiddify'] += 1
-                    if db_record.get('has_access_fr'):
-                        online_counts['marzban_fr'] += 1
-                    if db_record.get('has_access_tr'):
-                        online_counts['marzban_tr'] += 1
-        
+        from ..database import db as db_instance
+        activity_stats = db_instance.count_recently_active_users(minutes=15)
         analysis_title = escape_markdown(get_string('doctor_analysis_title', lang_code))
         line_template = get_string('doctor_online_users_line', lang_code)
         
         report.extend([
             "`──────────────────`",
             f"📈 *{analysis_title}*",
-            escape_markdown(line_template.format(count=online_counts['hiddify'], server_name="آلمان 🇩🇪")),
-            escape_markdown(line_template.format(count=online_counts['marzban_fr'], server_name="فرانسه 🇫🇷")),
-            escape_markdown(line_template.format(count=online_counts['marzban_tr'], server_name="ترکیه 🇹🇷"))
+            escape_markdown(line_template.format(count=activity_stats.get('hiddify', 0), server_name="آلمان 🇩🇪")),
+            escape_markdown(line_template.format(count=activity_stats.get('marzban_fr', 0), server_name="فرانسه 🇫🇷")),
+            escape_markdown(line_template.format(count=activity_stats.get('marzban_tr', 0), server_name="ترکیه 🇹🇷"))
         ])
     except Exception as e:
-        logger.error(f"Error getting activity stats for doctor: {e}", exc_info=True)
-    # --- END OF FIX ---
+        logger.error(f"Error getting activity stats for doctor: {e}")
 
     report.extend([
         "`──────────────────`",
