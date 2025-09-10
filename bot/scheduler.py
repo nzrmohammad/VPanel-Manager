@@ -54,12 +54,15 @@ class SchedulerManager:
     def _send_warning_message(self, user_id: int, message_template: str, **kwargs):
         """
         A central function to format and send all warning messages,
-        and handle cases where the user has blocked the bot or is deactivated.
+        handling cases where the user has blocked the bot or is deactivated.
+        This version is corrected to handle MarkdownV2 special characters properly.
         """
         try:
-            escaped_kwargs = {k: escape_markdown(v) for k, v in kwargs.items()}
-            formatted_message = message_template.format(**escaped_kwargs)
-            self.bot.send_message(user_id, formatted_message, parse_mode="MarkdownV2")
+            raw_formatted_message = message_template.format(**kwargs)
+            escaped_message = escape_markdown(raw_formatted_message)
+            final_message = escaped_message.replace('\\*', '*').replace('\\_', '_').replace('\\`', '`')
+
+            self.bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
             return True
         except apihelper.ApiTelegramException as e:
             if "bot was blocked by the user" in e.description or "user is deactivated" in e.description:
@@ -68,7 +71,10 @@ class SchedulerManager:
                 for u in user_uuids:
                     db.deactivate_uuid(u['id'])
             else:
-                logger.error(f"Failed to send warning message to user {user_id}: {e}")
+                if "can't parse entities" in e.description:
+                     logger.error(f"Failed to send warning to user {user_id} due to PARSE ERROR. Original message template: '{message_template}'. Final message attempt: '{final_message}'. Error: {e}")
+                else:
+                     logger.error(f"Failed to send warning message to user {user_id}: {e}")
             return False
         except Exception as e:
             logger.error(f"Failed to send warning message to user {user_id}: {e}")
