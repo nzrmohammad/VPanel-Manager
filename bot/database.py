@@ -1260,11 +1260,7 @@ class DatabaseManager:
         """کد زبان کاربر را از دیتابیس می‌خواند."""
         with self._conn() as c:  # <--- اصلاحیه: استفاده از کانکشن فقط خواندنی
             row = c.execute("SELECT lang_code FROM users WHERE user_id = ?", (user_id,)).fetchone()
-
-            # <<<<<<<<<<<<<<<<<<<< START OF LOGGING >>>>>>>>>>>>>>>>>>
             lang_code = row['lang_code'] if row and row['lang_code'] else 'fa'
-            logger.info(f"DB: Fetched lang_code for user {user_id}. Result: '{lang_code}' (Raw value was: {row['lang_code'] if row else 'No row'})")
-            # <<<<<<<<<<<<<<<<<<<< END OF LOGGING >>>>>>>>>>>>>>>>>>
 
             return lang_code
 

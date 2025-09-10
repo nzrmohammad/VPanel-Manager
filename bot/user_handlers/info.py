@@ -287,7 +287,7 @@ def show_addons_page(call: types.CallbackQuery):
               f"{escape_markdown('در این بخش می‌توانید به سرویس فعلی خود حجم یا زمان اضافه کنید.')}\n\n"
               f"💰 *{escape_markdown('موجودی شما:')} {user_balance:,.0f} تومان*")
 
-    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb = types.InlineKeyboardMarkup(row_width=1)
 
     def create_addon_buttons(addons):
         buttons = []
@@ -306,20 +306,23 @@ def show_addons_page(call: types.CallbackQuery):
         data_addons_de = [a for a in all_addons if a.get("type") == "data_de"]
         if data_addons_de:
             kb.add(types.InlineKeyboardButton("حجم 🇩🇪", callback_data="noop"))
-            kb.add(*create_addon_buttons(data_addons_de))
+            for btn in create_addon_buttons(data_addons_de):
+                kb.add(btn)
 
     # نمایش بسته‌های حجم فرانسه/ترکیه
     if access_rights.get('has_access_fr') or access_rights.get('has_access_tr'):
         data_addons_fr_tr = [a for a in all_addons if a.get("type") == "data_fr_tr"]
         if data_addons_fr_tr:
             kb.add(types.InlineKeyboardButton("حجم 🇫🇷🇹🇷", callback_data="noop"))
-            kb.add(*create_addon_buttons(data_addons_fr_tr))
+            for btn in create_addon_buttons(data_addons_fr_tr):
+                kb.add(btn)
     
     # نمایش بسته‌های زمانی (برای همه)
     time_addons = [a for a in all_addons if a.get("type") == "time"]
     if time_addons:
         kb.add(types.InlineKeyboardButton("زمان", callback_data="noop"))
-        kb.add(*create_addon_buttons(time_addons))
+        for btn in create_addon_buttons(time_addons):
+            kb.add(btn)
     
     kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
     _safe_edit(uid, msg_id, prompt, reply_markup=kb)
