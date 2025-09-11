@@ -178,7 +178,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         account_lines.append(f"📊 حجم‌کل : {total_volume_str}")
         if access_rights.get('has_access_de') and hiddify_info:
             account_lines.append(f"🇩🇪 : {format_daily_usage(hiddify_info.get('usage_limit_GB', 0))}")
-        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and marzban_info:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('usage_limit_GB', 0))}")
         
@@ -187,7 +187,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         account_lines.append(f"🔥 حجم‌مصرف شده : {total_usage_str}")
         if access_rights.get('has_access_de') and hiddify_info:
             account_lines.append(f"🇩🇪 : {format_daily_usage(hiddify_info.get('current_usage_GB', 0))}")
-        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and marzban_info:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('current_usage_GB', 0))}")
             
@@ -196,7 +196,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         account_lines.append(f"📥 حجم‌باقی‌مانده : {total_remaining_str}")
         if access_rights.get('has_access_de') and hiddify_info:
             account_lines.append(f"🇩🇪 : {format_daily_usage(hiddify_info.get('remaining_GB', 0))}")
-        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and marzban_info:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('remaining_GB', 0))}")
 
@@ -204,7 +204,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         account_lines.append("⚡️ حجم مصرف شده امروز:")
         if access_rights.get('has_access_de') and daily_usage_dict.get('hiddify', 0) > 0.001:
              account_lines.append(f"🇩🇪 : {format_daily_usage(daily_usage_dict.get('hiddify',0))}")
-        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and daily_usage_dict.get('marzban',0) > 0.001:
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and daily_usage_dict.get('marzban',0) > 0.001:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(daily_usage_dict.get('marzban',0))}")
 

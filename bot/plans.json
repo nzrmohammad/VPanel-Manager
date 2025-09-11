@@ -138,5 +138,26 @@
         "volume_tr": "۵۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 165000
+    },
+    {
+        "name": "US Economy 🇺🇸",
+        "type": "usa",
+        "volume_us": "۲۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 80000
+    },
+    {
+        "name": "US Standard 🇺🇸",
+        "type": "usa",
+        "volume_us": "۳۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 110000
+    },
+    {
+        "name": "US Pro 🇺🇸",
+        "type": "usa",
+        "volume_us": "۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 170000
     }
 ]

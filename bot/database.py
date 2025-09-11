@@ -97,6 +97,7 @@ class DatabaseManager:
                     has_access_de INTEGER DEFAULT 1,
                     has_access_fr INTEGER DEFAULT 0,
                     has_access_tr INTEGER DEFAULT 0,
+                    has_access_us INTEGER DEFAULT 0,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
                     UNIQUE(user_id, uuid)
                 );
@@ -492,6 +493,7 @@ class DatabaseManager:
                     'data_warning_de': bool(row_dict.get('data_warning_de', True)),
                     'data_warning_fr': bool(row_dict.get('data_warning_fr', True)),
                     'data_warning_tr': bool(row_dict.get('data_warning_tr', True)),
+                    'data_warning_us': bool(row_dict.get('data_warning_us', True)),
                     'show_info_config': bool(row_dict.get('show_info_config', True)),
                     'auto_delete_reports': bool(row_dict.get('auto_delete_reports', False)),
                     'achievement_alerts': bool(row_dict.get('achievement_alerts', True)),
@@ -500,7 +502,7 @@ class DatabaseManager:
             return {
                 'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True,
                 'data_warning_de': True, 'data_warning_fr': True, 'data_warning_tr': True,
-                'show_info_config': True, 'auto_delete_reports': False,
+                'data_warning_us': True, 'show_info_config': True, 'auto_delete_reports': False,
                 'achievement_alerts': True, 'promotional_alerts': True
             }
 
@@ -1228,7 +1230,7 @@ class DatabaseManager:
 
     def set_template_server_type(self, template_id: int, server_type: str) -> None:
         """نوع سرور یک قالب کانفیگ را تنظیم می‌کند."""
-        if server_type not in ['de', 'fr', 'tr', 'none']:
+        if server_type not in ['de', 'fr', 'tr', 'us', 'none']:
             return
         with self.write_conn() as c:
             c.execute("UPDATE config_templates SET server_type = ? WHERE id = ?", (server_type, template_id))
@@ -1432,6 +1434,7 @@ class DatabaseManager:
                 uu.has_access_de,
                 uu.has_access_fr,
                 uu.has_access_tr,
+                uu.has_access_us,
                 -- Check if a mapping exists for the user's UUID
                 CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
             FROM users u
@@ -1448,7 +1451,7 @@ class DatabaseManager:
     # تابع دوم برای آپدیت دسترسی
     def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
         """Updates a user's access status for a specific server."""
-        if server not in ['de', 'fr', 'tr']:
+        if server not in ['de', 'fr', 'tr', 'us']:
             return False
 
         column_name = f"has_access_{server}"
@@ -2433,6 +2436,8 @@ class DatabaseManager:
                 access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
                 access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
                 access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
+                access_rights['has_access_us'] = first_uuid_record.get('has_access_us', False)
+
         return access_rights
 
 db = DatabaseManager()

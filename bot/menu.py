@@ -127,6 +127,7 @@ class Menu:
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
         btn_turkey = types.InlineKeyboardButton(f"🇹🇷 {get_string('btn_cat_tr', lang_code)}", callback_data="show_plans:turkey")
+        btn_usa = types.InlineKeyboardButton(f"🇺🇸 آمریکا", callback_data="show_plans:usa")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
         
         btn_addons = types.InlineKeyboardButton("➕ حجم یا زمان", callback_data="show_addons")
@@ -136,8 +137,9 @@ class Menu:
         btn_back = types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
 
         # چیدمان جدید دکمه‌ها
-        kb.add(btn_turkey, btn_france)
-        kb.add(btn_combined, btn_germany)
+        kb.add(btn_usa, btn_france)
+        kb.add(btn_turkey, btn_germany)
+        kb.add(btn_combined)
         kb.add(btn_addons, btn_achievement_shop)
         kb.add(btn_payment_methods)
         kb.add(btn_back)
@@ -340,7 +342,12 @@ class Menu:
             data_warning_buttons.append(
                 types.InlineKeyboardButton(f"🇹🇷 {get_status_emoji('data_warning_tr')} ", callback_data="toggle_data_warning_tr")
             )
-        
+
+        if access.get('has_access_us'): # Add this block
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"🇺🇸 {get_status_emoji('data_warning_us')} ", callback_data="toggle_data_warning_us")
+            )
+
         if data_warning_buttons:
             kb.row(*data_warning_buttons)
 

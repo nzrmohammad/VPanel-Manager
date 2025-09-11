@@ -80,6 +80,8 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                 flags.append("🇫🇷")
             if user_uuid_record.get('has_access_tr'):
                 flags.append("🇹🇷")
+            if user_uuid_record.get('has_access_us'):
+                flags.append("🇺🇸")
             if flags:
                 display_name_with_flags = "".join(flags)
 

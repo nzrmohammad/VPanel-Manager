@@ -118,6 +118,7 @@
                     <option value="de">شامل آلمان 🇩🇪</option>
                     <option value="fr">شامل فرانسه 🇫🇷</option>
                     <option value="tr">شامل ترکیه 🇹🇷</option>
+                    <option value="us">شامل آمریکا 🇺🇸</option> </select>
                 </select>
             </div>
         </div>
@@ -133,6 +134,7 @@
                         <th>آلمان 🇩🇪</th>
                         <th>فرانسه 🇫🇷</th>
                         <th>ترکیه 🇹🇷</th>
+                        <th>آمریکا 🇺🇸</th>
                     </tr>
                 </thead>
                 <tbody id="user-table-body">
@@ -152,7 +154,10 @@
                             </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="tr" {% if user.has_access_tr %}checked{% endif %}><span class="slider"></span></label>
-                            </td>
+                            </td> 
+                            <td class="access-toggle-cell"> 
+                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="us" {% if user.has_access_us %}checked{% endif %}><span class="slider"></span></label>
+                            </td>  
                         </tr>
                     {% else %}
                         <tr><td colspan="7" class="text-center py-4">هیچ کاربری در ربات ثبت‌نام نکرده است.</td></tr>

@@ -372,6 +372,7 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     has_access_de = user_record.get('has_access_de', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
+    has_access_us = user_record.get('has_access_us', False)
 
     parts = []
     breakdown = info.get('breakdown', {})
@@ -435,6 +436,7 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
     has_access_de = user_record.get('has_access_de', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
+    has_access_us = user_record.get('has_access_us', False)
     is_user_vip = user_record.get('is_vip', False)
     user_name = user_record.get('name', 'کاربر')
 
@@ -451,7 +453,8 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
         if (is_special and not is_user_vip) or \
            (server_type == 'de' and not has_access_de) or \
            (server_type == 'fr' and not has_access_fr) or \
-           (server_type == 'tr' and not has_access_tr):
+           (server_type == 'tr' and not has_access_tr) or \
+           (server_type == 'us' and not has_access_us):
             continue
         eligible_templates.append(tpl)
 
