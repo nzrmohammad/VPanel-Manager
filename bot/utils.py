@@ -392,7 +392,9 @@ def create_info_config(user_uuid: str) -> Optional[str]:
             flags.append("🇫🇷")
         if has_access_tr:
             flags.append("🇹🇷")
-        
+        if has_access_us:
+            flags.append("🇺🇸")
+
         flag_str = "".join(flags)
         usage = marzban_info.get('current_usage_GB', 0)
         limit = marzban_info.get('usage_limit_GB', 0)

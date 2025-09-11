@@ -194,9 +194,9 @@
     <section class="details-grid">
         {% for plan in dedicated_plans %}
         <div class="info-card panel-card">
-            <div class="panel-header"><h4>{{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '').replace('🇹🇷', '') }}<span class="flag-emoji">{% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% elif '🇹🇷' in plan.name %}🇹🇷{% endif %}</span><span class="flag-icon">{% if 'de' in plan.type or '🇩🇪' in plan.name %}<span class="fi fi-de"></span>{% elif 'fr' in plan.type or '🇫🇷' in plan.name %}<span class="fi fi-fr"></span>{% elif 'tr' in plan.type or '🇹🇷' in plan.name %}<span class="fi fi-tr"></span>{% endif %}</span></h4></div>
+            <div class="panel-header"><h4>{{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '').replace('🇹🇷', '') }}<span class="flag-emoji">{% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% elif '🇹🇷' in plan.name %}🇹🇷{% endif %}{% elif '🇺🇸' in plan.name %}🇺🇸 {% endif %}</span><span class="flag-icon">{% if 'de' in plan.type or '🇩🇪' in plan.name %}<span class="fi fi-de"></span>{% elif 'fr' in plan.type or '🇫🇷' in plan.name %}<span class="fi fi-fr"></span>{% elif 'tr' in plan.type or '🇹🇷' in plan.name %}<span class="fi fi-tr"></span>{% elif 'us' in plan.type or 'us' in plan.name %}<span class="fi fi-us"></span>{% endif %}</span></h4></div>
             <ul class="server-stats">
-                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr or plan.volume_tr }}</span></li>
+                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr or plan.volume_tr or plan.volume_us }}</span></li>
                 <li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>
             </ul>
             <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>

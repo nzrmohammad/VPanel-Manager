@@ -309,12 +309,27 @@ def show_addons_page(call: types.CallbackQuery):
             for btn in create_addon_buttons(data_addons_de):
                 kb.add(btn)
 
-    # نمایش بسته‌های حجم فرانسه/ترکیه
-    if access_rights.get('has_access_fr') or access_rights.get('has_access_tr'):
-        data_addons_fr_tr = [a for a in all_addons if a.get("type") == "data_fr_tr"]
-        if data_addons_fr_tr:
-            kb.add(types.InlineKeyboardButton("حجم 🇫🇷🇹🇷", callback_data="noop"))
-            for btn in create_addon_buttons(data_addons_fr_tr):
+    # نمایش بسته‌های حجم فرانسه
+    if access_rights.get('has_access_fr'):
+        data_addons_fr = [a for a in all_addons if a.get("type") == "data_fr"]
+        if data_addons_fr:
+            kb.add(types.InlineKeyboardButton("حجم 🇫🇷", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_fr):
+                kb.add(btn)
+
+    if access_rights.get('has_access_us'):
+        data_addons_us = [a for a in all_addons if a.get("type") == "data_us"]
+        if data_addons_us:
+            kb.add(types.InlineKeyboardButton("حجم 🇺🇸", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_us):
+                kb.add(btn)
+
+    # نمایش بسته‌های حجم ترکیه
+    if access_rights.get('has_access_tr'):
+        data_addons_tr = [a for a in all_addons if a.get("type") == "data_tr"]
+        if data_addons_tr:
+            kb.add(types.InlineKeyboardButton("حجم 🇹🇷", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_tr):
                 kb.add(btn)
     
     # نمایش بسته‌های زمانی (برای همه)
@@ -383,13 +398,11 @@ def execute_addon_purchase(call: types.CallbackQuery):
     add_gb = addon.get('gb', 0)
     add_days = addon.get('days', 0)
 
-    # --- START OF NEW LOGIC: Apply addon based on addon_type ---
     target_panel_type = None
     if addon_type == 'data_de':
         target_panel_type = 'hiddify'
-    elif addon_type == 'data_fr_tr':
+    elif addon_type in ['data_fr', 'data_tr', 'data_us']:
         target_panel_type = 'marzban'
-    # For 'time' addons, target_panel_type remains None, so it applies to all panels.
 
     success = combined_handler.modify_user_on_all_panels(
         identifier=user_main_uuid, 
@@ -397,7 +410,6 @@ def execute_addon_purchase(call: types.CallbackQuery):
         add_days=add_days,
         target_panel_type=target_panel_type
     )
-    # --- END OF NEW LOGIC ---
 
     if success:
         bot.answer_callback_query(call.id, f"✅ بسته «{addon_name}» با موفقیت اعمال شد.", show_alert=True)
@@ -405,7 +417,6 @@ def execute_addon_purchase(call: types.CallbackQuery):
     else:
         db.update_wallet_balance(uid, price, 'refund', f"بازگشت وجه به دلیل خطا در اعمال: {addon_name}")
         bot.answer_callback_query(call.id, "خطایی در اعمال بسته رخ داد. وجه به حساب شما بازگردانده شد.", show_alert=True)
-
 
 def show_filtered_plans(call: types.CallbackQuery):
     """

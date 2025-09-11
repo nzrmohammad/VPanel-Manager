@@ -215,26 +215,36 @@ class SchedulerManager:
                                         msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *آلمان 🇩🇪* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
                                         if self._send_warning_message(user_id_in_telegram, msg):
                                             db.log_warning(uuid_id_in_db, 'volume_depleted_hiddify')
-                        
-                        # بررسی برای پنل Marzban (فرانسه و ترکیه)
+                                            
+                        # بررسی برای پنل Marzban (فرانسه، ترکیه و آمریکا)
                         marzban_info = next((p.get('data', {}) for p in breakdown.values() if p.get('type') == 'marzban'), None)
                         if marzban_info and uuid_record:
                             # شرط ترکیبی: آیا کاربر به این سرورها دسترسی دارد و آیا هشدار آن را فعال کرده است؟
                             should_warn_fr = user_settings.get('data_warning_fr') and uuid_record.get('has_access_fr')
                             should_warn_tr = user_settings.get('data_warning_tr') and uuid_record.get('has_access_tr')
+                            should_warn_us = user_settings.get('data_warning_us') and uuid_record.get('has_access_us')
                             
-                            if should_warn_fr or should_warn_tr:
+                            if should_warn_fr or should_warn_tr or should_warn_us:
                                 limit, usage = marzban_info.get('usage_limit_GB', 0.0), marzban_info.get('current_usage_GB', 0.0)
                                 if limit > 0:
                                     usage_percent = (usage / limit) * 100
+                                    
+                                    # ساخت نام سرورها بر اساس دسترسی کاربر برای نمایش در پیام
+                                    server_names = []
+                                    if should_warn_fr: server_names.append("فرانسه 🇫🇷")
+                                    if should_warn_tr: server_names.append("ترکیه 🇹🇷")
+                                    if should_warn_us: server_names.append("آمریکا 🇺🇸")
+                                    server_display_name = " / ".join(server_names)
+
                                     # هشدار کمبود حجم
                                     if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_marzban'):
-                                        msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *فرانسه/ترکیه 🇫🇷🇹🇷* مصرف شده است.")
+                                        msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *{server_display_name}* مصرف شده است.")
                                         if self._send_warning_message(user_id_in_telegram, msg):
                                             db.log_warning(uuid_id_in_db, 'low_data_marzban')
+                                            
                                     # هشدار اتمام کامل حجم
                                     if usage >= limit and not marzban_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_marzban'):
-                                        msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *فرانسه/ترکیه 🇫🇷🇹🇷* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
+                                        msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *{server_display_name}* به پایان رسیده و این سرور برای شما غیرفعال شده است.")
                                         if self._send_warning_message(user_id_in_telegram, msg):
                                             db.log_warning(uuid_id_in_db, 'volume_depleted_marzban')
 

@@ -49,14 +49,17 @@ def handle_toggle_setting(call: types.CallbackQuery):
     lang_code = db.get_user_language(uid)
     
     setting_key = call.data.replace("toggle_", "")
-    current_settings = db.get_user_settings(uid)
     
-    if setting_key == "data_warning_fr_tr":
-        current_status = current_settings.get('data_warning_fr', True) and current_settings.get('data_warning_tr', True)
-        new_value = not current_status
-        db.update_user_setting(uid, 'data_warning_fr', new_value)
-        db.update_user_setting(uid, 'data_warning_tr', new_value)
-    else:
+    # لیست تمام تنظیمات معتبر که می‌توانند تغییر کنند
+    valid_settings = [
+        'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
+        'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
+        'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us'
+    ]
+
+    # فقط اگر کلید معتبر بود، آن را در دیتابیس تغییر می‌دهیم
+    if setting_key in valid_settings:
+        current_settings = db.get_user_settings(uid)
         new_value = not current_settings.get(setting_key, True)
         db.update_user_setting(uid, setting_key, new_value)
     

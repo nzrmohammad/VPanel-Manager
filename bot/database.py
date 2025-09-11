@@ -54,6 +54,14 @@ class DatabaseManager:
                     logger.info("MIGRATED: Added column 'data_warning_tr' to users table.")
                 # --- END: Migration Logic ---
 
+                if 'data_warning_us' not in columns:
+                    c.execute("ALTER TABLE users ADD COLUMN data_warning_us INTEGER DEFAULT 1;")
+                    logger.info("MIGRATED: Added column 'data_warning_us' to users table.")
+
+                if 'has_access_us' not in columns:
+                    c.execute("ALTER TABLE user_uuids ADD COLUMN has_access_us INTEGER DEFAULT 0;")
+                    logger.info("MIGRATED: Added column 'has_access_us' to user_uuids table.")
+
             except Exception as e:
                 logger.error(f"An error occurred during database migration check: {e}")
 
@@ -69,6 +77,7 @@ class DatabaseManager:
                     data_warning_de INTEGER DEFAULT 1,
                     data_warning_fr INTEGER DEFAULT 1,
                     data_warning_tr INTEGER DEFAULT 1,
+                    data_warning_us INTEGER DEFAULT 1,
                     show_info_config INTEGER DEFAULT 1,
                     admin_note TEXT,
                     lang_code TEXT,
@@ -483,7 +492,7 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self.write_conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 row_dict = dict(row)
                 return {
@@ -510,7 +519,7 @@ class DatabaseManager:
         valid_settings = [
             'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
             'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
-            'data_warning_de', 'data_warning_fr', 'data_warning_tr'
+            'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us'
         ]
 
         if setting in valid_settings:
