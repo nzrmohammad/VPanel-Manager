@@ -268,7 +268,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 date_shamsi = to_shamsi(item['date'])
                 usage_formatted = format_daily_usage(total_daily)
                 
-                account_lines.append(f"\n • در {date_shamsi} : *{escape_markdown(usage_formatted)}*")
+                account_lines.append(f"\n *در* {date_shamsi} : *{escape_markdown(usage_formatted)}*")
 
                 breakdown_parts = []
                 h_usage_day = item.get('hiddify_usage', 0.0)
@@ -280,14 +280,13 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     breakdown_parts.append(f"🇫🇷🇹🇷 {format_daily_usage(m_usage_day)}")
                 
                 if breakdown_parts:
-                    # ✅ **اصلاح اصلی برای رفع خطا:** پرانتزها escape شده‌اند
                     account_lines.append(f"  \\({escape_markdown(', '.join(breakdown_parts))}\\)")
 
         # فوتر مصرف کل
         usage_footer_str = format_daily_usage(current_week_usage)
         footer_template = get_string("weekly_usage_header", lang_code)
         final_footer_line = f"{footer_template} {usage_footer_str}"
-        account_lines.append(f'\n\n⚡️ *{escape_markdown(final_footer_line)}*')
+        account_lines.append(f'\n\n*{escape_markdown(final_footer_line)}*')
         
         # بخش دستاوردها
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=((jdatetime.datetime.now(tz=tehran_tz).weekday() + 1) % 7))).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
