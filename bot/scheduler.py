@@ -52,7 +52,12 @@ class SchedulerManager:
             logger.warning(f"SCHEDULER: Failed to send notification to user {user_id}: {e}")
 
     def _send_warning_message(self, user_id: int, message_template: str, reply_markup: types.InlineKeyboardMarkup = None, **kwargs):
+        """
+        This function now expects an already escaped message_template.
+        """
         try:
+            # The template is now pre-escaped, so we just format it.
+            # We still escape kwargs to be safe.
             kwargs_escaped = {k: escape_markdown(str(v)) for k, v in kwargs.items()}
             final_message = message_template.format(**kwargs_escaped)
 
@@ -1058,7 +1063,7 @@ class SchedulerManager:
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._send_daily_achievements_report)
-        schedule.every().thursday.at("17:00", self.tz_str).do(self._send_weekend_vip_message)
+        schedule.every().thursday.at("17:06", self.tz_str).do(self._send_weekend_vip_message)
         schedule.every().thursday.at("17:15", self.tz_str).do(self._send_weekend_normal_user_message)
         schedule.every().friday.at("23:30", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
