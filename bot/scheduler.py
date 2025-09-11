@@ -970,18 +970,18 @@ class SchedulerManager:
                     chosen_template = random.choice(message_templates)
                     chosen_button_text = random.choice(button_texts)
                     
-                    # ✅ **FIX APPLIED HERE**
-                    # First, escape the entire template. Then, format it.
-                    final_message_text = escape_markdown(chosen_template).format(name=escape_markdown(user_name))
+                    escaped_template = escape_markdown(chosen_template)
+                    final_template = escaped_template.replace('\\{name\\}', '{name}')
                     
                     kb = types.InlineKeyboardMarkup()
                     kb.add(types.InlineKeyboardButton(chosen_button_text, url=f"https://t.me/{my_telegram_username}"))
                     
-                    # The send function expects an already escaped string.
+                    # حالا تابع _send_warning_message به درستی کار خواهد کرد
                     self._send_warning_message(
                         user_id,
-                        final_message_text,
-                        reply_markup=kb
+                        final_template,
+                        reply_markup=kb,
+                        name=user_name  # نام خام ارسال می‌شود تا در تابع escape شود
                     )
                     time.sleep(0.5)
             except Exception as e:
@@ -1025,15 +1025,17 @@ class SchedulerManager:
                     chosen_template = random.choice(message_templates)
                     chosen_button_text = random.choice(button_texts)
                     
-                    final_message_text = escape_markdown(chosen_template).format(name=escape_markdown(user_name))
+                    escaped_template = escape_markdown(chosen_template)
+                    final_template = escaped_template.replace('\\{name\\}', '{name}')
                     
                     kb = types.InlineKeyboardMarkup()
                     kb.add(types.InlineKeyboardButton(chosen_button_text, url=f"https://t.me/{my_telegram_username}"))
                     
                     self._send_warning_message(
                         user_id,
-                        final_message_text,
-                        reply_markup=kb
+                        final_template,
+                        reply_markup=kb,
+                        name=user_name # نام خام ارسال می‌شود تا در تابع escape شود
                     )
                     time.sleep(0.5)
             except Exception as e:
@@ -1063,8 +1065,8 @@ class SchedulerManager:
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._send_daily_achievements_report)
-        schedule.every().thursday.at("17:06", self.tz_str).do(self._send_weekend_vip_message)
-        schedule.every().thursday.at("17:15", self.tz_str).do(self._send_weekend_normal_user_message)
+        schedule.every().thursday.at("17:15", self.tz_str).do(self._send_weekend_vip_message)
+        schedule.every().thursday.at("17:20", self.tz_str).do(self._send_weekend_normal_user_message)
         schedule.every().friday.at("23:30", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)
