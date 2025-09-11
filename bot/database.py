@@ -1750,17 +1750,20 @@ class DatabaseManager:
         (نسخه نهایی و اصلاح شده) تعداد کاربران یکتایی که در N دقیقه گذشته مصرف داشته‌اند را با مقایسه دو اسنپ‌شات آخرشان محاسبه می‌کند.
         """
         time_limit = datetime.now(pytz.utc) - timedelta(minutes=minutes)
-        results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0}
-        active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set()}
+        
+        # سرور آمریکا به دیکشنری‌ها اضافه شد
+        results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0, 'marzban_us': 0}
+        active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set(), 'marzban_us': set()}
 
         with self.write_conn() as c:
             all_uuids = c.execute("SELECT id FROM user_uuids WHERE is_active = 1").fetchall()
             uuid_ids = [row['id'] for row in all_uuids]
 
             for uuid_id in uuid_ids:
+                # ستون has_access_us به کوئری اضافه شد
                 snapshots = c.execute(
                     """
-                    SELECT s.hiddify_usage_gb, s.marzban_usage_gb, s.taken_at, uu.has_access_fr, uu.has_access_tr
+                    SELECT s.hiddify_usage_gb, s.marzban_usage_gb, s.taken_at, uu.has_access_fr, uu.has_access_tr, uu.has_access_us
                     FROM usage_snapshots s
                     JOIN user_uuids uu ON s.uuid_id = uu.id
                     WHERE s.uuid_id = ?
@@ -1792,10 +1795,15 @@ class DatabaseManager:
                         active_users['marzban_fr'].add(uuid_id)
                     if latest_snap['has_access_tr']:
                         active_users['marzban_tr'].add(uuid_id)
+                    # شرط جدید برای سرور آمریکا اضافه شد
+                    if latest_snap['has_access_us']:
+                        active_users['marzban_us'].add(uuid_id)
 
         results['hiddify'] = len(active_users['hiddify'])
         results['marzban_fr'] = len(active_users['marzban_fr'])
         results['marzban_tr'] = len(active_users['marzban_tr'])
+        # نتیجه نهایی برای سرور آمریکا اضافه شد
+        results['marzban_us'] = len(active_users['marzban_us'])
         return results
 
     def get_or_create_referral_code(self, user_id: int) -> str:

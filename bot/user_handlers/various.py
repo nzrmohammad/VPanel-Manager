@@ -301,7 +301,7 @@ def handle_shop_callbacks(call: types.CallbackQuery):
 
 def handle_connection_doctor(call: types.CallbackQuery):
     """وضعیت سرویس کاربر و سرورها را بررسی می‌کند."""
-    uid, msg_id = call.from_user.id, call.message.message_id
+    uid, msg_id = call.from_user.id, call.message.id
     lang_code = db.get_user_language(uid)
 
     _safe_edit(uid, msg_id, escape_markdown(get_string("doctor_checking_status", lang_code)), reply_markup=None)
@@ -342,7 +342,8 @@ def handle_connection_doctor(call: types.CallbackQuery):
             f"📈 *{analysis_title}*",
             escape_markdown(line_template.format(count=activity_stats.get('hiddify', 0), server_name="آلمان 🇩🇪")),
             escape_markdown(line_template.format(count=activity_stats.get('marzban_fr', 0), server_name="فرانسه 🇫🇷")),
-            escape_markdown(line_template.format(count=activity_stats.get('marzban_tr', 0), server_name="ترکیه 🇹🇷"))
+            escape_markdown(line_template.format(count=activity_stats.get('marzban_tr', 0), server_name="ترکیه 🇹🇷")),
+            escape_markdown(line_template.format(count=activity_stats.get('marzban_us', 0), server_name="آمریکا 🇺🇸"))
         ])
     except Exception as e:
         logger.error(f"Error getting activity stats for doctor: {e}")

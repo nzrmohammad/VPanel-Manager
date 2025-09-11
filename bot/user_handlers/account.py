@@ -306,8 +306,14 @@ def ask_for_transfer_panel(uid: int, msg_id: int, uuid_id: int):
     kb = types.InlineKeyboardMarkup(row_width=1)
     if access_rights['has_access_de']:
         kb.add(types.InlineKeyboardButton(f"{get_string('server_de', lang_code)} 🇩🇪", callback_data=f"transfer_panel_hiddify_{uuid_id}"))
-    if access_rights['has_access_fr'] or access_rights['has_access_tr']:
-        kb.add(types.InlineKeyboardButton(f"{get_string('server_fr', lang_code)}/ترکیه 🇫🇷🇹🇷", callback_data=f"transfer_panel_marzban_{uuid_id}"))
+    marzban_flags = []
+    if access_rights.get('has_access_fr'): marzban_flags.append("فرانسه 🇫🇷")
+    if access_rights.get('has_access_tr'): marzban_flags.append("ترکیه 🇹🇷")
+    if access_rights.get('has_access_us'): marzban_flags.append("آمریکا 🇺🇸")
+
+    if marzban_flags:
+        button_text = " / ".join(marzban_flags)
+        kb.add(types.InlineKeyboardButton(button_text, callback_data=f"transfer_panel_marzban_{uuid_id}"))
 
     kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data=f"acc_{uuid_id}"))
     _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
