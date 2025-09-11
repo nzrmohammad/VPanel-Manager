@@ -230,13 +230,15 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
 
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     """
-    (نسخه نهایی) گزارش هفتگی را با تفکیک مصرف، مقایسه با هفته قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
+    (نسخه نهایی و اصلاح شده)
+    گزارش هفتگی را با تفکیک مصرف، مقایسه با هفته قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
+    این نسخه دیگر سرتیتر اصلی گزارش را ایجاد نمی‌کند، فاقد بک‌تیک است و پرانتزها را به درستی escape می‌کند.
     """
     if not user_infos:
         return ""
 
     accounts_reports = []
-    separator = '`──────────────────`'
+    separator = '──────────────────'
     day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
     tehran_tz = pytz.timezone("Asia/Tehran")
 
@@ -251,11 +253,13 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         user_id = user_record.get('user_id')
         name = info.get("name", get_string('unknown_user', lang_code))
 
-        # دریافت تاریخچه مصرف به تفکیک پنل‌ها
+        # دریافت تاریخچه مصرف به تفکک پنل‌ها
         daily_history = db.get_user_daily_usage_history_by_panel(uuid_id, days=7)
         current_week_usage = sum(item['total_usage'] for item in daily_history)
 
-        account_lines = [f"*{escape_markdown(get_string('fmt_report_account_header', lang_code).format(name=name))}*"]
+        account_lines = []
+        if len(user_infos) > 1:
+            account_lines.append(f"*{escape_markdown(get_string('fmt_report_account_header', lang_code).format(name=name))}*")
 
         # نمایش مصرف روزانه به تفکیک
         for item in reversed(daily_history):
@@ -264,7 +268,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 date_shamsi = to_shamsi(item['date'])
                 usage_formatted = format_daily_usage(total_daily)
                 
-                account_lines.append(f"\n `•` در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
+                account_lines.append(f"\n • در {date_shamsi} : *{escape_markdown(usage_formatted)}*")
 
                 breakdown_parts = []
                 h_usage_day = item.get('hiddify_usage', 0.0)
@@ -276,7 +280,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     breakdown_parts.append(f"🇫🇷🇹🇷 {format_daily_usage(m_usage_day)}")
                 
                 if breakdown_parts:
-                    account_lines.append(f"  `({escape_markdown(', '.join(breakdown_parts))})`")
+                    # ✅ **اصلاح اصلی برای رفع خطا:** پرانتزها escape شده‌اند
+                    account_lines.append(f"  \\({escape_markdown(', '.join(breakdown_parts))}\\)")
 
         # فوتر مصرف کل
         usage_footer_str = format_daily_usage(current_week_usage)
@@ -319,9 +324,10 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 change_word = "بیشتر" if usage_change_percent >= 0 else "کمتر"
                 comparison_text = f"این مصرف *{escape_markdown(f'{abs(usage_change_percent):.0f}%')}* {escape_markdown(change_word)} از هفته قبل بود\\. "
 
+            # تغییر در پیام خوشامدگویی
             summary_message = (
-                f"\n{separator}\n"
-                f"سلام {escape_markdown(name)}\\!\n"
+                f"{separator}\n"
+                f"سلام {escape_markdown(name)}\n"
                 f"این هفته *{escape_markdown(usage_footer_str)}* مصرف داشتی\\. {comparison_text}"
                 f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی\\. "
                 f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی\\!"
@@ -329,14 +335,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             account_lines.append(summary_message)
 
         accounts_reports.append("\n".join(account_lines))
-
-    # رفع مشکل تکرار هدر: هدر فقط یک بار در ابتدا ساخته می‌شود
-    now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(tehran_tz)).strftime("%Y/%m/%d - %H:%M")
-    final_header = f"📊 *گزارش هفتگی* {escape_markdown('-')} {escape_markdown(now_str)}"
     
-    # گزارش تمام اکانت‌ها با یک هدر واحد ترکیب می‌شود
-    final_report = "\n\n".join(accounts_reports) # Join without the extra separator
-    return f"{final_header}\n{separator}\n{final_report}"
+    return "\n\n".join(accounts_reports)
 
 
 def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> str:
