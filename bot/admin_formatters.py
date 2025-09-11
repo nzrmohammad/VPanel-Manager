@@ -50,13 +50,11 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
     # --- بخش تفکیک پنل‌ها ---
     breakdown = info.get('breakdown', {})
 
-    # NEW: Get user record from db if not passed
     if not db_user and info.get('uuid'):
         user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
         if user_telegram_id:
             db_user = db.user(user_telegram_id)
 
-    # NEW: Get has_access flags from the full user_uuids record
     user_uuid_record = db.get_user_uuid_record(info.get('uuid', '')) if info.get('uuid') else None
 
     def create_panel_block(panel_display_name: str, panel_data: dict, panel_type: str):
@@ -72,7 +70,6 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
             daily_usage_dict = db.get_usage_since_midnight_by_uuid(info['uuid'])
             daily_usage_gb = daily_usage_dict.get(panel_type, 0.0)
 
-        # NEW: Logic for displaying specific marzban flags
         display_name_with_flags = panel_display_name
         if panel_type == 'marzban' and user_uuid_record:
             flags = []
