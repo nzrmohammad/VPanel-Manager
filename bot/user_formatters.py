@@ -508,7 +508,8 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # --- 1. آماده‌سازی داده‌های اولیه ---
     name = escape_markdown(info.get("name", "کاربر ناشناس"))
-    status = "✅" if info.get("is_active") else "❌"
+    status_icon = "✅" if info.get("is_active") else "❌"
+    status_text = "" if info.get("is_active") else ""
     user_uuid = info.get("uuid", "")
     uuid_escaped = escape_markdown(user_uuid)
     
@@ -518,6 +519,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     achievement_points = 0
     access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
     vip_text = ""
+    user_badges = []
 
     if user_id:
         user_db_data = db.user(user_id)
@@ -528,7 +530,9 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
         access_rights = db.get_user_access_rights(user_id)
         user_uuid_record = db.uuids(user_id)[0] if db.uuids(user_id) else {}
         if user_uuid_record.get('is_vip'):
-            vip_text = " کاربر ویژه : ✅"
+            vip_text = f"👑 کاربر ویژه : ✅"
+        
+        user_badges = db.get_user_achievements(user_id)
 
     # --- 2. آمار کلی ---
     total_limit_gb = info.get("usage_limit_GB", 0)
@@ -554,21 +558,25 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if access_rights.get('has_access_de'): access_flags.append("🇩🇪")
     if access_rights.get('has_access_fr'): access_flags.append("🇫🇷")
     if access_rights.get('has_access_tr'): access_flags.append("🇹🇷")
-    access_text = f" سرورها : {''.join(access_flags)}" if access_flags else ""
+    access_text = f"🛰️ سرورها : {''.join(access_flags)}" if access_flags else ""
 
     # --- 6. ساخت پیام نهایی ---
     lines = [
         f"📊 *آمار کاربر : {name}*",
         f"`──────────────────`",
-        f" وضعیت : {status}",
+        f"🚦 وضعیت : {status_icon} {escape_markdown(status_text)}",
     ]
 
     if vip_text: lines.append(vip_text)
     
-    # --- تغییر: افزودن موجودی و امتیاز با آیکون ---
     lines.append(f"💰 موجودی : *{wallet_balance:,.0f} تومان*")
     lines.append(f"🏆 امتیاز : *{achievement_points}*")
-    # -------------------------------------------
+
+    # --- بخش جدید: نمایش دستاوردها ---
+    if user_badges:
+        badge_icons = ' '.join([ACHIEVEMENTS.get(code, {}).get('icon', '') for code in user_badges])
+        lines.append(f"🎖️ دستاوردها : {badge_icons}")
+    # --------------------------------
 
     if access_text: lines.append(access_text)
     lines.append(f"📅 انقضا : *{expire_text}*")
