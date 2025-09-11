@@ -2320,6 +2320,108 @@ class DatabaseManager:
             self._user_cache.clear()
             return cursor.rowcount
 
+    def get_previous_week_usage(self, uuid_id: int) -> float:
+        """Calculates the total usage for a specific user for the previous week."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+        days_since_saturday = (today_jalali.weekday() + 1) % 7
+        
+        current_week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+        previous_week_start_utc = current_week_start_utc - timedelta(days=7)
+        
+        total_usage = 0.0
+        
+        with self.write_conn() as c:
+            snapshots = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? ORDER BY taken_at ASC", (uuid_id, previous_week_start_utc, current_week_start_utc)).fetchall()
+            
+            last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, previous_week_start_utc)).fetchone()
+
+            last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+            last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
+
+            for snap in snapshots:
+                h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
+                m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
+                total_usage += h_diff + m_diff
+                last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
+                
+        return total_usage
+
+    def get_user_weekly_total_usage(self, user_id: int) -> float:
+        """
+        مجموع مصرف هفتگی یک کاربر را با جمع کردن مصرف تمام اکانت‌هایش محاسبه می‌کند.
+        """
+        total_usage = 0.0
+        user_uuids = self.uuids(user_id)
+        if not user_uuids:
+            return 0.0
+
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+        days_since_saturday = (today_jalali.weekday() + 1) % 7
+        week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+
+        with self.write_conn() as c:
+            for uuid_record in user_uuids:
+                uuid_id = uuid_record['id']
+                
+                last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
+                
+                snapshots_this_week = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC", (uuid_id, week_start_utc)).fetchall()
+
+                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
+
+                for snap in snapshots_this_week:
+                    h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
+                    m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
+                    total_usage += h_diff + m_diff
+                    last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
+        
+        return total_usage
+
+    def get_all_users_weekly_usage(self) -> list[float]:
+        """Calculates the total weekly usage for every active user and returns a list of usage values."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        today_jalali = jdatetime.datetime.now(tz=tehran_tz)
+        days_since_saturday = (today_jalali.weekday() + 1) % 7
+        week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+
+        weekly_usage_by_uuid = {}
+
+        with self.write_conn() as c:
+            all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
+            all_week_snapshots = c.execute(all_snapshots_query, (week_start_utc,)).fetchall()
+
+            snapshots_by_user = {}
+            for snap in all_week_snapshots:
+                snapshots_by_user.setdefault(snap['uuid_id'], []).append(snap)
+
+            for uuid_id, user_snaps in snapshots_by_user.items():
+                last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
+
+                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
+
+                for snap in user_snaps:
+                    h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
+                    m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
+                    total_diff = h_diff + m_diff
+
+                    weekly_usage_by_uuid.setdefault(uuid_id, 0.0)
+                    weekly_usage_by_uuid[uuid_id] += total_diff
+                    
+                    last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
+        
+        user_id_map = {row['id']: row['user_id'] for row in self.get_all_user_uuids()}
+        weekly_usage_by_user_id = {}
+        for uuid_id, total_usage in weekly_usage_by_uuid.items():
+            user_id = user_id_map.get(uuid_id)
+            if user_id:
+                weekly_usage_by_user_id.setdefault(user_id, 0.0)
+                weekly_usage_by_user_id[user_id] += total_usage
+        
+        return list(weekly_usage_by_user_id.values())
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

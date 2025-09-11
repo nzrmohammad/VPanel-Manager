@@ -182,8 +182,6 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('usage_limit_GB', 0))}")
         
-        account_lines.append("")
-
         # 2. حجم مصرف شده
         total_usage_str = f"{info.get('current_usage_GB', 0):.2f} GB"
         account_lines.append(f"🔥 حجم‌مصرف شده : {total_usage_str}")
@@ -193,8 +191,6 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('current_usage_GB', 0))}")
             
-        account_lines.append("") 
-
         # 3. حجم باقی‌مانده
         total_remaining_str = f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB"
         account_lines.append(f"📥 حجم‌باقی‌مانده : {total_remaining_str}")
@@ -203,8 +199,6 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
         if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
             flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
             account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('remaining_GB', 0))}")
-
-        account_lines.append("") 
 
         # 4. مصرف امروز
         account_lines.append("⚡️ حجم مصرف شده امروز:")
@@ -236,7 +230,8 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
 
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     """
-    گزارش هفتگی کاملی را شامل تفکیک مصرف روزانه، تحلیل هوشمند و دستاوردهای هفته برای کاربر فرمت‌بندی می‌کند.
+    گزارش هفتگی کاملی را شامل تفکیک مصرف روزانه، تحلیل هوشمند، دستاوردها،
+    مقایسه با هفته قبل و مقایسه با سایر کاربران فرمت‌بندی می‌کند.
     """
     if not user_infos:
         return ""
@@ -250,6 +245,9 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     days_since_saturday = (today_jalali.weekday() + 1) % 7
     week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
+    # داده‌های کلی تمام کاربران برای مقایسه یک بار دریافت می‌شود
+    all_users_weekly_usage = db.get_all_users_weekly_usage()
+
     for info in user_infos:
         uuid = info.get("uuid")
         if not uuid: continue
@@ -259,10 +257,6 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         if not uuid_id or not user_record: continue
         
         user_id = user_record.get('user_id')
-
-        has_access_de = user_record.get('has_access_de', False)
-        has_access_fr = user_record.get('has_access_fr', False)
-        has_access_tr = user_record.get('has_access_tr', False)
         name = info.get("name", get_string('unknown_user', lang_code))
         header = get_string("fmt_report_account_header", lang_code).format(name=name)
         
@@ -277,17 +271,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 has_usage_data = True
                 date_shamsi = to_shamsi(item['date'])
                 usage_formatted = format_daily_usage(item['total_usage'])
-                account_lines.append(f"\n در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
-                daily_breakdown_parts = []
-                if has_access_de and item['hiddify_usage'] > 0.001:
-                    daily_breakdown_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(item['hiddify_usage']))}")
-                marzban_flags = []
-                if has_access_fr: marzban_flags.append("🇫🇷")
-                if has_access_tr: marzban_flags.append("🇹🇷")
-                if marzban_flags and item['marzban_usage'] > 0.001:
-                    daily_breakdown_parts.append(f"{''.join(marzban_flags)} {escape_markdown(format_daily_usage(item['marzban_usage']))}")
-                if daily_breakdown_parts:
-                    account_lines.append(f" \\({', '.join(daily_breakdown_parts)}\\)")
+                account_lines.append(f" `•` در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
         
         if not has_usage_data:
             account_lines.append(f"\n_{escape_markdown('در این هفته مصرفی برای این اکانت ثبت نشده است.')}_")
@@ -296,49 +280,86 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         footer_template = get_string("weekly_usage_header", lang_code)
         final_footer_line = f"{footer_template} {usage_footer_str}"
         account_lines.append(f'\n\n⚡️ *{escape_markdown(final_footer_line)}*')
-
-        if user_id:
-            weekly_achievements = db.get_user_achievements_in_range(user_id, week_start_utc)
-            if weekly_achievements:
-                account_lines.append(separator)
-                account_lines.append(f"🏆 *{escape_markdown('دستاوردها و جوایز این هفته')}*")
-                for ach in weekly_achievements:
-                    badge_code = ach['badge_code']
-                    badge_data = ACHIEVEMENTS.get(badge_code, {})
-                    badge_name = escape_markdown(badge_data.get('name', badge_code))
-                    badge_icon = badge_data.get('icon', '🎖️')
-                    points = badge_data.get('points', 0)
-                    account_lines.append(f"{badge_icon} {badge_name} \\(*\\+{points} امتیاز*\\)")
         
-        # --- بخش تحلیل هوشمند ---
-        if current_week_usage > 0.1: # حداقل مصرف برای نمایش تحلیل
-            busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
-            busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
+        # --- بخش جدید: مقایسه‌ها ---
+        account_lines.append(separator)
+        account_lines.append(f"*{escape_markdown('📊 تحلیل و مقایسه این هفته')}*")
+        
+        previous_week_usage = db.get_previous_week_usage(uuid_id)
+        if previous_week_usage > 0.01:
+            usage_change_percent = ((current_week_usage - previous_week_usage) / previous_week_usage) * 100
+            change_icon = "📈" if usage_change_percent >= 0 else "📉"
+            change_text = f"{abs(usage_change_percent):.0f}% {'بیشتر' if usage_change_percent >= 0 else 'کمتر'}"
+            comparison_line = f"`•` {escape_markdown('نسبت به هفته قبل:')} *{change_icon} {escape_markdown(change_text)}*"
+            account_lines.append(comparison_line)
 
-            total_hiddify = sum(d['hiddify_usage'] for d in daily_history)
-            total_marzban = sum(d['marzban_usage'] for d in daily_history)
-            most_used_server = "آلمان 🇩🇪" if total_hiddify >= total_marzban else "فرانسه/ترکیه 🇫🇷🇹🇷"
+        if all_users_weekly_usage:
+            try:
+                current_user_total_usage_from_all = db.get_user_weekly_total_usage(user_id)
+                user_rank = sorted(all_users_weekly_usage, reverse=True).index(current_user_total_usage_from_all) + 1
+                rank_text = f"شما در رتبه *{user_rank}* از بین *{len(all_users_weekly_usage)}* کاربر قرار دارید."
+                account_lines.append(f"`•` {escape_markdown('رتبه شما:')} {rank_text}")
+            except (ValueError, IndexError):
+                pass
+
+        # ... (بخش دستاوردها) ...
+        weekly_achievements = db.get_user_achievements_in_range(user_id, week_start_utc) if user_id else []
+        if weekly_achievements:
+            account_lines.append(separator)
+            account_lines.append(f"*{escape_markdown('🏆 دستاوردها و جوایز این هفته')}*")
+            for ach in weekly_achievements:
+                badge_code = ach['badge_code']
+                badge_data = ACHIEVEMENTS.get(badge_code, {})
+                badge_name = escape_markdown(badge_data.get('name', badge_code))
+                badge_icon = badge_data.get('icon', '🎖️')
+                points = badge_data.get('points', 0)
+                account_lines.append(f"{badge_icon} {badge_name} \\(*\\+{points} امتیاز*\\)")
+
+
+        # --- بخش تحلیل هوشمند و شخصیت مصرف ---
+        if current_week_usage > 0.1:
+            account_lines.append(separator)
+            account_lines.append(f"*{escape_markdown('💡 تحلیل هوشمند شما')}*")
             
             time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
-            busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get)
+            busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get) if any(v > 0 for v in time_of_day_stats.values()) else None
             
-            period_map = {
-                "morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️",
-                "evening": "عصر 🌆", "night": "شب 🦉"
-            }
-            busiest_period_name = period_map.get(busiest_period_key, "ساعات مختلف")
+            weekend_usage = sum(d['total_usage'] for d in daily_history if jdatetime.datetime.fromgregorian(date=d['date']).weekday() in [4, 5])
+            
+            persona = "کاربر پیوسته 📡"
+            if busiest_period_key == 'night' and time_of_day_stats['night'] / current_week_usage > 0.5:
+                persona = "جغد شب 🦉"
+            elif weekend_usage / current_week_usage > 0.6:
+                persona = "قهرمان آخر هفته 🏆"
+            elif current_week_usage > 50:
+                persona = "ستاره استریم 🎬"
+            
+            account_lines.append(f"`•` {escape_markdown('شخصیت مصرف شما:')} *{escape_markdown(persona)}*")
+            
+            busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
+            busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
+            account_lines.append(f"`•` {escape_markdown('پرمصرف‌ترین روز:')} *{escape_markdown(busiest_day_name)}*")
+            
+            if busiest_period_key:
+                period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}
+                busiest_period_name = period_map.get(busiest_period_key)
+                account_lines.append(f"`•` {escape_markdown('پیک مصرف:')} *{escape_markdown(busiest_period_name)}*")
 
-            summary_text = (
-                f"\n\nسلام {escape_markdown(name.split('(')[0].strip())}\\!\n"
-                f"این هفته *{escape_markdown(format_daily_usage(current_week_usage))}* مصرف داشتی\\. "
-                f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی\\. "
-                f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی\\!"
-            )
-            account_lines.append(summary_text)
-
+            user_agents = db.get_user_agents_for_uuid(uuid_id)
+            if user_agents:
+                os_counts = {}
+                for agent in user_agents:
+                    parsed = parse_user_agent(agent['user_agent'])
+                    if parsed and parsed.get('os'):
+                        os_name = parsed['os'].split(' ')[0]
+                        os_counts[os_name] = os_counts.get(os_name, 0) + 1
+                if os_counts:
+                    most_used_os = max(os_counts, key=os_counts.get)
+                    account_lines.append(f"`•` {escape_markdown('دستگاه غالب:')} *{escape_markdown(most_used_os)}*")
+        
         accounts_reports.append("\n".join(account_lines))
 
-    final_report = f"\n{separator}\n".join(accounts_reports)
+    final_report = f"\n\n{separator}\n\n".join(accounts_reports)
     return final_report
 
 
