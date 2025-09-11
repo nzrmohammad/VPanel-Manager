@@ -141,6 +141,10 @@ def quick_stats(uuid_rows: list, page: int, lang_code: str) -> tuple[str, dict]:
     return report_text, menu_data
 
 def fmt_user_report(user_infos: list, lang_code: str) -> str:
+    """
+    (نسخه نهایی و اصلاح شده)
+    گزارش شبانه را با فاصله‌گذاری مناسب و با استفاده از تابع get_user_access_rights ایجاد می‌کند.
+    """
     if not user_infos:
         return ""
 
@@ -149,73 +153,86 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
 
     for info in user_infos:
         user_record = db.get_user_uuid_record(info.get("uuid", ""))
-        has_access_de = user_record.get('has_access_de', False) if user_record else False
-        has_access_fr = user_record.get('has_access_fr', False) if user_record else False
-        has_access_tr = user_record.get('has_access_tr', False) if user_record else False
-
+        user_id = user_record.get('user_id') if user_record else None
+        access_rights = db.get_user_access_rights(user_id) if user_id else {}
         name = info.get("name", get_string('unknown_user', lang_code))
-        header = get_string("fmt_report_account_header", lang_code).format(name=name)
-        account_lines = [f'*{escape_markdown(header)}*']
         
+        # بخش هدر گزارش
+        header_lines = [
+            f"👤 اکانت : {escape_markdown(name)}"
+        ]
+        account_lines = ["\n".join(header_lines)]
+
+        # دریافت مصرف روزانه
         daily_usage_dict = {}
         if 'db_id' in info:
             daily_usage_dict = db.get_usage_since_midnight(info['db_id'])
             total_daily_usage_all_accounts += sum(daily_usage_dict.values())
 
-        volume_str = f"{info.get('usage_limit_GB', 0):.2f} GB"
-        volume_line = get_string("fmt_report_total_volume", lang_code).format(volume=volume_str)
-        account_lines.append(escape_markdown(volume_line))
-        
-        usage_str = f"{info.get('current_usage_GB', 0):.2f} GB"
-        usage_line = get_string("fmt_report_used_volume", lang_code).format(usage=usage_str)
-        account_lines.append(escape_markdown(usage_line))
-        
-        remaining_str = f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB"
-        remaining_line = get_string("fmt_report_remaining_volume", lang_code).format(remaining=remaining_str)
-        account_lines.append(escape_markdown(remaining_line))
-        
-        account_lines.append(escape_markdown(get_string("fmt_report_daily_usage_header", lang_code)))
-        
         breakdown = info.get('breakdown', {})
-        for panel_name, panel_details in breakdown.items():
-            panel_type = panel_details.get('type')
-            if panel_type:
-                panel_daily_usage = daily_usage_dict.get(panel_type, 0.0)
-                
-                flags = ""
-                if panel_type == "hiddify" and has_access_de:
-                    flags = "🇩🇪"
-                elif panel_type == "marzban":
-                    if has_access_fr: flags += "🇫🇷"
-                    if has_access_tr: flags += "🇹🇷"
-                
-                if flags:
-                    account_lines.append(f" {flags} : {escape_markdown(format_daily_usage(panel_daily_usage))}")
+        hiddify_info = next((p.get('data', {}) for p in breakdown.values() if p.get('type') == 'hiddify'), {})
+        marzban_info = next((p.get('data', {}) for p in breakdown.values() if p.get('type') == 'marzban'), {})
 
+        # 1. حجم کل
+        total_volume_str = f"{info.get('usage_limit_GB', 0):.2f} GB"
+        account_lines.append(f"📊 حجم‌کل : {total_volume_str}")
+        if access_rights.get('has_access_de') and hiddify_info:
+            account_lines.append(f"🇩🇪 : {format_daily_usage(hiddify_info.get('usage_limit_GB', 0))}")
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
+            flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
+            account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('usage_limit_GB', 0))}")
+        
+        account_lines.append("")
+
+        # 2. حجم مصرف شده
+        total_usage_str = f"{info.get('current_usage_GB', 0):.2f} GB"
+        account_lines.append(f"🔥 حجم‌مصرف شده : {total_usage_str}")
+        if access_rights.get('has_access_de') and hiddify_info:
+            account_lines.append(f"🇩🇪 : {format_daily_usage(hiddify_info.get('current_usage_GB', 0))}")
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
+            flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
+            account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('current_usage_GB', 0))}")
+            
+        account_lines.append("") 
+
+        # 3. حجم باقی‌مانده
+        total_remaining_str = f"{max(0, info.get('usage_limit_GB', 0) - info.get('current_usage_GB', 0)):.2f} GB"
+        account_lines.append(f"📥 حجم‌باقی‌مانده : {total_remaining_str}")
+        if access_rights.get('has_access_de') and hiddify_info:
+            account_lines.append(f"🇩🇪 : {format_daily_usage(hiddify_info.get('remaining_GB', 0))}")
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and marzban_info:
+            flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
+            account_lines.append(f"{flags} : {format_daily_usage(marzban_info.get('remaining_GB', 0))}")
+
+        account_lines.append("") 
+
+        # 4. مصرف امروز
+        account_lines.append("⚡️ حجم مصرف شده امروز:")
+        if access_rights.get('has_access_de') and daily_usage_dict.get('hiddify', 0) > 0.001:
+             account_lines.append(f"🇩🇪 : {format_daily_usage(daily_usage_dict.get('hiddify',0))}")
+        if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr')) and daily_usage_dict.get('marzban',0) > 0.001:
+            flags = "🇫🇷🇹🇷" if access_rights.get('has_access_fr') and access_rights.get('has_access_tr') else "🇫🇷" if access_rights.get('has_access_fr') else "🇹🇷"
+            account_lines.append(f"{flags} : {format_daily_usage(daily_usage_dict.get('marzban',0))}")
+
+        # 5. انقضا
         expire_days = info.get("expire")
-        expire_str = f"`{escape_markdown(get_string('fmt_expire_unlimited', lang_code))}`"
+        expire_str = get_string('fmt_expire_unlimited', lang_code)
         if expire_days is not None:
             expire_word = "روز"
-            expire_str = f"{expire_days} {escape_markdown(expire_word)}" if expire_days >= 0 else escape_markdown(get_string("fmt_status_expired", lang_code))
+            expire_str = f"{expire_days} {expire_word}" if expire_days >= 0 else get_string("fmt_status_expired", lang_code)
         
-        expiry_line = get_string("fmt_report_expiry", lang_code).format(expiry=expire_str)
-        account_lines.append(escape_markdown(expiry_line))
+        account_lines.append(f"📅 انقضا : {expire_str}")
 
         accounts_reports.append("\n".join(account_lines))
     
     final_report = "\n\n".join(accounts_reports)
 
     usage_footer_str = format_daily_usage(total_daily_usage_all_accounts)
-    footer_key = "fmt_report_footer_total_multi" if len(user_infos) > 1 else "fmt_report_footer_total_single"
+    footer_text = f"⚡️ مجموع کل مصرف امروز : {usage_footer_str}"
     
-    raw_footer_template = get_string(footer_key, lang_code)
-    formatted_footer = raw_footer_template.format(usage=usage_footer_str)
-    footer_text = f'*{escape_markdown(formatted_footer)}*'
-    
-    final_report += f"\n\n {footer_text}"
-    return final_report
+    final_report += f"\n\n{footer_text}"
+    return escape_markdown(final_report)
 
-# در فایل bot/user_formatters.py
 
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     """
@@ -482,18 +499,36 @@ def fmt_user_usage_history(history: list, user_name: str, lang_code: str) -> str
     return "\n".join(lines)
 
 def fmt_inline_result(info: dict) -> tuple[str, str]:
-    """Formats user info for an inline query result with detailed breakdown and spacing."""
+    """
+    (نسخه نهایی و اصلاح شده)
+    اطلاعات کاربر را برای نمایش inline با جزئیات کامل و اطلاعات مالی و دستاوردها فرمت‌بندی می‌کند.
+    """
     if not info:
         return ("❌ اطلاعات کاربر یافت نشد.", None)
-
-    from .utils import escape_markdown, create_progress_bar, format_daily_usage, parse_user_agent
-    from .database import db
 
     # --- 1. آماده‌سازی داده‌های اولیه ---
     name = escape_markdown(info.get("name", "کاربر ناشناس"))
     status = "✅" if info.get("is_active") else "❌"
     user_uuid = info.get("uuid", "")
     uuid_escaped = escape_markdown(user_uuid)
+    
+    # --- اطلاعات مالی و دستاوردها از دیتابیس ---
+    user_id = db.get_user_id_by_uuid(user_uuid)
+    wallet_balance = 0.0
+    achievement_points = 0
+    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
+    vip_text = ""
+
+    if user_id:
+        user_db_data = db.user(user_id)
+        if user_db_data:
+            wallet_balance = user_db_data.get('wallet_balance', 0.0)
+            achievement_points = user_db_data.get('achievement_points', 0)
+        
+        access_rights = db.get_user_access_rights(user_id)
+        user_uuid_record = db.uuids(user_id)[0] if db.uuids(user_id) else {}
+        if user_uuid_record.get('is_vip'):
+            vip_text = " کاربر ویژه : ✅"
 
     # --- 2. آمار کلی ---
     total_limit_gb = info.get("usage_limit_GB", 0)
@@ -505,61 +540,49 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     expire_text = escape_markdown(expire_text)
 
     # --- 3. مصرف روزانه (کلی و تفکیک شده) ---
-    daily_usage_dict = {'hiddify': 0.0, 'marzban': 0.0}
-    if user_uuid:
-        daily_usage_dict = db.get_usage_since_midnight_by_uuid(user_uuid)
+    daily_usage_dict = db.get_usage_since_midnight_by_uuid(user_uuid) if user_uuid else {}
     total_daily_usage_gb = sum(daily_usage_dict.values())
     total_daily_usage_str = escape_markdown(format_daily_usage(total_daily_usage_gb))
 
     # --- 4. استخراج اطلاعات زنده پنل‌ها ---
     breakdown = info.get('breakdown', {})
-    hiddify_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'hiddify'), None)
-    marzban_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'marzban'), None)
-
-    # --- 5. ساخت متن سرورها و VIP بر اساس اطلاعات زنده و دیتابیس ---
-    access_text = ""
-    vip_text = ""
-    has_access_fr, has_access_tr = False, False
-    if user_uuid:
-        user_record = db.get_user_uuid_record(user_uuid)
-        if user_record:
-            if user_record.get('is_vip'):
-                vip_text = " کاربر ویژه : ✅"
-            has_access_fr = user_record.get('has_access_fr', False)
-            has_access_tr = user_record.get('has_access_tr', False)
+    hiddify_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'hiddify'), {})
+    marzban_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'marzban'), {})
     
+    # --- 5. ساخت متن سرورها ---
     access_flags = []
-    if hiddify_info: 
-        access_flags.append("🇩🇪")
-    if marzban_info:
-        if has_access_fr: access_flags.append("🇫🇷")
-        if has_access_tr: access_flags.append("🇹🇷")
-    
-    if access_flags:
-        access_text = f" سرورها : {''.join(access_flags)}"
+    if access_rights.get('has_access_de'): access_flags.append("🇩🇪")
+    if access_rights.get('has_access_fr'): access_flags.append("🇫🇷")
+    if access_rights.get('has_access_tr'): access_flags.append("🇹🇷")
+    access_text = f" سرورها : {''.join(access_flags)}" if access_flags else ""
 
     # --- 6. ساخت پیام نهایی ---
     lines = [
         f"📊 *آمار کاربر : {name}*",
         f"`──────────────────`",
-        f" وضعیت : *{status}*",
+        f" وضعیت : {status}",
     ]
 
     if vip_text: lines.append(vip_text)
-    if access_text: lines.append(access_text)
     
+    # --- تغییر: افزودن موجودی و امتیاز با آیکون ---
+    lines.append(f"💰 موجودی : *{wallet_balance:,.0f} تومان*")
+    lines.append(f"🏆 امتیاز : *{achievement_points}*")
+    # -------------------------------------------
+
+    if access_text: lines.append(access_text)
     lines.append(f"📅 انقضا : *{expire_text}*")
     lines.append("")
 
     # --- 7. منطق تفکیک اطلاعات بر اساس سرور ---
-    marzban_flags = []
-    if has_access_fr: marzban_flags.append("🇫🇷")
-    if has_access_tr: marzban_flags.append("🇹🇷")
-    marzban_flag_str = "".join(marzban_flags)
+    marzban_flags_list = []
+    if access_rights.get('has_access_fr'): marzban_flags_list.append("🇫🇷")
+    if access_rights.get('has_access_tr'): marzban_flags_list.append("🇹🇷")
+    marzban_flag_str = "".join(marzban_flags_list)
 
     # A. حجم کل
     lines.append(f"📦 حجم کل : *{escape_markdown(f'{total_limit_gb:.2f}')} GB*")
-    if hiddify_info:
+    if hiddify_info and access_rights.get('has_access_de'):
         limit = hiddify_info.get('usage_limit_GB', 0)
         lines.append(f"  🇩🇪 {escape_markdown(f'{limit:.2f} GB')}")
     if marzban_info and marzban_flag_str:
@@ -568,7 +591,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # B. مجموع مصرف شده
     lines.append(f"🔥 مجموع مصرف شده: *{escape_markdown(f'{total_usage_gb:.2f}')} GB*")
-    if hiddify_info:
+    if hiddify_info and access_rights.get('has_access_de'):
         usage = hiddify_info.get('current_usage_GB', 0)
         lines.append(f"  🇩🇪 {escape_markdown(f'{usage:.2f} GB')}")
     if marzban_info and marzban_flag_str:
@@ -577,7 +600,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # C. مجموع باقیمانده
     lines.append(f"📥 مجموع باقیمانده: *{escape_markdown(f'{total_remaining_gb:.2f}')} GB*")
-    if hiddify_info:
+    if hiddify_info and access_rights.get('has_access_de'):
         remaining = hiddify_info.get('remaining_GB', 0)
         lines.append(f"  🇩🇪 {escape_markdown(f'{remaining:.2f} GB')}")
     if marzban_info and marzban_flag_str:
@@ -586,35 +609,32 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # D. مصرف امروز
     lines.append(f"⚡️ مصرف امروز : *{total_daily_usage_str}*")
-    if (hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001) or \
-       (marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str):
-        if hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001:
-            daily = daily_usage_dict['hiddify']
-            lines.append(f"  🇩🇪 {escape_markdown(format_daily_usage(daily))}")
-        if marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str:
-            daily = daily_usage_dict['marzban']
-            lines.append(f"  {marzban_flag_str} {escape_markdown(format_daily_usage(daily))}")
+    if hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001 and access_rights.get('has_access_de'):
+        daily_h = daily_usage_dict['hiddify']
+        lines.append(f"  🇩🇪 {escape_markdown(format_daily_usage(daily_h))}")
+    if marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str:
+        daily_m = daily_usage_dict['marzban']
+        lines.append(f"  {marzban_flag_str} {escape_markdown(format_daily_usage(daily_m))}")
     
-        uuid_id = db.get_uuid_id_by_uuid(user_uuid)
-        if uuid_id:
-            user_agents = db.get_user_agents_for_uuid(uuid_id)
-            if user_agents:
-                lines.append("📱 *دستگاه‌های متصل:*")
-                for agent in user_agents[:]: # Show max 6 devices
-                    parsed = parse_user_agent(agent['user_agent'])
-                    if parsed:
-                        client_name = escape_markdown(parsed.get('client', 'Unknown'))
-                        details = []
-                        if parsed.get('version'):
-                            details.append(f"v{escape_markdown(parsed['version'])}")
-                        if parsed.get('os'):
-                            details.append(escape_markdown(parsed['os']))
-                        details_str = f" \\({', '.join(details)}\\)" if details else ""
-                        lines.append(f"` `└─ *{client_name}*{details_str}")
-                lines.append("")
-
+    # E. دستگاه‌های متصل
+    if user_uuid and (uuid_id := db.get_uuid_id_by_uuid(user_uuid)):
+        user_agents = db.get_user_agents_for_uuid(uuid_id)
+        if user_agents:
+            lines.append("📱 *دستگاه‌های متصل:*")
+            for agent in user_agents[:3]: # نمایش حداکثر ۳ دستگاه
+                parsed = parse_user_agent(agent['user_agent'])
+                if parsed:
+                    client_name = escape_markdown(parsed.get('client', 'Unknown'))
+                    details = []
+                    if parsed.get('version'):
+                        details.append(f"v{escape_markdown(parsed['version'])}")
+                    if parsed.get('os'):
+                        details.append(escape_markdown(parsed['os']))
+                    details_str = f" \\({', '.join(details)}\\)" if details else ""
+                    lines.append(f" `└─` *{client_name}*{details_str}")
 
     # --- 8. بخش پایانی ---
+    lines.append("")
     lines.append(create_progress_bar(usage_percentage))
     lines.append(f"`{uuid_escaped}`")
 
