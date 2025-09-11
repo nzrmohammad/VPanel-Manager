@@ -51,18 +51,12 @@ class SchedulerManager:
         except Exception as e:
             logger.warning(f"SCHEDULER: Failed to send notification to user {user_id}: {e}")
 
-    def _send_warning_message(self, user_id: int, message_template: str, **kwargs):
-        """
-        A central function to format and send all warning messages,
-        handling cases where the user has blocked the bot or is deactivated.
-        This version is corrected to handle MarkdownV2 special characters properly.
-        """
+    def _send_warning_message(self, user_id: int, message_template: str, reply_markup: types.InlineKeyboardMarkup = None, **kwargs):
         try:
-            raw_formatted_message = message_template.format(**kwargs)
-            escaped_message = escape_markdown(raw_formatted_message)
-            final_message = escaped_message.replace('\\*', '*').replace('\\_', '_').replace('\\`', '`')
+            kwargs_escaped = {k: escape_markdown(str(v)) for k, v in kwargs.items()}
+            final_message = message_template.format(**kwargs_escaped)
 
-            self.bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
+            self.bot.send_message(user_id, final_message, parse_mode="MarkdownV2", reply_markup=reply_markup)
             return True
         except apihelper.ApiTelegramException as e:
             if "bot was blocked by the user" in e.description or "user is deactivated" in e.description:
@@ -77,7 +71,7 @@ class SchedulerManager:
                      logger.error(f"Failed to send warning message to user {user_id}: {e}")
             return False
         except Exception as e:
-            logger.error(f"Failed to send warning message to user {user_id}: {e}")
+            logger.error(f"An unexpected error occurred while sending a warning message to user {user_id}: {e}", exc_info=True)
             return False
 
     def _hourly_snapshots(self) -> None:
@@ -934,6 +928,118 @@ class SchedulerManager:
         # پاک کردن بلیط‌ها برای دوره بعد
         db.clear_lottery_tickets()
 
+    def _send_weekend_vip_message(self) -> None:
+        """پیام قدردانی آخر هفته را برای کاربران VIP ارسال می‌کند."""
+        import random
+        import time
+        from telebot import types
+
+        logger.info("SCHEDULER: Sending weekend thank you message to VIP users.")
+        
+        # ... (بخش پیدا کردن کاربران VIP بدون تغییر باقی می‌ماند) ...
+        all_uuids = db.get_all_user_uuids()
+        vip_users = [u for u in all_uuids if u.get('is_vip')]
+        if not vip_users:
+            logger.info("No VIP users found to send weekend message.")
+            return
+        vip_user_ids = {db.get_user_id_by_uuid(u['uuid']) for u in vip_users if db.get_user_id_by_uuid(u['uuid'])}
+
+        # ۱. لیست کامل متن پیام‌ها
+        message_templates = [
+            "سلام {name} عزیز ✨\n\nامیدوارم شروع آخر هفته خوبی داشته باشی و فرصتی برای استراحت پیدا کنی.\n\nاین یک پیام قدردانی مخصوص کاربران ویژه ماست. چه بخوای فیلم ببینی، چه آنلاین بازی کنی، می‌خوام خیالت راحت باشه که اتصال پایدارت برای من در اولویته.\n\nاگه حس کردی سرعت یا کیفیت اتصال مثل همیشه نیست، بدون تردید روی دکمه زیر بزن تا شخصاً برات پیگیری کنم.\n\nمراقب خودت باش و از تعطیلاتت لذت ببر.",
+            "سلام {name}، آخر هفته‌ات بخیر! ☀️\n\nفقط خواستم بگم حواسم به کیفیت سرویس هست تا تو این آخر هفته با خیال راحت به کارهات برسی.\n\nاگه موقع استریم یا هر استفاده دیگه‌ای حس کردی چیزی مثل همیشه نیست، من اینجام تا سریع حلش کنم. هدف من اینه که تو بهترین تجربه رو داشته باشی.\n\nآخر هفته خوبی داشته باشی و حسابی استراحت کن!",
+            "{name} عزیز، آخر هفته خوبی پیش رو داشته باشی! ☕️\n\nهدف ما اینه که تو بتونی بدون هیچ دغدغه‌ای از دنیای آنلاین لذت ببری.\n\nاگه احساس کردی سرویس اون‌طور که باید باشه نیست و مانع تفریح یا کارت شده، حتماً بهم خبر بده. اتصال بی‌نقص حق شماست.\n\nامیدوارم آخر هفته پر از آرامشی داشته باشی. مراقب خودت هم باش."
+        ]
+        
+        # ۲. لیست کامل عنوان دکمه‌ها (جدید)
+        button_texts = [
+            "💬 پشتیبانی ویژه VIP", "💬 اگه مشکلی بود، به من بگو",
+            "📞 خط ارتباطی سریع", "ارتباط مستقیم با مدیریت", "پشتیبانی اختصاصی شما"
+        ]
+
+        my_telegram_username = "Mohammadnzrr"
+
+        for user_id in vip_user_ids:
+            try:
+                user_info = db.user(user_id)
+                if user_info:
+                    user_name = user_info.get('first_name', 'کاربر ویژه')
+                    
+                    # ۳. انتخاب تصادفی پیام و عنوان دکمه
+                    chosen_template = random.choice(message_templates)
+                    chosen_button_text = random.choice(button_texts)
+                    
+                    # ساخت پیام نهایی
+                    final_message_text = chosen_template.format(name=escape_markdown(user_name))
+                    
+                    # ساخت دکمه با عنوان تصادفی
+                    kb = types.InlineKeyboardMarkup()
+                    kb.add(types.InlineKeyboardButton(chosen_button_text, url=f"https://t.me/{my_telegram_username}"))
+                    
+                    # ارسال پیام و دکمه در یک فراخوانی واحد
+                    self._send_warning_message(
+                        user_id,
+                        final_message_text,
+                        reply_markup=kb
+                    )
+                    time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Failed to send VIP message to user {user_id}: {e}")
+
+    def _send_weekend_normal_user_message(self) -> None:
+        """پیام قدردانی آخر هفته را برای کاربران عادی (غیر VIP) ارسال می‌کند."""
+        import random
+        import time
+        from telebot import types
+
+        logger.info("SCHEDULER: Sending weekend thank you message to normal users.")
+        
+        # ۱. پیدا کردن تمام کاربران غیر VIP
+        all_uuids = db.get_all_user_uuids()
+        normal_users_uuids = [u for u in all_uuids if not u.get('is_vip')]
+        
+        if not normal_users_uuids:
+            logger.info("No normal users found to send weekend message.")
+            return
+
+        # ۲. استخراج user_id های منحصر به فرد
+        normal_user_ids = {db.get_user_id_by_uuid(u['uuid']) for u in normal_users_uuids if db.get_user_id_by_uuid(u['uuid'])}
+
+        # ۳. تعریف لیست پیام‌ها
+        message_templates = [
+            "سلام {name} عزیز!\n\nامیدوارم آخر هفته خوبی داشته باشی. خواستم از همراهی و اعتماد شما به سرویس ما تشکر کنم. حضور شما برای ما بسیار ارزشمنده.\n\nما همیشه در تلاشیم تا بهترین و پایدارترین اتصال رو برای شما فراهم کنیم. یادت باشه که با تمدید به موقع سرویس و دعوت از دوستانت، می‌تونی امتیاز جمع کنی و به جمع کاربران ویژه ما بپیوندی.\n\nاگه هر سوالی داشتی، من برای کمک آماده‌ام.",
+            "سلام {name} عزیز، آخر هفته‌ات بخیر! ☀️\n\nاز اینکه بخشی از جامعه کاربران ما هستی، خوشحالیم. امیدواریم از سرویس‌مون راضی باشی.\n\nخواستم یادآوری کنم که همیشه می‌تونی از بخش «🏆 دستاوردها» در ربات، راه‌های کسب امتیاز رو ببینی و از «🛍️ فروشگاه» برای خودت حجم یا روز اضافه هدیه بگیری.\n\nاگه پیشنهادی برای بهتر شدن سرویس داشتی، خوشحال میشم بشنوم. آخر هفته خوبی داشته باشی!"
+        ]
+        
+        button_texts = [
+            "💬 راهنمایی و پشتیبانی", "💬 ارسال پیشنهاد یا سوال"
+        ]
+
+        my_telegram_username = "Nzrmohammad"
+
+        for user_id in normal_user_ids:
+            try:
+                user_info = db.user(user_id)
+                if user_info:
+                    user_name = user_info.get('first_name', 'کاربر گرامی')
+                    
+                    chosen_template = random.choice(message_templates)
+                    chosen_button_text = random.choice(button_texts)
+                    
+                    final_message_text = chosen_template.format(name=escape_markdown(user_name))
+                    
+                    kb = types.InlineKeyboardMarkup()
+                    kb.add(types.InlineKeyboardButton(chosen_button_text, url=f"https://t.me/{my_telegram_username}"))
+                    
+                    self._send_warning_message(
+                        user_id,
+                        final_message_text,
+                        reply_markup=kb
+                    )
+                    time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Failed to send normal user message to user {user_id}: {e}")
+
     def _run_monthly_vacuum(self) -> None:
         db.delete_old_snapshots(days_to_keep=7)
         if datetime.now(self.tz).day == 1:
@@ -958,6 +1064,8 @@ class SchedulerManager:
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._send_daily_achievements_report)
+        schedule.every().thursday.at("16:00", self.tz_str).do(self._send_weekend_vip_message)
+        schedule.every().thursday.at("16:15", self.tz_str).do(self._send_weekend_normal_user_message)
         schedule.every().friday.at("23:30", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)

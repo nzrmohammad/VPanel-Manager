@@ -666,8 +666,10 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         report_lines.append("───────────────")
         warning_map = {
             "expiry": "انقضای سرویس", 
-            "low_data_hiddify": "اتمام حجم 🇩🇪", 
-            "low_data_marzban": "اتمام حجم 🇫🇷", 
+            "low_data_hiddify": "کمبود حجم 🇩🇪", 
+            "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷",
+            "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
+            "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷",
             "unusual_daily_usage": "مصرف غیرعادی", 
             "too_many_devices": "تعداد دستگاه بالا",
             "inactive_user_reminder": "یادآوری عدم فعالیت"
