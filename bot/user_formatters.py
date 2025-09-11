@@ -230,8 +230,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
 
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     """
-    گزارش هفتگی کاملی را شامل تفکیک مصرف روزانه، تحلیل هوشمند، دستاوردها،
-    مقایسه با هفته قبل و مقایسه با سایر کاربران فرمت‌بندی می‌کند.
+    (نسخه نهایی) گزارش هفتگی را با تفکیک مصرف، مقایسه با هفته قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
     """
     if not user_infos:
         return ""
@@ -239,128 +238,105 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     accounts_reports = []
     separator = '`──────────────────`'
     day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
-    
     tehran_tz = pytz.timezone("Asia/Tehran")
-    today_jalali = jdatetime.datetime.now(tz=tehran_tz)
-    days_since_saturday = (today_jalali.weekday() + 1) % 7
-    week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
-
-    # داده‌های کلی تمام کاربران برای مقایسه یک بار دریافت می‌شود
-    all_users_weekly_usage = db.get_all_users_weekly_usage()
 
     for info in user_infos:
         uuid = info.get("uuid")
         if not uuid: continue
-            
+
         uuid_id = db.get_uuid_id_by_uuid(uuid)
         user_record = db.get_user_uuid_record(uuid)
         if not uuid_id or not user_record: continue
-        
+
         user_id = user_record.get('user_id')
         name = info.get("name", get_string('unknown_user', lang_code))
-        header = get_string("fmt_report_account_header", lang_code).format(name=name)
-        
+
+        # دریافت تاریخچه مصرف به تفکیک پنل‌ها
         daily_history = db.get_user_daily_usage_history_by_panel(uuid_id, days=7)
         current_week_usage = sum(item['total_usage'] for item in daily_history)
 
-        account_lines = [f'*{escape_markdown(header)}*']
-        
-        has_usage_data = False
-        for item in reversed(daily_history):
-            if item['total_usage'] > 0.001:
-                has_usage_data = True
-                date_shamsi = to_shamsi(item['date'])
-                usage_formatted = format_daily_usage(item['total_usage'])
-                account_lines.append(f" `•` در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
-        
-        if not has_usage_data:
-            account_lines.append(f"\n_{escape_markdown('در این هفته مصرفی برای این اکانت ثبت نشده است.')}_")
+        account_lines = [f"*{escape_markdown(get_string('fmt_report_account_header', lang_code).format(name=name))}*"]
 
+        # نمایش مصرف روزانه به تفکیک
+        for item in reversed(daily_history):
+            total_daily = item['total_usage']
+            if total_daily > 0.001:
+                date_shamsi = to_shamsi(item['date'])
+                usage_formatted = format_daily_usage(total_daily)
+                
+                account_lines.append(f"\n `•` در `{date_shamsi}` : *{escape_markdown(usage_formatted)}*")
+
+                breakdown_parts = []
+                h_usage_day = item.get('hiddify_usage', 0.0)
+                m_usage_day = item.get('marzban_usage', 0.0)
+
+                if h_usage_day > 0.001:
+                    breakdown_parts.append(f"🇩🇪 {format_daily_usage(h_usage_day)}")
+                if m_usage_day > 0.001:
+                    breakdown_parts.append(f"🇫🇷🇹🇷 {format_daily_usage(m_usage_day)}")
+                
+                if breakdown_parts:
+                    account_lines.append(f"  `({escape_markdown(', '.join(breakdown_parts))})`")
+
+        # فوتر مصرف کل
         usage_footer_str = format_daily_usage(current_week_usage)
         footer_template = get_string("weekly_usage_header", lang_code)
         final_footer_line = f"{footer_template} {usage_footer_str}"
         account_lines.append(f'\n\n⚡️ *{escape_markdown(final_footer_line)}*')
         
-        # --- بخش جدید: مقایسه‌ها ---
-        account_lines.append(separator)
-        account_lines.append(f"*{escape_markdown('📊 تحلیل و مقایسه این هفته')}*")
-        
-        previous_week_usage = db.get_previous_week_usage(uuid_id)
-        if previous_week_usage > 0.01:
-            usage_change_percent = ((current_week_usage - previous_week_usage) / previous_week_usage) * 100
-            change_icon = "📈" if usage_change_percent >= 0 else "📉"
-            change_text = f"{abs(usage_change_percent):.0f}% {'بیشتر' if usage_change_percent >= 0 else 'کمتر'}"
-            comparison_line = f"`•` {escape_markdown('نسبت به هفته قبل:')} *{change_icon} {escape_markdown(change_text)}*"
-            account_lines.append(comparison_line)
-
-        if all_users_weekly_usage:
-            try:
-                current_user_total_usage_from_all = db.get_user_weekly_total_usage(user_id)
-                user_rank = sorted(all_users_weekly_usage, reverse=True).index(current_user_total_usage_from_all) + 1
-                rank_text = f"شما در رتبه *{user_rank}* از بین *{len(all_users_weekly_usage)}* کاربر قرار دارید."
-                account_lines.append(f"`•` {escape_markdown('رتبه شما:')} {rank_text}")
-            except (ValueError, IndexError):
-                pass
-
-        # ... (بخش دستاوردها) ...
+        # بخش دستاوردها
+        week_start_utc = (datetime.now(tehran_tz) - timedelta(days=((jdatetime.datetime.now(tz=tehran_tz).weekday() + 1) % 7))).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
         weekly_achievements = db.get_user_achievements_in_range(user_id, week_start_utc) if user_id else []
         if weekly_achievements:
             account_lines.append(separator)
             account_lines.append(f"*{escape_markdown('🏆 دستاوردها و جوایز این هفته')}*")
             for ach in weekly_achievements:
-                badge_code = ach['badge_code']
-                badge_data = ACHIEVEMENTS.get(badge_code, {})
-                badge_name = escape_markdown(badge_data.get('name', badge_code))
+                badge_data = ACHIEVEMENTS.get(ach['badge_code'], {})
+                badge_name = escape_markdown(badge_data.get('name', ach['badge_code']))
                 badge_icon = badge_data.get('icon', '🎖️')
                 points = badge_data.get('points', 0)
                 account_lines.append(f"{badge_icon} {badge_name} \\(*\\+{points} امتیاز*\\)")
 
-
-        # --- بخش تحلیل هوشمند و شخصیت مصرف ---
+        # بخش خلاصه هوشمند و دوستانه
         if current_week_usage > 0.1:
-            account_lines.append(separator)
-            account_lines.append(f"*{escape_markdown('💡 تحلیل هوشمند شما')}*")
+            busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
+            busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
+            
+            total_h_usage = sum(d.get('hiddify_usage', 0.0) for d in daily_history)
+            total_m_usage = sum(d.get('marzban_usage', 0.0) for d in daily_history)
+            most_used_server = "آلمان 🇩🇪" if total_h_usage >= total_m_usage else "فرانسه/ترکیه 🇫🇷🇹🇷"
             
             time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
             busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get) if any(v > 0 for v in time_of_day_stats.values()) else None
-            
-            weekend_usage = sum(d['total_usage'] for d in daily_history if jdatetime.datetime.fromgregorian(date=d['date']).weekday() in [4, 5])
-            
-            persona = "کاربر پیوسته 📡"
-            if busiest_period_key == 'night' and time_of_day_stats['night'] / current_week_usage > 0.5:
-                persona = "جغد شب 🦉"
-            elif weekend_usage / current_week_usage > 0.6:
-                persona = "قهرمان آخر هفته 🏆"
-            elif current_week_usage > 50:
-                persona = "ستاره استریم 🎬"
-            
-            account_lines.append(f"`•` {escape_markdown('شخصیت مصرف شما:')} *{escape_markdown(persona)}*")
-            
-            busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
-            busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
-            account_lines.append(f"`•` {escape_markdown('پرمصرف‌ترین روز:')} *{escape_markdown(busiest_day_name)}*")
-            
-            if busiest_period_key:
-                period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}
-                busiest_period_name = period_map.get(busiest_period_key)
-                account_lines.append(f"`•` {escape_markdown('پیک مصرف:')} *{escape_markdown(busiest_period_name)}*")
+            period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}
+            busiest_period_name = period_map.get(busiest_period_key, 'ساعات مختلف')
 
-            user_agents = db.get_user_agents_for_uuid(uuid_id)
-            if user_agents:
-                os_counts = {}
-                for agent in user_agents:
-                    parsed = parse_user_agent(agent['user_agent'])
-                    if parsed and parsed.get('os'):
-                        os_name = parsed['os'].split(' ')[0]
-                        os_counts[os_name] = os_counts.get(os_name, 0) + 1
-                if os_counts:
-                    most_used_os = max(os_counts, key=os_counts.get)
-                    account_lines.append(f"`•` {escape_markdown('دستگاه غالب:')} *{escape_markdown(most_used_os)}*")
-        
+            # بخش مقایسه با هفته قبل
+            previous_week_usage = db.get_previous_week_usage(uuid_id)
+            comparison_text = ""
+            if previous_week_usage > 0.01:
+                usage_change_percent = ((current_week_usage - previous_week_usage) / previous_week_usage) * 100
+                change_word = "بیشتر" if usage_change_percent >= 0 else "کمتر"
+                comparison_text = f"این مصرف *{escape_markdown(f'{abs(usage_change_percent):.0f}%')}* {escape_markdown(change_word)} از هفته قبل بود\\. "
+
+            summary_message = (
+                f"\n{separator}\n"
+                f"سلام {escape_markdown(name)}\\!\n"
+                f"این هفته *{escape_markdown(usage_footer_str)}* مصرف داشتی\\. {comparison_text}"
+                f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی\\. "
+                f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی\\!"
+            )
+            account_lines.append(summary_message)
+
         accounts_reports.append("\n".join(account_lines))
 
-    final_report = f"\n\n{separator}\n\n".join(accounts_reports)
-    return final_report
+    # رفع مشکل تکرار هدر: هدر فقط یک بار در ابتدا ساخته می‌شود
+    now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(tehran_tz)).strftime("%Y/%m/%d - %H:%M")
+    final_header = f"📊 *گزارش هفتگی* {escape_markdown('-')} {escape_markdown(now_str)}"
+    
+    # گزارش تمام اکانت‌ها با یک هدر واحد ترکیب می‌شود
+    final_report = "\n\n".join(accounts_reports) # Join without the extra separator
+    return f"{final_header}\n{separator}\n{final_report}"
 
 
 def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> str:
