@@ -936,7 +936,6 @@ class SchedulerManager:
 
         logger.info("SCHEDULER: Sending weekend thank you message to VIP users.")
         
-        # ... (بخش پیدا کردن کاربران VIP بدون تغییر باقی می‌ماند) ...
         all_uuids = db.get_all_user_uuids()
         vip_users = [u for u in all_uuids if u.get('is_vip')]
         if not vip_users:
@@ -944,14 +943,12 @@ class SchedulerManager:
             return
         vip_user_ids = {db.get_user_id_by_uuid(u['uuid']) for u in vip_users if db.get_user_id_by_uuid(u['uuid'])}
 
-        # ۱. لیست کامل متن پیام‌ها
         message_templates = [
             "سلام {name} عزیز ✨\n\nامیدوارم شروع آخر هفته خوبی داشته باشی و فرصتی برای استراحت پیدا کنی.\n\nاین یک پیام قدردانی مخصوص کاربران ویژه ماست. چه بخوای فیلم ببینی، چه آنلاین بازی کنی، می‌خوام خیالت راحت باشه که اتصال پایدارت برای من در اولویته.\n\nاگه حس کردی سرعت یا کیفیت اتصال مثل همیشه نیست، بدون تردید روی دکمه زیر بزن تا شخصاً برات پیگیری کنم.\n\nمراقب خودت باش و از تعطیلاتت لذت ببر.",
             "سلام {name}، آخر هفته‌ات بخیر! ☀️\n\nفقط خواستم بگم حواسم به کیفیت سرویس هست تا تو این آخر هفته با خیال راحت به کارهات برسی.\n\nاگه موقع استریم یا هر استفاده دیگه‌ای حس کردی چیزی مثل همیشه نیست، من اینجام تا سریع حلش کنم. هدف من اینه که تو بهترین تجربه رو داشته باشی.\n\nآخر هفته خوبی داشته باشی و حسابی استراحت کن!",
             "{name} عزیز، آخر هفته خوبی پیش رو داشته باشی! ☕️\n\nهدف ما اینه که تو بتونی بدون هیچ دغدغه‌ای از دنیای آنلاین لذت ببری.\n\nاگه احساس کردی سرویس اون‌طور که باید باشه نیست و مانع تفریح یا کارت شده، حتماً بهم خبر بده. اتصال بی‌نقص حق شماست.\n\nامیدوارم آخر هفته پر از آرامشی داشته باشی. مراقب خودت هم باش."
         ]
         
-        # ۲. لیست کامل عنوان دکمه‌ها (جدید)
         button_texts = [
             "💬 پشتیبانی ویژه VIP", "💬 اگه مشکلی بود، به من بگو",
             "📞 خط ارتباطی سریع", "ارتباط مستقیم با مدیریت", "پشتیبانی اختصاصی شما"
@@ -965,18 +962,17 @@ class SchedulerManager:
                 if user_info:
                     user_name = user_info.get('first_name', 'کاربر ویژه')
                     
-                    # ۳. انتخاب تصادفی پیام و عنوان دکمه
                     chosen_template = random.choice(message_templates)
                     chosen_button_text = random.choice(button_texts)
                     
-                    # ساخت پیام نهایی
-                    final_message_text = chosen_template.format(name=escape_markdown(user_name))
+                    # ✅ **FIX APPLIED HERE**
+                    # First, escape the entire template. Then, format it.
+                    final_message_text = escape_markdown(chosen_template).format(name=escape_markdown(user_name))
                     
-                    # ساخت دکمه با عنوان تصادفی
                     kb = types.InlineKeyboardMarkup()
                     kb.add(types.InlineKeyboardButton(chosen_button_text, url=f"https://t.me/{my_telegram_username}"))
                     
-                    # ارسال پیام و دکمه در یک فراخوانی واحد
+                    # The send function expects an already escaped string.
                     self._send_warning_message(
                         user_id,
                         final_message_text,
@@ -986,6 +982,7 @@ class SchedulerManager:
             except Exception as e:
                 logger.error(f"Failed to send VIP message to user {user_id}: {e}")
 
+
     def _send_weekend_normal_user_message(self) -> None:
         """پیام قدردانی آخر هفته را برای کاربران عادی (غیر VIP) ارسال می‌کند."""
         import random
@@ -994,7 +991,6 @@ class SchedulerManager:
 
         logger.info("SCHEDULER: Sending weekend thank you message to normal users.")
         
-        # ۱. پیدا کردن تمام کاربران غیر VIP
         all_uuids = db.get_all_user_uuids()
         normal_users_uuids = [u for u in all_uuids if not u.get('is_vip')]
         
@@ -1002,10 +998,8 @@ class SchedulerManager:
             logger.info("No normal users found to send weekend message.")
             return
 
-        # ۲. استخراج user_id های منحصر به فرد
         normal_user_ids = {db.get_user_id_by_uuid(u['uuid']) for u in normal_users_uuids if db.get_user_id_by_uuid(u['uuid'])}
 
-        # ۳. تعریف لیست پیام‌ها
         message_templates = [
             "سلام {name} عزیز!\n\nامیدوارم آخر هفته خوبی داشته باشی. خواستم از همراهی و اعتماد شما به سرویس ما تشکر کنم. حضور شما برای ما بسیار ارزشمنده.\n\nما همیشه در تلاشیم تا بهترین و پایدارترین اتصال رو برای شما فراهم کنیم. یادت باشه که با تمدید به موقع سرویس و دعوت از دوستانت، می‌تونی امتیاز جمع کنی و به جمع کاربران ویژه ما بپیوندی.\n\nاگه هر سوالی داشتی، من برای کمک آماده‌ام.",
             "سلام {name} عزیز، آخر هفته‌ات بخیر! ☀️\n\nاز اینکه بخشی از جامعه کاربران ما هستی، خوشحالیم. امیدواریم از سرویس‌مون راضی باشی.\n\nخواستم یادآوری کنم که همیشه می‌تونی از بخش «🏆 دستاوردها» در ربات، راه‌های کسب امتیاز رو ببینی و از «🛍️ فروشگاه» برای خودت حجم یا روز اضافه هدیه بگیری.\n\nاگه پیشنهادی برای بهتر شدن سرویس داشتی، خوشحال میشم بشنوم. آخر هفته خوبی داشته باشی!"
@@ -1026,7 +1020,7 @@ class SchedulerManager:
                     chosen_template = random.choice(message_templates)
                     chosen_button_text = random.choice(button_texts)
                     
-                    final_message_text = chosen_template.format(name=escape_markdown(user_name))
+                    final_message_text = escape_markdown(chosen_template).format(name=escape_markdown(user_name))
                     
                     kb = types.InlineKeyboardMarkup()
                     kb.add(types.InlineKeyboardButton(chosen_button_text, url=f"https://t.me/{my_telegram_username}"))
@@ -1064,8 +1058,8 @@ class SchedulerManager:
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._send_daily_achievements_report)
-        schedule.every().thursday.at("16:00", self.tz_str).do(self._send_weekend_vip_message)
-        schedule.every().thursday.at("16:15", self.tz_str).do(self._send_weekend_normal_user_message)
+        schedule.every().thursday.at("17:00", self.tz_str).do(self._send_weekend_vip_message)
+        schedule.every().thursday.at("17:15", self.tz_str).do(self._send_weekend_normal_user_message)
         schedule.every().friday.at("23:30", self.tz_str).do(self._send_achievement_leaderboard)
         schedule.every().friday.at("23:55", self.tz_str).do(self._weekly_report)
         schedule.every().friday.at("23:59", self.tz_str).do(self._send_weekly_admin_summary)
