@@ -216,6 +216,7 @@ class UserService:
                 "has_access_us": uuid_record.get('has_access_us', False),
                 "usage_comparison": usage_comparison, # افزودن داده جدید
                 "unread_notifications_count": len(db.get_notifications_for_user(user_id)) if user_id else 0,
+                "wallet_balance": user_basic.get('wallet_balance', 0.0),
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)

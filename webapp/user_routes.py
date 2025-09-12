@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from bot.config import ADMIN_SUPPORT_CONTACT
 import os
 import json
+from bot.user_handlers import wallet as user_wallet_handlers
+import math
 
 logger = logging.getLogger(__name__)
 user_bp = Blueprint('user', __name__, url_prefix='/user')
@@ -26,19 +28,6 @@ def user_dashboard(uuid):
     if not user_data:
         abort(404, "کاربر یافت نشد")
     return render_template('user_dashboard.html', user=user_data)
-
-@user_bp.route('/<string:uuid>/payments')
-def payment_history_page(uuid):
-    user_data = user_service.get_processed_user_data(uuid)
-    if not user_data:
-        abort(404, "کاربر یافت نشد")
-
-    payment_history_list = user_data.get("payment_history", [])
-    
-    for payment in payment_history_list:
-        payment['shamsi_date'] = to_shamsi(payment['payment_date'], include_time=True)
-    
-    return render_template('user_payment_history.html', user=user_data)
 
 
 @user_bp.route('/sub/<string:uuid>')
@@ -355,3 +344,67 @@ def mark_all_notifications_read_api(uuid):
 
     updated_count = db.mark_all_notifications_as_read(user_id)
     return jsonify({'success': True, 'message': f'{updated_count} پیام خوانده شد.'})
+
+@user_bp.route('/<string:uuid>/payments')
+def payment_history_page(uuid):
+    user_data = user_service.get_processed_user_data(uuid)
+    if not user_data:
+        abort(404, "کاربر یافت نشد")
+    
+    uuid_record = db.get_user_uuid_record(uuid)
+    if not uuid_record:
+        abort(404, "رکورد UUID یافت نشد")
+    
+    payment_history = db.get_user_payment_history(uuid_record['id'])
+    for payment in payment_history:
+        payment['shamsi_date'] = to_shamsi(payment['payment_date'], include_time=True)
+        
+    # اطمینان از ارسال متغیر برای سایدبار
+    unread_notifications_count = user_data.get('unread_notifications_count', 0)
+        
+    return render_template('user_payment_history.html', user=user_data, uuid=uuid, payments=payment_history, unread_notifications_count=unread_notifications_count)
+
+@user_bp.route('/<string:uuid>/wallet')
+def wallet_page(uuid):
+    user_data = user_service.get_processed_user_data(uuid)
+    if not user_data:
+        abort(404, "کاربر یافت نشد")
+
+    uuid_record = db.get_user_uuid_record(uuid)
+    user_id = uuid_record.get('user_id') if uuid_record else None
+    if not user_id:
+        abort(404, "شناسه کاربری یافت نشد")
+
+    # منطق صفحه‌بندی
+    page = request.args.get('page', 1, type=int)
+    per_page = 25
+    
+    transactions = db.get_wallet_transactions_paginated(user_id, page, per_page)
+    total_transactions = db.get_wallet_transactions_count(user_id)
+    total_pages = math.ceil(total_transactions / per_page)
+
+    for t in transactions:
+        t['shamsi_date'] = to_shamsi(t['transaction_date'], include_time=True)
+
+    # دریافت آمار جدید از دیتابیس
+    total_expenses = db.get_user_total_expenses(user_id)
+    purchase_stats = db.get_user_purchase_stats(user_id)
+    
+    wallet_stats = {
+        'total_expenses': total_expenses,
+        'total_purchases': purchase_stats.get('total_purchases', 0),
+        'gift_purchases': purchase_stats.get('gift_purchases', 0)
+    }
+
+    return render_template(
+        'user_wallet.html',
+        user=user_data,
+        uuid=uuid,
+        transactions=transactions,
+        wallet_balance=user_data.get('wallet_balance', 0),
+        wallet_stats=wallet_stats,  # ارسال آمار به قالب
+        current_page=page,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1
+    )

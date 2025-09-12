@@ -8,6 +8,7 @@ from ..language import get_string
 from ..config import ADMIN_IDS, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT
 from .. import combined_handler
 from telebot.apihelper import ApiTelegramException
+from html import escape
 
 
 logger = logging.getLogger(__name__)

@@ -515,3 +515,16 @@ button, input, select, textarea {
     top: 10px;
     right: 10px;
 }
+.header-wallet-balance {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--border-color);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-weight: 500;
+}
+.header-wallet-balance small {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}

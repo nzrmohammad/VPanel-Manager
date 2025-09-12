@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %} کیف پول {% endblock %}
+
+{% block extra_css %}
+<style>
+    .charge-card, .history-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 1.5rem 2rem;
+        margin-bottom: 1.5rem;
+    }
+    .balance-display {
+        text-align: center;
+        padding-bottom: 1.5rem;
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .balance-display .label {
+        font-size: 1rem;
+        color: var(--text-secondary);
+    }
+    .balance-display .amount {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: var(--accent-color);
+        margin-top: 0.5rem;
+    }
+    .balance-display .amount small {
+        font-size: 1rem;
+        font-weight: normal;
+    }
+    .balance-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        text-align: center;
+    }
+    .stat-item .value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-color);
+    }
+    .stat-item .label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin-top: 0.25rem;
+    }
+
+    /* --- START: کد اصلاح شده برای چپ‌چین کردن اعداد --- */
+    .stat-item {
+        text-align: left; /* این خط اعداد را به سمت چپ منتقل می‌کند */
+    }
+    /* --- END: کد اصلاح شده --- */
+
+    .transaction-list { list-style: none; padding: 0; }
+    .transaction-item {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 0.5rem;
+    }
+    .transaction-item:not(:last-child) {
+        border-bottom: 1px solid var(--border-color);
+    }
+    .transaction-icon { font-size: 1.8rem; }
+    .icon-deposit { color: var(--success-color); }
+    .icon-purchase { color: var(--danger-color); }
+    .icon-refund, .icon-transfer { color: var(--warning-color); }
+    .transaction-info .description { font-weight: 600; font-size: 0.95rem; }
+    .transaction-info .date { font-size: 0.8rem; color: var(--text-secondary); }
+    .transaction-amount { font-weight: bold; font-size: 1.1rem; text-align: left; }
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    .pagination a, .pagination span {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        text-decoration: none;
+        color: var(--text-color);
+        font-size: 0.9rem;
+    }
+    .pagination a:hover {
+        background-color: var(--accent-color);
+        color: white;
+    }
+    .pagination .disabled {
+        color: var(--text-secondary);
+        background-color: var(--bg-color);
+        cursor: not-allowed;
+    }
+    .pagination .current {
+        font-weight: bold;
+        color: var(--accent-color);
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='کیف پول' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="charge-card">
+        <div class="balance-display">
+            <div class="label">موجودی فعلی شما</div>
+            <div class="amount">{{ "{:,.0f}".format(wallet_balance) }} <small>تومان</small></div>
+        </div>
+
+        <div class="balance-stats">
+            <div class="stat-item">
+                <div class="value">{{ "{:,.0f}".format(wallet_stats.total_expenses) }}</div>
+                <div class="label">مجموع هزینه‌ها</div>
+            </div>
+            <div class="stat-item">
+                <div class="value">{{ wallet_stats.total_purchases }}</div>
+                <div class="label">تعداد سرویس‌های خریداری شده</div>
+            </div>
+            <div class="stat-item">
+                <div class="value">{{ wallet_stats.gift_purchases }}</div>
+                <div class="label">تعداد هدیه‌های ارسالی</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="history-card">
+        <h3 class="section-title" style="margin-top: 0;">تاریخچه تراکنش‌ها</h3>
+        <ul class="transaction-list">
+            {% for t in transactions %}
+                {% set icon_class = 'ri-arrow-up-circle-line icon-deposit' if t.type == 'deposit' else 'ri-arrow-down-circle-line icon-purchase' if t.type == 'purchase' else 'ri-swap-line icon-transfer' if 'transfer' in t.type else 'ri-refresh-line icon-refund' %}
+                {% set amount_color = 'var(--success-color)' if t.type in ['deposit', 'wallet_transfer_receiver'] else 'var(--danger-color)' if t.type in ['purchase', 'wallet_transfer_sender'] else 'var(--text-color)' %}
+                {% set amount_sign = '+' if t.type in ['deposit', 'wallet_transfer_receiver'] else '-' %}
+                
+                <li class="transaction-item">
+                    <i class="{{ icon_class }} transaction-icon"></i>
+                    <div class="transaction-info">
+                        <div class="description">
+                            {% if t.type == 'purchase' and t.description and ('plan_purchase:' in t.description or 'خرید سرویس:' in t.description) %}
+                                خرید سرویس: {{ t.description.split(':')[1] }}
+                            {% elif t.type == 'purchase' and t.description and 'خرید هدیه:' in t.description %}
+                                {{ t.description }}
+                            {% elif t.type == 'deposit' %}
+                                افزایش موجودی توسط ادمین
+                            {% elif t.type == 'wallet_transfer_sender' and t.description and 'wallet_transfer_sender:' in t.description %}
+                                انتقال وجه به: {{ t.description.split(':')[1] }}
+                            {% elif t.type == 'wallet_transfer_receiver' and t.description and 'wallet_transfer_receiver:' in t.description %}
+                                دریافت وجه از: {{ t.description.split(':')[1] }}
+                            {% else %}
+                                {{ t.description or t.type|replace('_', ' ')|capitalize }}
+                            {% endif %}
+                        </div>
+                        <div class="date">{{ t.shamsi_date }}</div>
+                    </div>
+                    <div class="transaction-amount" style="color: {{ amount_color }};">
+                        {{ amount_sign }} {{ "{:,.0f}".format(t.amount|abs) }}
+                    </div>
+                </li>
+            {% else %}
+                <li style="text-align: center; padding: 2rem 0; color: var(--text-secondary);">تاکنون تراکنشی ثبت نشده است.</li>
+            {% endfor %}
+        </ul>
+
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if has_prev %}
+                <a href="{{ url_for('user.wallet_page', uuid=uuid, page=current_page - 1) }}">قبلی</a>
+            {% else %}
+                <span class="disabled">قبلی</span>
+            {% endif %}
+            <span class="current">صفحه {{ current_page }} از {{ total_pages }}</span>
+            {% if has_next %}
+                <a href="{{ url_for('user.wallet_page', uuid=uuid, page=current_page + 1) }}">بعدی</a>
+            {% else %}
+                <span class="disabled">بعدی</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+{% endblock %}

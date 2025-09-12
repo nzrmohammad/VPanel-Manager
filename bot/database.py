@@ -2488,6 +2488,74 @@ class DatabaseManager:
             cursor = c.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", (user_id,))
             return cursor.rowcount
 
+    def get_wallet_transactions(self, user_id: int, limit: int = 50) -> list:
+        """لیست تراکنش‌های کیف پول یک کاربر را برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT amount, type, description, transaction_date
+                FROM wallet_transactions
+                WHERE user_id = ?
+                ORDER BY transaction_date DESC
+                LIMIT ?
+                """,
+                (user_id, limit)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_wallet_transactions_paginated(self, user_id: int, page: int = 1, per_page: int = 10) -> list:
+        """لیست تراکنش‌های کیف پول یک کاربر را به صورت صفحه‌بندی شده برمی‌گرداند."""
+        offset = (page - 1) * per_page
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT amount, type, description, transaction_date
+                FROM wallet_transactions
+                WHERE user_id = ?
+                ORDER BY transaction_date DESC
+                LIMIT ? OFFSET ?
+                """,
+                (user_id, per_page, offset)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_wallet_transactions_count(self, user_id: int) -> int:
+        """تعداد کل تراکنش‌های کیف پول یک کاربر را برمی‌گرداند."""
+        with self._conn() as c:
+            row = c.execute("SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ?", (user_id,)).fetchone()
+            return row[0] if row else 0
+
+    def get_user_total_expenses(self, user_id: int) -> float:
+        """مجموع کل هزینه‌های یک کاربر (خرید و انتقال) را محاسبه می‌کند."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT SUM(amount) FROM wallet_transactions WHERE user_id = ? AND type IN ('purchase', 'wallet_transfer_sender')",
+                (user_id,)
+            ).fetchone()
+            return row[0] if row and row[0] else 0.0
+
+    def get_user_purchase_stats(self, user_id: int) -> dict:
+        """آمار خریدهای یک کاربر (تعداد کل خریدها و تعداد هدایا) را برمی‌گرداند."""
+        with self._conn() as c:
+            # شمارش تعداد کل خریدها
+            total_purchases_row = c.execute(
+                "SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ? AND type = 'purchase'",
+                (user_id,)
+            ).fetchone()
+            total_purchases = total_purchases_row[0] if total_purchases_row else 0
+
+            # شمارش تعداد خریدهای هدیه
+            gift_purchases_row = c.execute(
+                "SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ? AND type = 'purchase' AND description LIKE 'gift_purchase:%'",
+                (user_id,)
+            ).fetchone()
+            gift_purchases = gift_purchases_row[0] if gift_purchases_row else 0
+            
+            return {
+                'total_purchases': total_purchases,
+                'gift_purchases': gift_purchases
+            }
+
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
         access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
