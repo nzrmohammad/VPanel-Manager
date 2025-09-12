@@ -594,7 +594,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         f"💳 پرداخت‌های امروز : *{payments_today_count}*",
         f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
         f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-        f" 🇫🇷🇹🇷 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+        # ✅ **اصلاح اصلی اول:** پرچم آمریکا به اینجا اضافه شد
+        f" 🇫🇷🇹🇷🇺🇸 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
 
     # --- بخش ۳: افزودن لیست‌های جزئی ---
@@ -615,6 +616,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 flags = []
                 if user_db_record.get('has_access_fr'): flags.append("🇫🇷")
                 if user_db_record.get('has_access_tr'): flags.append("🇹🇷")
+                # ✅ **اصلاح اصلی دوم:** پرچم آمریکا اینجا اضافه شد
+                if user_db_record.get('has_access_us'): flags.append("🇺🇸")
                 if flags:
                     usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(marzban_usage))}")
             usage_str = escape_markdown(" | ").join(usage_parts)
@@ -666,9 +669,9 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         warning_map = {
             "expiry": "انقضای سرویس", 
             "low_data_hiddify": "کمبود حجم 🇩🇪", 
-            "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷",
+            "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸",
             "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-            "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷",
+            "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸",
             "unusual_daily_usage": "مصرف غیرعادی", 
             "too_many_devices": "تعداد دستگاه بالا",
             "inactive_user_reminder": "یادآوری عدم فعالیت"

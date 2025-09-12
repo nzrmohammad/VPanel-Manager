@@ -238,7 +238,7 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
 def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
     """
     (نسخه نهایی و اصلاح شده)
-    گزارش هفتگی را با تفکik مصرف، مقایسه با هفته قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
+    گزارش هفتگی را با تفکیک مصرف، مقایسه با هفته قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
     این نسخه شامل سرور آمریکا بوده و پرانتزها را به درستی escape می‌کند.
     """
     if not user_infos:
@@ -260,7 +260,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         user_id = user_record.get('user_id')
         name = info.get("name", get_string('unknown_user', lang_code))
 
-        # دریافت تاریخچه مصرف به تفکik پنل‌ها
+        # دریافت تاریخچه مصرف به تفکیک پنل‌ها
         daily_history = db.get_user_daily_usage_history_by_panel(uuid_id, days=7)
         current_week_usage = sum(item['total_usage'] for item in daily_history)
 
@@ -268,7 +268,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
         if len(user_infos) > 1:
             account_lines.append(f"*{escape_markdown(get_string('fmt_report_account_header', lang_code).format(name=name))}*")
 
-        # نمایش مصرف روزانه به تفکik
+        # نمایش مصرف روزانه به تفکیک
         for item in reversed(daily_history):
             total_daily = item['total_usage']
             if total_daily > 0.001:
@@ -284,17 +284,14 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 if h_usage_day > 0.001:
                     breakdown_parts.append(f"🇩🇪 {format_daily_usage(h_usage_day)}")
                 if m_usage_day > 0.001:
-                    # --- START OF FIX: Add US flag dynamically ---
                     flags = []
                     if user_record.get('has_access_fr'): flags.append("🇫🇷")
                     if user_record.get('has_access_tr'): flags.append("🇹🇷")
                     if user_record.get('has_access_us'): flags.append("🇺🇸")
-                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷" # Fallback
+                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸" # Fallback
                     breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
-                    # --- END OF FIX ---
                 
                 if breakdown_parts:
-                    # Correctly escape parentheses
                     account_lines.append(f"  \\({escape_markdown(', '.join(breakdown_parts))}\\)")
 
         # فوتر مصرف کل
@@ -323,6 +320,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             
             total_h_usage = sum(d.get('hiddify_usage', 0.0) for d in daily_history)
             total_m_usage = sum(d.get('marzban_usage', 0.0) for d in daily_history)
+            
             most_used_server = "آلمان 🇩🇪" if total_h_usage >= total_m_usage else "فرانسه/ترکیه/آمریکا 🇫🇷🇹🇷🇺🇸"
             
             time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
