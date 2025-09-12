@@ -18,13 +18,16 @@
         color: var(--text-secondary);
     }
     
-    /* --- START: کد جدید برای وسط‌چین کردن عنوان --- */
     .panel-header {
-        justify-content: center !important; /* عنوان را وسط‌چین می‌کند */
+        justify-content: center !important;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
-    /* --- END: کد جدید --- */
+    .panel-header .fi {
+        font-size: 1.5rem;
+    }
 
-    /* --- استایل‌های کاملاً جدید و خفن برای کارت آنالیز --- */
     .smart-analysis-section {
         background: var(--card-bg);
         border: 1px solid var(--border-color);
@@ -49,7 +52,7 @@
         font-size: 0.95rem;
         color: var(--text-secondary);
         margin-bottom: 2rem;
-        padding-right: 2.8rem; /* برای هم‌راستایی با متن هدر */
+        padding-right: 2.8rem;
     }
     .analysis-content {
         display: grid;
@@ -88,7 +91,6 @@
         .analysis-content { grid-template-columns: 1fr; }
     }
 
-    /* --- استایل‌های بخش سوالات متداول --- */
     .faq-item {
         background-color: var(--card-bg); border: 1px solid var(--border-color);
         border-radius: var(--border-radius); margin-bottom: 1rem; overflow: hidden;
@@ -144,8 +146,8 @@
                         <li><div class="stat-label"><span>نام پلن</span></div><span class="stat-value">{{ recommended_plan.name }}</span></li>
                         
                         {% if recommended_plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ recommended_plan.total_volume }}</span></li>{% endif %}
-                        {% if recommended_plan.volume_de %}<li><div class="stat-label"><span>حجم 🇩🇪</span></div><span class="stat-value">{{ recommended_plan.volume_de }}</span></li>{% endif %}
-                        {% if recommended_plan.volume_fr %}<li><div class="stat-label"><span>حجم 🇫🇷🇹🇷🇺🇸</span></div><span class="stat-value">{{ recommended_plan.volume_fr }}</span></li>{% endif %}
+                        {% if recommended_plan.volume_de %}<li><div class="stat-label"><span>حجم <span class="fi fi-de"></span></span></div><span class="stat-value">{{ recommended_plan.volume_de }}</span></li>{% endif %}
+                        {% if recommended_plan.volume_fr %}<li><div class="stat-label"><span>حجم <span class="fi fi-fr"></span><span class="fi fi-tr"></span><span class="fi fi-us"></span></span></div><span class="stat-value">{{ recommended_plan.volume_fr }}</span></li>{% endif %}
 
                         {% if recommended_plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ recommended_plan.duration }}</span></li>{% endif %}
                     </ul>
@@ -170,8 +172,8 @@
             <div class="panel-header"><h4>{{ plan.name.replace('🥉', '').replace('🥈', '').replace('🥇', '').replace('✨', '').replace('💎', '') }} {% if '🥉' in plan.name %}🥉{% elif '🥈' in plan.name %}🥈{% elif '🥇' in plan.name %}🥇{% elif '✨' in plan.name %}✨{% elif '💎' in plan.name %}💎{% endif %}</h4></div>
             <ul class="server-stats">
                 {% if plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ plan.total_volume }}</span></li>{% endif %}
-                {% if plan.volume_de %}<li><div class="stat-label"><span>حجم 🇩🇪</span></div><span class="stat-value">{{ plan.volume_de }}</span></li>{% endif %}
-                {% if plan.volume_fr %}<li><div class="stat-label"><span>حجم 🇫🇷🇹🇷🇺🇸</span></div><span class="stat-value">{{ plan.volume_fr }}</span></li>{% endif %}
+                {% if plan.volume_de %}<li><div class="stat-label"><span>حجم <span class="fi fi-de"></span></span></div><span class="stat-value">{{ plan.volume_de }}</span></li>{% endif %}
+                {% if plan.volume_fr %}<li><div class="stat-label"><span>حجم <span class="fi fi-fr"></span><span class="fi fi-tr"></span><span class="fi fi-us"></span></span></div><span class="stat-value">{{ plan.volume_fr }}</span></li>{% endif %}
                 {% if plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>{% endif %}
             </ul>
             <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
@@ -186,9 +188,16 @@
     <section class="details-grid">
         {% for plan in dedicated_plans %}
         <div class="info-card panel-card">
-            {# --- START: بخش اصلاح شده عنوان پلن اختصاصی --- #}
-            <div class="panel-header"><h4>{{ plan.name.replace('🇩🇪', '').replace('🇫🇷', '').replace('🇹🇷', '').replace('🇺🇸', '') }} {% if '🇩🇪' in plan.name %}🇩🇪{% elif '🇫🇷' in plan.name %}🇫🇷{% elif '🇹🇷' in plan.name %}🇹🇷{% elif '🇺🇸' in plan.name %}🇺🇸{% endif %}</h4></div>
-            {# --- END: بخش اصلاح شده --- #}
+            {# --- START: کد نهایی و اصلاح شده برای نمایش پرچم در پلن‌های اختصاصی --- #}
+            <div class="panel-header">
+                <h4>{{ plan.name | replace(' DE ', '') | replace(' FR ', '') | replace(' TR ', '') | replace(' US ', '') | replace('🇩🇪', '') | replace('🇫🇷', '') | replace('🇹🇷', '') | replace('🇺🇸', '') }}</h4>
+                {% if 'DE' in plan.name %}<span class="fi fi-de"></span>
+                {% elif 'FR' in plan.name %}<span class="fi fi-fr"></span>
+                {% elif 'TR' in plan.name %}<span class="fi fi-tr"></span>
+                {% elif 'US' in plan.name %}<span class="fi fi-us"></span>
+                {% endif %}
+            </div>
+            {# --- END: کد نهایی و اصلاح شده --- #}
             <ul class="server-stats">
                 <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr or plan.volume_tr or plan.volume_us }}</span></li>
                 <li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %} پیام‌ها و اعلان‌ها {% endblock %}
+
+{% block extra_css %}
+<style>
+    .notifications-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    .btn-mark-all {
+        background: none;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s ease;
+    }
+    .btn-mark-all:hover {
+        background: var(--accent-color);
+        color: white;
+        border-color: var(--accent-color);
+    }
+    .notification-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    .notification-item {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        gap: 1.5rem;
+        align-items: flex-start;
+        transition: background-color 0.3s ease;
+    }
+    .notification-item.unread {
+        background-color: rgba(var(--accent-rgb), 0.05);
+        border-left: 4px solid var(--accent-color);
+    }
+    .notification-icon {
+        flex-shrink: 0;
+        font-size: 1.8rem;
+        color: var(--accent-color);
+        padding-top: 0.2rem;
+    }
+    .notification-content {
+        flex-grow: 1;
+    }
+    .notification-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .notification-title {
+        font-size: 1.1rem;
+        font-weight: bold;
+    }
+    .notification-date {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .notification-body {
+        font-size: 0.95rem;
+        line-height: 1.8;
+        color: var(--text-color);
+    }
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: var(--text-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title = 'صندوق ورودی' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="notifications-header">
+        <h3>آخرین پیام‌های شما</h3>
+        {% if notifications | selectattr('is_read', 'equalto', 0) | list | length > 0 %}
+            <button id="mark-all-read-btn" class="btn-mark-all">خوانده شدن همه</button>
+        {% endif %}
+    </div>
+    
+    <div class="notification-list">
+        {% for notif in notifications %}
+            {% set icon = 'ri-gift-line' if notif.category == 'gift' else 'ri-error-warning-line' if notif.category == 'warning' else 'ri-megaphone-line' if notif.category == 'broadcast' else 'ri-information-line' %}
+            <div class="notification-item {% if notif.is_read == 0 %}unread{% endif %}">
+                <div class="notification-icon"><i class="{{ icon }}"></i></div>
+                <div class="notification-content">
+                    <div class="notification-header">
+                        <span class="notification-title">{{ notif.title }}</span>
+                        <span class="notification-date">{{ notif.shamsi_date }}</span>
+                    </div>
+                    <p class="notification-body">{{ notif.message }}</p>
+                </div>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <i class="ri-mail-open-line" style="font-size: 3rem;"></i>
+                <p>صندوق ورودی شما خالی است.</p>
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const markAllReadBtn = document.getElementById('mark-all-read-btn');
+    if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', function() {
+            const csrfToken = '{{ csrf_token() }}';
+            const uuid = '{{ uuid }}';
+
+            fetch(`/user/${uuid}/api/notifications/mark-all-read`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // تغییر ظاهری آیتم‌ها بدون رفرش صفحه
+                    document.querySelectorAll('.notification-item.unread').forEach(item => {
+                        item.classList.remove('unread');
+                    });
+                    // حذف دکمه
+                    markAllReadBtn.remove();
+                    // حذف بج از سایدبار
+                    const badge = document.querySelector('.notification-badge');
+                    if(badge) badge.remove();
+                } else {
+                    alert(data.message || 'خطایی رخ داد.');
+                }
+            })
+            .catch(err => console.error(err));
+        });
+    }
+});
+</script>
+{% endblock %}

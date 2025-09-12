@@ -48,7 +48,19 @@ def handle_wallet_callbacks(call: types.CallbackQuery):
             plan_name = ":".join(action_parts[2:])
             execute_purchase(call, plan_name)
         elif action == 'insufficient':
-            bot.answer_callback_query(call.id, "موجودی کیف پول شما کافی نیست.", show_alert=True)
+            uid, msg_id = call.from_user.id, call.message.message_id
+            lang_code = db.get_user_language(uid)
+            user_balance = (db.user(uid) or {}).get('wallet_balance', 0.0)
+            
+            error_text = (
+                f"*{escape_markdown('موجودی ناکافی!')}*\n\n"
+                f"{escape_markdown(f'موجودی فعلی کیف پول شما ({user_balance:,.0f} تومان) برای انجام این خرید کافی نیست.')}"
+            )
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton(f"➕ {get_string('charge_wallet', lang_code)}", callback_data="wallet:charge"))
+            kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
+            
+            _safe_edit(uid, msg_id, error_text, reply_markup=kb)
         elif action == 'settings':
             show_wallet_settings(call)
         elif action == 'toggle_auto_renew':

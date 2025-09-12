@@ -493,3 +493,25 @@ button, input, select, textarea {
 .text-btn:hover {
     background-color: rgba(var(--accent-rgb), 0.1);
 }
+
+.sidebar-nav li a {
+    position: relative; /* برای جای‌گذاری بج */
+}
+.notification-badge {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: var(--danger-color);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 50px;
+    min-width: 18px;
+    text-align: center;
+}
+.sidebar.collapsed .notification-badge {
+    top: 10px;
+    right: 10px;
+}

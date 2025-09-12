@@ -118,8 +118,6 @@ def _process_user_data(all_users_data):
 # ===================================================================
 # == تابع اصلی سرویس داشبورد (نسخه نهایی و اصلاح شده) ==
 # ===================================================================
-# webapp/services.py
-
 def get_dashboard_data():
     """
     داده‌های کامل و پردازش‌شده را برای داشبورد ادمین جمع‌آوری می‌کند.
@@ -582,16 +580,9 @@ def get_analytics_data():
     new_users_today_count = db.get_new_users_in_range(start_of_today_utc, now_utc)
     
     # --- START OF FIX for Analytics Page ---
-    # مانند داشبورد، اینجا هم محاسبه مصرف روزانه را با حلقه روی هر کاربر اصلاح می‌کنیم
-    # تا مشکل محاسبه اشتباه در زمان ریست شدن حجم کاربر برطرف شود.
-    total_usage_today = 0
-    for user in all_users:
-        uuid = user.get('uuid')
-        if not uuid:
-            continue
-        
-        user_daily_usage = db.get_usage_since_midnight_by_uuid(uuid)
-        total_usage_today += sum(user_daily_usage.values())
+    # مانند داشبورد، اینجا هم محاسبه مصرف روزانه را با فراخوانی تابع بهینه انجام می‌دهیم
+    all_daily_usages = db.get_all_daily_usage_since_midnight()
+    total_usage_today = sum(sum(usages.values()) for usages in all_daily_usages.values())
     # --- END OF FIX for Analytics Page ---
     
     new_users_stats = db.get_new_users_per_month_stats(months=6)

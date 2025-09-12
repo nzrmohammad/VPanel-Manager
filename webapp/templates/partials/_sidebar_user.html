@@ -7,6 +7,7 @@
         <ul>
             <li><a href="{{ url_for('user.user_dashboard', uuid=uuid) }}" class="{% if request.endpoint == 'user.user_dashboard' %}active{% endif %}"><i class="ri-dashboard-line nav-icon"></i><span class="nav-text">داشبورد</span></a></li>
             <li><a href="{{ url_for('user.user_profile_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.user_profile_page' %}active{% endif %}"><i class="ri-user-settings-line nav-icon"></i><span class="nav-text">پروفایل</span></a></li>
+            <li><a href="{{ url_for('user.notifications_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.notifications_page' %}active{% endif %}"><i class="ri-mail-line nav-icon"></i><span class="nav-text">پیام‌ها</span></a></li>
             <li><a href="{{ url_for('user.subscription_links_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.subscription_links_page' %}active{% endif %}"><i class="ri-links-line nav-icon"></i><span class="nav-text">لینک‌های اتصال</span></a></li>
             <li><a href="{{ url_for('user.usage_chart_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.usage_chart_page' %}active{% endif %}"><i class="ri-bar-chart-fill nav-icon"></i><span class="nav-text">نمودار مصرف</span></a></li>
             <li><a href="{{ url_for('user.payment_history_page', uuid=uuid) }}" class="{% if request.endpoint == 'user.payment_history_page' %}active{% endif %}"><i class="ri-history-line nav-icon"></i><span class="nav-text">سابقه پرداخت</span></a></li>

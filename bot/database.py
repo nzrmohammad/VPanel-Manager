@@ -39,29 +39,6 @@ class DatabaseManager:
                 cursor = c.execute("PRAGMA table_info(users);")
                 columns = [row['name'] for row in cursor.fetchall()]
 
-                # Rename old columns if they exist
-                if 'data_warning_hiddify' in columns and 'data_warning_de' not in columns:
-                    c.execute("ALTER TABLE users RENAME COLUMN data_warning_hiddify TO data_warning_de;")
-                    logger.info("MIGRATED: Renamed column 'data_warning_hiddify' to 'data_warning_de'.")
-
-                if 'data_warning_marzban' in columns and 'data_warning_fr' not in columns:
-                    c.execute("ALTER TABLE users RENAME COLUMN data_warning_marzban TO data_warning_fr;")
-                    logger.info("MIGRATED: Renamed column 'data_warning_marzban' to 'data_warning_fr'.")
-
-                # Add the new column for Turkey
-                if 'data_warning_tr' not in columns:
-                    c.execute("ALTER TABLE users ADD COLUMN data_warning_tr INTEGER DEFAULT 1;")
-                    logger.info("MIGRATED: Added column 'data_warning_tr' to users table.")
-                # --- END: Migration Logic ---
-
-                if 'data_warning_us' not in columns:
-                    c.execute("ALTER TABLE users ADD COLUMN data_warning_us INTEGER DEFAULT 1;")
-                    logger.info("MIGRATED: Added column 'data_warning_us' to users table.")
-
-                if 'has_access_us' not in columns:
-                    c.execute("ALTER TABLE user_uuids ADD COLUMN has_access_us INTEGER DEFAULT 0;")
-                    logger.info("MIGRATED: Added column 'has_access_us' to user_uuids table.")
-
             except Exception as e:
                 logger.error(f"An error occurred during database migration check: {e}")
 
@@ -247,6 +224,16 @@ class DatabaseManager:
                     request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_pending INTEGER DEFAULT 1,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                category TEXT DEFAULT 'info', -- مثلا: system, warning, gift, broadcast
+                is_read INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
@@ -2442,6 +2429,64 @@ class DatabaseManager:
                 weekly_usage_by_user_id[user_id] += total_usage
         
         return list(weekly_usage_by_user_id.values())
+
+    def get_previous_day_total_usage(self, uuid_id: int) -> float:
+        """مجموع مصرف کل یک کاربر در روز گذشته را محاسبه می‌کند."""
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        yesterday_tehran = datetime.now(tehran_tz).date() - timedelta(days=1)
+        
+        day_start_utc = datetime(yesterday_tehran.year, yesterday_tehran.month, yesterday_tehran.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+        day_end_utc = day_start_utc + timedelta(days=1)
+
+        with self._conn() as c:
+            query = """
+                SELECT
+                    (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
+                    (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as m_usage
+                FROM usage_snapshots
+                WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
+            """
+            row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
+
+            h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
+            m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
+            
+            return h_usage + m_usage
+
+    def create_notification(self, user_id: int, title: str, message: str, category: str = 'info'):
+        """یک اعلان جدید برای کاربر در دیتابیس ثبت می‌کند."""
+        with self.write_conn() as c:
+            c.execute(
+                "INSERT INTO notifications (user_id, title, message, category) VALUES (?, ?, ?, ?)",
+                (user_id, title, message, category)
+            )
+            logger.info(f"Created notification for user {user_id}, category: {category}")
+
+    def get_notifications_for_user(self, user_id: int, include_read: bool = False) -> list:
+        """لیست اعلان‌های یک کاربر را برمی‌گرداند."""
+        query = "SELECT * FROM notifications WHERE user_id = ?"
+        if not include_read:
+            query += " AND is_read = 0"
+        query += " ORDER BY created_at DESC"
+        
+        with self._conn() as c:
+            rows = c.execute(query, (user_id,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def mark_notification_as_read(self, notification_id: int, user_id: int) -> bool:
+        """یک اعلان خاص را به عنوان خوانده شده علامت می‌زند."""
+        with self.write_conn() as c:
+            cursor = c.execute(
+                "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
+                (notification_id, user_id)
+            )
+            return cursor.rowcount > 0
+
+    def mark_all_notifications_as_read(self, user_id: int) -> int:
+        """تمام اعلان‌های خوانده نشده یک کاربر را خوانده شده می‌کند."""
+        with self.write_conn() as c:
+            cursor = c.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", (user_id,))
+            return cursor.rowcount
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

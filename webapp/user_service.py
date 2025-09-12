@@ -140,7 +140,27 @@ class UserService:
             current_usage = combined_info.get('usage', {}).get('total_usage_GB', 0)
             usage_limit = combined_info.get('usage', {}).get('data_limit_GB', 0)
             usage_percentage = (current_usage / usage_limit * 100) if usage_limit > 0 else 0
-            usage_today = db.get_usage_since_midnight_by_uuid(uuid)
+            
+            # --- START: بخش جدید مقایسه مصرف ---
+            usage_today_dict = db.get_usage_since_midnight_by_uuid(uuid)
+            usage_today_gb = sum(usage_today_dict.values())
+            usage_yesterday_gb = db.get_previous_day_total_usage(uuid_id)
+            
+            usage_comparison = {
+                "today_gb": usage_today_gb,
+                "yesterday_gb": usage_yesterday_gb,
+                "change_percentage": 0,
+                "status": "neutral" # neutral, increase, decrease
+            }
+            if usage_yesterday_gb > 0.01:
+                change = ((usage_today_gb - usage_yesterday_gb) / usage_yesterday_gb) * 100
+                usage_comparison['change_percentage'] = int(round(change))
+                if change > 5:
+                    usage_comparison['status'] = 'increase'
+                elif change < -5:
+                    usage_comparison['status'] = 'decrease'
+            # --- END: بخش جدید ---
+
             chart_data, avg_daily_usage = UserService.get_user_usage_stats(uuid_id)
 
             remaining_gb = usage_limit - current_usage
@@ -183,16 +203,19 @@ class UserService:
                 "usage_limit_GB": usage_limit,
                 "usage_percentage": round(usage_percentage, 1),
                 "usage_chart_data": chart_data,
-                "breakdown": UserService.get_user_breakdown_data(combined_info, usage_today),
+                "breakdown": UserService.get_user_breakdown_data(combined_info, usage_today_dict), # ارسال دیکشنری مصرف به جای عدد
                 **UserService.get_birthday_info(user_basic),
                 "payment_history": payment_history,
                 "recommended_plan": recommended_plan,
                 "actual_last_30_days_usage": actual_usage,
-                "loyalty_progress_message": loyalty_message, # This is now a formatted string
+                "loyalty_progress_message": loyalty_message,
                 "achievements": achievements,
                 "has_access_de": uuid_record.get('has_access_de', False),
                 "has_access_fr": uuid_record.get('has_access_fr', False),
                 "has_access_tr": uuid_record.get('has_access_tr', False),
+                "has_access_us": uuid_record.get('has_access_us', False),
+                "usage_comparison": usage_comparison, # افزودن داده جدید
+                "unread_notifications_count": len(db.get_notifications_for_user(user_id)) if user_id else 0,
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)

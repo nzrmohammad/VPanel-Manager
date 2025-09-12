@@ -29,6 +29,17 @@
     .status-dot.offline { background: #ef4444; }
     .status-dot.recent { background: #f59e0b; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    
+    /* --- START: استایل‌های جدید برای کارت مقایسه --- */
+    .comparison-card .card-content { display: flex; align-items: center; justify-content: space-between; }
+    .comparison-details { display: flex; flex-direction: column; }
+    .comparison-change { font-size: 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+    .comparison-change.increase { color: var(--danger-color); }
+    .comparison-change.decrease { color: var(--success-color); }
+    .comparison-change.neutral { color: var(--text-secondary); }
+    .comparison-change .icon { font-size: 1.8rem; }
+    .comparison-yesterday { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    /* --- END: استایل‌های جدید --- */
 </style>
 {% endblock %}
 
@@ -42,9 +53,7 @@
     </div>
 
     {% if user.loyalty_progress_message %}
-    {# --- START: کد نهایی و اصلاح شده برای کارت وفاداری --- #}
     <div class="user-card" style="margin-top: 15px;">
-        
         <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: right;">
             <div class="user-info" style="font-size: 1.05rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                 <i class="ri-award-line"></i>
@@ -54,13 +63,13 @@
                 {{ user.loyalty_progress_message | safe }}
             </div>
         </div>
-
     </div>
-    {# --- END: کد نهایی --- #}
     {% endif %}
 
     {% if user.achievements %}
-    <div class="info-card" style="margin-top: 15px;">
+    {# --- START: اصلاح فاصله‌گذاری کارت نشان‌ها --- #}
+    <div class="info-card" style="margin-top: 15px; margin-bottom: 15px;">
+    {# --- END: اصلاح فاصله‌گذاری --- #}
         <div class="card-header"><i class="ri-medal-line icon"></i><span>نشان‌های افتخار شما</span></div>
         <div class="card-content" style="display: flex; gap: 1rem; font-size: 2rem;">
             {% for badge_code in user.achievements %}
@@ -97,18 +106,31 @@
             <div class="card-header"><i class="ri-calendar-event-line icon"></i><span>تاریخ انقضا</span></div>
             <div class="card-content"><span>{{ format_date_numeric(user.expire_shamsi) }}</span>{% if user.expire != "" and user.expire > 0 %}<small> ({{ user.expire }} روز)</small>{% endif %}</div>
         </div>
-        <div class="info-card">
-            <div class="card-header"><i class="ri-battery-2-charge-line icon"></i><span>پیش‌بینی اتمام حجم</span></div>
+        
+        {# --- START: کارت جدید مقایسه مصرف --- #}
+        <div class="info-card comparison-card">
+            <div class="card-header"><i class="ri-line-chart-line icon"></i><span>مصرف امروز</span></div>
             <div class="card-content">
-                {% if user.days_to_depletion > 0 and user.days_to_depletion < 500 %}
-                    <span>حدود {{ user.days_to_depletion|round|int }} روز دیگر</span>
-                {% elif user.usage_limit_GB > 0 and user.current_usage_GB >= user.usage_limit_GB %}
-                    <small>حجم تمام شده</small>
-                {% else %}
-                    <small>مصرفی ثبت نشده</small>
+                <div class="comparison-details">
+                    <span class="value">{{ "%.2f"|format(user.usage_comparison.today_gb) }} <small>GB</small></span>
+                    <span class="comparison-yesterday">دیروز: {{ "%.2f"|format(user.usage_comparison.yesterday_gb) }} GB</span>
+                </div>
+                {% if user.usage_comparison.yesterday_gb > 0.01 %}
+                    <div class="comparison-change {{ user.usage_comparison.status }}">
+                        {% if user.usage_comparison.status == 'increase' %}
+                            <i class="ri-arrow-up-line icon"></i>
+                        {% elif user.usage_comparison.status == 'decrease' %}
+                             <i class="ri-arrow-down-line icon"></i>
+                        {% else %}
+                             <i class="ri-subtract-line icon"></i>
+                        {% endif %}
+                        <span>{{ user.usage_comparison.change_percentage }}%</span>
+                    </div>
                 {% endif %}
             </div>
         </div>
+        {# --- END: کارت جدید --- #}
+
         <div class="info-card">
             <div class="card-header"><i class="ri-user-add-line icon"></i><span>تاریخ عضویت</span></div>
             <div class="card-content"><span>{{ format_date_numeric(user.created_at_shamsi) }}</span></div>
@@ -154,14 +176,29 @@
             
             <div class="info-card panel-card">
                 <div class="panel-header">
-                    <h4>{{ panel_name }}</h4>
-                    <span class="fi fi-{{ 'de' if panel_type == 'hiddify' else 'fr' }}"></span>
+                    {# --- START: اصلاح بخش پرچم‌ها --- #}
+                    <h4>
+                        {% if panel_type == 'hiddify' %}
+                            سرور آلمان
+                        {% else %}
+                            سرورهای دیگر
+                        {% endif %}
+                    </h4>
+                    <span style="font-size: 1.5rem;">
+                        {% if panel_type == 'hiddify' and user.has_access_de %}
+                            <span class="fi fi-de"></span>
+                        {% elif panel_type == 'marzban' %}
+                            {% if user.has_access_fr %}<span class="fi fi-fr"></span>{% endif %}
+                            {% if user.has_access_tr %}<span class="fi fi-tr"></span>{% endif %}
+                            {% if user.has_access_us %}<span class="fi fi-us"></span>{% endif %}
+                        {% endif %}
+                    </span>
+                    {# --- END: اصلاح بخش پرچم‌ها --- #}
                 </div>
                 <ul class="server-stats">
                     <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if panel_data.online_status == 'آنلاین' else 'recent' if panel_data.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ panel_data.online_status }}</span></li>
                     <li><div class="stat-label"><i class="ri-time-line"></i><span>آخرین اتصال</span></div><span class="stat-value">{{ panel_data.last_online_shamsi }}</span></li>
                     
-                    {# ✅ **اصلاح کلیدی:** استفاده از متغیر صحیح #}
                     <li><div class="stat-label"><i class="ri-flashlight-line"></i><span>مصرف امروز</span></div><span class="stat-value">{{ "%.2f" | format(panel_data.get('today_usage_GB', 0)) }} GB</span></li>
                     
                     <li><div class="stat-label"><i class="ri-calendar-check-line"></i><span>انقضای پنل</span></div><span class="stat-value">{{ format_date_numeric(panel_data.expire_shamsi) }}</span></li>
@@ -223,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             label: '🇩🇪', data: {{ user.usage_chart_data.hiddify_data|tojson }},
                             borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.3, pointRadius: 2, borderWidth: 1.5
                         }, {
-                            label: '🇫🇷', data: {{ user.usage_chart_data.marzban_data|tojson }},
+                            label: '🇫🇷🇹🇷🇺🇸', data: {{ user.usage_chart_data.marzban_data|tojson }},
                             borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.3, pointRadius: 2, borderWidth: 1.5
                         }]
                     },

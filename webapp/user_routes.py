@@ -325,3 +325,33 @@ def serve_serverless_config(uuid):
     except Exception as e:
         logger.error(f"Error serving serverless config for {uuid}: {e}", exc_info=True)
         abort(500, "خطا در ساخت کانفیگ.")
+
+@user_bp.route('/<string:uuid>/notifications')
+def notifications_page(uuid):
+    user_data = user_service.get_processed_user_data(uuid)
+    if not user_data:
+        abort(404, "کاربر یافت نشد")
+    
+    # دریافت شناسه کاربری از رکورد دیتابیس
+    uuid_record = db.get_user_uuid_record(uuid)
+    user_id = uuid_record.get('user_id') if uuid_record else None
+    
+    if not user_id:
+        abort(404, "شناسه کاربری یافت نشد")
+
+    notifications = db.get_notifications_for_user(user_id, include_read=True)
+    for notif in notifications:
+        notif['shamsi_date'] = to_shamsi(notif['created_at'], include_time=True)
+
+    return render_template('user_notifications.html', user=user_data, notifications=notifications)
+
+@user_bp.route('/<string:uuid>/api/notifications/mark-all-read', methods=['POST'])
+def mark_all_notifications_read_api(uuid):
+    uuid_record = db.get_user_uuid_record(uuid)
+    user_id = uuid_record.get('user_id') if uuid_record else None
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': 'کاربر یافت نشد'}), 404
+
+    updated_count = db.mark_all_notifications_as_read(user_id)
+    return jsonify({'success': True, 'message': f'{updated_count} پیام خوانده شد.'})
