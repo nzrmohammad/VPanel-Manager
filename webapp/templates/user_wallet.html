@@ -48,9 +48,13 @@
         margin-top: 0.25rem;
     }
 
-    /* --- START: کد اصلاح شده برای چپ‌چین کردن اعداد --- */
+    /* --- START: کد اصلاح شده برای وسط‌چین کردن آمار --- */
     .stat-item {
-        text-align: left; /* این خط اعداد را به سمت چپ منتقل می‌کند */
+        text-align: center; /* این خط همه چیز را در کارت آمار وسط‌چین می‌کند */
+    }
+    .transaction-amount { 
+        direction: ltr; /* این خط + و - را در سمت چپ عدد قرار می‌دهد */
+        text-align: left; 
     }
     /* --- END: کد اصلاح شده --- */
 
@@ -71,7 +75,7 @@
     .icon-refund, .icon-transfer { color: var(--warning-color); }
     .transaction-info .description { font-weight: 600; font-size: 0.95rem; }
     .transaction-info .date { font-size: 0.8rem; color: var(--text-secondary); }
-    .transaction-amount { font-weight: bold; font-size: 1.1rem; text-align: left; }
+    /* .transaction-amount { font-weight: bold; font-size: 1.1rem; text-align: left; } - این خط با کد اصلاح شده جایگزین شد */
     .pagination {
         display: flex;
         justify-content: center;
