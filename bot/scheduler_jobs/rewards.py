@@ -202,7 +202,7 @@ def run_lucky_lottery(bot) -> None:
         return
 
     logger.info("SCHEDULER: Running monthly lucky lottery.")
-    participants = db.get_lucky_lottery_participants(LUCKY_LOTTERY_BADGE_REQUIREMENT)
+    participants = db.get_lottery_participant_details()
     
     if not participants:
         logger.info("LUCKY LOTTERY: No eligible participants this month.")
@@ -241,7 +241,7 @@ def send_lucky_badge_summary(bot) -> None:
         return
 
     logger.info("SCHEDULER: Sending weekly lucky badge summary.")
-    participants = db.get_lucky_lottery_participants(LUCKY_LOTTERY_BADGE_REQUIREMENT)
+    participants = db.get_lottery_participant_details()
 
     for user in participants:
         user_id = user['user_id']

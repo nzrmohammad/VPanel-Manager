@@ -2300,21 +2300,26 @@ class DatabaseManager:
                 return plan.get('price')
         return None
 
-    def add_lottery_ticket(self, user_id: int):
-        """یک بلیط قرعه‌کشی برای کاربر ثبت می‌کند."""
-        with self.write_conn() as c:
-            c.execute("INSERT INTO lottery_tickets (user_id) VALUES (?)", (user_id,))
-
-    def get_lottery_participants(self) -> list:
-        """لیست تمام شرکت‌کنندگان در قرعه‌کشی این ماه را برمی‌گرداند."""
+    def get_lottery_participant_details(self) -> list[dict]:
+        """
+        لیست کاربران واجد شرایط برای قرعه‌کشی را به همراه جزئیاتشان
+        (نام و تعداد نشان خوش‌شانس) برمی‌گرداند.
+        """
+        query = """
+            SELECT
+                u.user_id,
+                u.first_name,
+                COUNT(ua.id) as lucky_badge_count
+            FROM users u
+            JOIN user_achievements ua ON u.user_id = ua.user_id
+            WHERE ua.badge_code = 'lucky_one'
+            GROUP BY u.user_id
+            HAVING lucky_badge_count > 0
+            ORDER BY lucky_badge_count DESC;
+        """
         with self._conn() as c:
-            rows = c.execute("SELECT user_id FROM lottery_tickets").fetchall()
-            return [row['user_id'] for row in rows]
-
-    def clear_lottery_tickets(self):
-        """تمام بلیط‌های قرعه‌کشی را برای شروع دوره جدید پاک می‌کند."""
-        with self.write_conn() as c:
-            c.execute("DELETE FROM lottery_tickets")
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in rows]
 
     def reset_all_wallet_balances(self) -> int:
         """موجودی کیف پول تمام کاربران را صفر می‌کند."""
