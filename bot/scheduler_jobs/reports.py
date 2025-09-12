@@ -1,0 +1,213 @@
+import logging
+import time
+from datetime import datetime
+import pytz
+import jdatetime
+from telebot import types, apihelper
+
+from bot import combined_handler
+from bot.database import db
+from bot.utils import escape_markdown
+from bot.admin_formatters import fmt_admin_report, fmt_weekly_admin_summary, fmt_daily_achievements_report
+from bot.user_formatters import fmt_user_report, fmt_user_weekly_report
+from bot.config import ADMIN_IDS
+from bot.language import get_string
+
+logger = logging.getLogger(__name__)
+
+def nightly_report(bot, target_user_id: int = None) -> None:
+    """
+    گزارش شبانه را برای کاربران و گزارش جامع را برای ادمین‌ها ارسال می‌کند.
+    """
+    tehran_tz = pytz.timezone("Asia/Tehran")
+    now_gregorian = datetime.now(tehran_tz)
+    
+    # اگر جمعه بود، از ارسال گزارش روزانه برای کاربران عادی صرف‌نظر می‌شود
+    if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6:
+        logger.info("SCHEDULER (Nightly): Friday, skipping daily report for users.")
+        return
+
+    now_str = jdatetime.datetime.fromgregorian(datetime=now_gregorian).strftime("%Y/%m/%d - %H:%M")
+    logger.info(f"SCHEDULER: ----- Running nightly report at {now_str} -----")
+
+    all_users_info_from_api = combined_handler.get_all_users_combined()
+    if not all_users_info_from_api:
+        logger.warning("SCHEDULER: Could not fetch API user info for nightly report. JOB STOPPED.")
+        return
+        
+    user_info_map = {user['uuid']: user for user in all_users_info_from_api}
+    
+    user_ids_to_process = [target_user_id] if target_user_id else list(db.get_all_user_ids())
+    separator = '\n' + '─' * 18 + '\n'
+
+    for user_id in user_ids_to_process:
+        try:
+            # گزارش جامع برای ادمین‌ها
+            if user_id in ADMIN_IDS:
+                admin_header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+                admin_report_text = fmt_admin_report(all_users_info_from_api, db)
+                admin_full_message = admin_header + admin_report_text
+                
+                # مدیریت پیام‌های طولانی برای ادمین
+                if len(admin_full_message) > 4096:
+                    chunks = [admin_full_message[i:i + 4090] for i in range(0, len(admin_full_message), 4090)]
+                    for i, chunk in enumerate(chunks):
+                        if i > 0:
+                            chunk = f"*{escape_markdown('(ادامه گزارش جامع)')}*\n\n" + chunk
+                        bot.send_message(user_id, chunk, parse_mode="MarkdownV2")
+                        time.sleep(0.5)
+                else:
+                    bot.send_message(user_id, admin_full_message, parse_mode="MarkdownV2")
+
+            # گزارش شخصی برای همه کاربران (شامل ادمین‌ها)
+            user_settings = db.get_user_settings(user_id)
+            if not user_settings.get('daily_reports', True) and not target_user_id:
+                continue
+
+            user_uuids_from_db = db.uuids(user_id)
+            user_infos_for_report = []
+            
+            for u_row in user_uuids_from_db:
+                if u_row['uuid'] in user_info_map:
+                    user_data = user_info_map[u_row['uuid']]
+                    user_data['db_id'] = u_row['id'] 
+                    user_infos_for_report.append(user_data)
+            
+            if user_infos_for_report:
+                user_header = f"🌙 *گزارش شبانه* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+                lang_code = db.get_user_language(user_id)
+                user_report_text = fmt_user_report(user_infos_for_report, lang_code)
+                user_full_message = user_header + user_report_text
+                
+                sent_message = bot.send_message(user_id, user_full_message, parse_mode="MarkdownV2")
+                if sent_message:
+                    db.add_sent_report(user_id, sent_message.message_id)
+
+        except apihelper.ApiTelegramException as e:
+            if "bot was blocked by the user" in e.description:
+                logger.warning(f"SCHEDULER: User {user_id} blocked bot. Deactivating UUIDs.")
+                for u in db.uuids(user_id):
+                    db.deactivate_uuid(u['id'])
+            else:
+                logger.error(f"SCHEDULER: API error for user {user_id}: {e}")
+        except Exception as e:
+            logger.error(f"SCHEDULER: CRITICAL FAILURE for user {user_id}: {e}", exc_info=True)
+    logger.info("SCHEDULER: ----- Finished nightly report job -----")
+
+
+def weekly_report(bot, target_user_id: int = None) -> None:
+    """
+    گزارش هفتگی مصرف را برای کاربران ارسال می‌کند.
+    """
+    now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(pytz.timezone("Asia/Tehran"))).strftime("%Y/%m/%d - %H:%M")
+    all_users_info = combined_handler.get_all_users_combined()
+    if not all_users_info:
+        return
+    user_info_map = {u['uuid']: u for u in all_users_info}
+    
+    user_ids_to_process = [target_user_id] if target_user_id else list(db.get_all_user_ids())
+    separator = '\n' + '─' * 18 + '\n'
+
+    for user_id in user_ids_to_process:
+        try:
+            user_settings = db.get_user_settings(user_id)
+            if not user_settings.get('weekly_reports', True) and not target_user_id:
+                continue
+
+            user_uuids = db.uuids(user_id)
+            user_infos = [user_info_map[u['uuid']] for u in user_uuids if u['uuid'] in user_info_map]
+            
+            if user_infos:
+                header = f"📊 *گزارش هفتگی* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+                lang_code = db.get_user_language(user_id)
+                report_text = fmt_user_weekly_report(user_infos, lang_code)
+                final_message = header + report_text
+                sent_message = bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
+                if sent_message:
+                    db.add_sent_report(user_id, sent_message.message_id)
+        except apihelper.ApiTelegramException as e:
+            if "bot was blocked by the user" in e.description:
+                logger.warning(f"SCHEDULER (Weekly): User {user_id} blocked bot. Deactivating.")
+                for u in db.uuids(user_id):
+                    db.deactivate_uuid(u['id'])
+            else:
+                logger.error(f"SCHEDULER (Weekly): API error for user {user_id}: {e}")
+        except Exception as e:
+            logger.error(f"SCHEDULER (Weekly): Failure for user {user_id}: {e}", exc_info=True)
+
+
+def send_weekly_admin_summary(bot) -> None:
+    """
+    گزارش هفتگی پرمصرف‌ترین کاربران را برای ادمین‌ها ارسال می‌کند و به ۱۰ نفر اول پیام تبریک/انگیزشی می‌فرستد.
+    """
+    from .rewards import notify_user_achievement # Import محلی برای جلوگیری از خطای وابستگی چرخه‌ای
+    from .warnings import send_warning_message
+
+    logger.info("SCHEDULER: Sending weekly admin summary and top user notifications.")
+    try:
+        report_data = db.get_weekly_top_consumers_report()
+        report_text = fmt_weekly_admin_summary(report_data)
+
+        # ارسال گزارش به ادمین‌ها
+        for admin_id in ADMIN_IDS:
+            try:
+                bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
+            except Exception as e:
+                logger.error(f"Failed to send weekly admin summary to {admin_id}: {e}")
+
+        top_users = report_data.get('top_10_overall', [])
+        if top_users:
+            all_bot_users_with_uuids = db.get_all_bot_users_with_uuids()
+            user_map = {user['config_name']: user['user_id'] for user in all_bot_users_with_uuids}
+
+            # اهدای نشان قهرمان هفته
+            if len(top_users) > 0:
+                champion = top_users[0]
+                champion_name = champion.get('name')
+                champion_id = user_map.get(champion_name)
+                if champion_id:
+                    if db.add_achievement(champion_id, 'weekly_champion'):
+                        notify_user_achievement(bot, champion_id, 'weekly_champion')
+
+            # ارسال پیام به ۱۰ نفر اول
+            for i, user in enumerate(top_users):
+                rank = i + 1
+                user_name = user.get('name')
+                usage = user.get('total_usage', 0)
+                
+                user_id = user_map.get(user_name)
+
+                if user_id:
+                    lang_code = db.get_user_language(user_id)
+                    
+                    message_key = f"weekly_top_user_rank_{rank}" if 1 <= rank <= 3 else "weekly_top_user_rank_4_to_10"
+                    
+                    fun_message_template = get_string(message_key, lang_code)
+                    final_message = fun_message_template.format(
+                        usage=escape_markdown(f"{usage:.2f} GB"),
+                        rank=rank
+                    )
+                    
+                    send_warning_message(bot, user_id, final_message, name=user_name)
+                    time.sleep(0.5)
+
+    except Exception as e:
+        logger.error(f"Failed to generate or process weekly admin summary: {e}", exc_info=True)
+
+
+def send_daily_achievements_report(bot) -> None:
+    """
+    گزارش روزانه دستاوردهای کسب شده را برای ادمین‌ها ارسال می‌کند.
+    """
+    logger.info("SCHEDULER: Sending daily achievements report.")
+    try:
+        daily_achievements = db.get_daily_achievements()
+        report_text = fmt_daily_achievements_report(daily_achievements)
+
+        for admin_id in ADMIN_IDS:
+            try:
+                bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
+            except Exception as e:
+                logger.error(f"Failed to send daily achievements report to {admin_id}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to generate daily achievements report: {e}", exc_info=True)
