@@ -31,7 +31,7 @@
     }
     .search-box input {
         width: 100%;
-        padding: 9px 12px 9px 40px;
+        padding: 9px 40px 9px 12px; /* اصلاح پدینگ برای راست‌چین */
         border-radius: 8px;
         border: 1px solid var(--border-color);
         background-color: var(--bg-color);
@@ -44,7 +44,7 @@
     }
     .search-box .ri-search-line {
         position: absolute;
-        left: 12px;
+        right: 12px; /* اصلاح موقعیت آیکون برای راست‌چین */
         top: 50%;
         transform: translateY(-50%);
         color: var(--text-secondary);
@@ -65,6 +65,14 @@
         border: 1px solid var(--border-color);
         background-color: var(--bg-color);
     }
+    /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
+    .filters-wrapper {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+    /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
+
 
     /* واکنشگرایی برای موبایل */
     @media (max-width: 767px) {
@@ -73,6 +81,23 @@
             align-items: stretch;
             gap: 1rem;
         }
+        /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
+        .filters-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* ایجاد دو ستون مساوی */
+            width: 100%;
+            gap: 1rem;
+        }
+        .filter-group {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .filter-group select {
+            width: 100%; /* سلکت باکس هم عرض کامل بگیرد */
+        }
+        /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
+
         /* --- برچسب‌های جدول واکنشگرا --- */
         .data-table thead { display: none; }
         .data-table tr { display: block; border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1rem; padding: 0.75rem; }
@@ -84,10 +109,13 @@
         .data-table td:nth-of-type(1)::before { content: 'کاربر'; }
         .data-table td:nth-of-type(2)::before { content: 'نام کانفیگ'; }
         .data-table td:nth-of-type(3)::before { content: 'پنل‌ها'; }
-        .data-table td:nth-of-type(4)::before { content: 'VIP ⭐'; } /* ستون جدید */
+        .data-table td:nth-of-type(4)::before { content: 'VIP ⭐'; }
         .data-table td:nth-of-type(5)::before { content: 'آلمان 🇩🇪'; }
         .data-table td:nth-of-type(6)::before { content: 'فرانسه 🇫🇷'; }
         .data-table td:nth-of-type(7)::before { content: 'ترکیه 🇹🇷'; }
+        /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
+        .data-table td:nth-of-type(8)::before { content: 'آمریکا 🇺🇸'; }
+        /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
     }
 </style>
 {% endblock %}
@@ -97,32 +125,32 @@
     {% include 'partials/_header.html' %}
 
     <div class="info-card data-table-container">
-        <!-- بخش جدید: جستجو و فیلتر -->
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-line"></i>
                 <input type="text" id="searchInput" placeholder="جستجوی کاربر یا نام کانفیگ...">
             </div>
-            <div class="filter-group">
-                <label for="vipFilter">وضعیت VIP:</label>
-                <select id="vipFilter">
-                    <option value="all">همه</option>
-                    <option value="vip">فقط VIP</option>
-                    <option value="normal">کاربران عادی</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="serverFilter">دسترسی سرور:</label>
-                <select id="serverFilter">
-                    <option value="all">همه</option>
-                    <option value="de">شامل آلمان 🇩🇪</option>
-                    <option value="fr">شامل فرانسه 🇫🇷</option>
-                    <option value="tr">شامل ترکیه 🇹🇷</option>
-                    <option value="us">شامل آمریکا 🇺🇸</option> </select>
-                </select>
+            <div class="filters-wrapper">
+                <div class="filter-group">
+                    <label for="vipFilter">وضعیت VIP:</label>
+                    <select id="vipFilter">
+                        <option value="all">همه</option>
+                        <option value="vip">فقط VIP</option>
+                        <option value="normal">کاربران عادی</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="serverFilter">دسترسی سرور:</label>
+                    <select id="serverFilter">
+                        <option value="all">همه</option>
+                        <option value="de">شامل آلمان 🇩🇪</option>
+                        <option value="fr">شامل فرانسه 🇫🇷</option>
+                        <option value="tr">شامل ترکیه 🇹🇷</option>
+                        <option value="us">شامل آمریکا 🇺🇸</option>
+                    </select>
+                </div>
             </div>
         </div>
-
         <div class="table-responsive">
             <table class="data-table">
                 <thead>
@@ -160,9 +188,9 @@
                             </td>  
                         </tr>
                     {% else %}
-                        <tr><td colspan="7" class="text-center py-4">هیچ کاربری در ربات ثبت‌نام نکرده است.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4">هیچ کاربری در ربات ثبت‌نام نکرده است.</td></tr>
                     {% endfor %}
-                    <tr id="no-results-row" style="display: none;"><td colspan="7" class="text-center py-4">هیچ کاربری با این مشخصات یافت نشد.</td></tr>
+                    <tr id="no-results-row" style="display: none;"><td colspan="8" class="text-center py-4">هیچ کاربری با این مشخصات یافت نشد.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -216,7 +244,6 @@ document.addEventListener('DOMContentLoaded', function() {
     serverFilter.addEventListener('change', filterAndSearch);
 
     // --- منطق مربوط به سوییچ‌ها ---
-  // --- منطق مربوط به سوییچ‌ها (کد قبلی) ---
     tableBody.addEventListener('change', function(e) {
         const checkbox = e.target;
         if (!checkbox.matches('.access-toggle, .toggle-vip')) return;
@@ -246,7 +273,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-        // ... (کد جاوااسکریپت برای مدیریت سوییچ‌ها از پاسخ قبلی بدون تغییر باقی می‌ماند)
+        // Placeholder for showToast function if you have one
+        function showToast(message, isSuccess) {
+            // Implement your toast notification logic here
+            console.log((isSuccess ? "SUCCESS: " : "ERROR: ") + message);
+        }
     });
 </script>
 {% endblock %}

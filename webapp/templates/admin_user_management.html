@@ -68,6 +68,23 @@
     .action-btn.panel-access-btn {font-size: 1.2rem;opacity: 0.4;filter: grayscale(100%);}
     .action-btn.panel-access-btn.active {opacity: 1;filter: grayscale(0%);}
     .action-separator {color: var(--border-color);margin: 0 0.3rem;}
+
+    /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
+    @media (max-width: 767px) {
+        .table-filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* ایجاد دو ستون مساوی */
+            gap: 1rem;
+            width: 100%;
+        }
+        .table-filters .filter-group {
+            width: 100%; /* هر گروه فیلتر عرض کامل ستون خود را بگیرد */
+        }
+        .table-filters .filter-group select {
+            width: 100%; /* سلکت باکس هم عرض کامل بگیرد */
+        }
+    }
+    /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
 </style>
 {% endblock %}
 

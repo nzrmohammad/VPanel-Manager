@@ -41,6 +41,9 @@
         grid-template-columns: repeat(2, 1fr);
         gap: 0.25rem 1.5rem;
     }
+    .online-users-grid .user-list-item {
+        justify-content: center; /* آیتم‌ها (اسامی) را در مرکز هر ستون قرار می‌دهد */
+    }
 </style>
 {% endblock %}
 
@@ -79,23 +82,16 @@
               {% endif %}
             </div>
             <div class="info-card">
-                <div class="chart-card-header">
-                  <i class="ri-pie-chart-2-line icon"></i>
-                  <span>تفکیک کاربران فعال (بر اساس پنل اختصاصی)</span>
-                </div>
-                <div id="panel-distribution-chart" style="min-height: 310px;"></div>
-            </div>
-            <div class="info-card">
                 <div class="chart-card-header"><i class="ri-wifi-line icon"></i><span>لیست کاربران آنلاین فعلی</span></div>
                 <div class="online-users-grid">
                     <div>
-                        <h4>Hiddify 🇩🇪</h4>
+                        <h4 style="text-align: center;">Hiddify 🇩🇪</h4>
                         <ul class="user-list make-two-column ltr-list">
                             {% for user in online_users_hiddify %}<li class="user-list-item"><span>{{ user.name }}</span></li>{% else %}<li>-</li>{% endfor %}
                         </ul>
                     </div>
                     <div>
-                        <h4>Marzban 🇫🇷</h4>
+                        <h4 style="text-align: center;">Marzban 🇫🇷</h4>
                         <ul class="user-list make-two-column ltr-list">
                             {% for user in online_users_marzban %}<li class="user-list-item"><span>{{ user.name }}</span></li>{% else %}<li>-</li>{% endfor %}
                         </ul>
@@ -110,12 +106,12 @@
                 <ul class="user-list health-status-list multi-column">
                     {% for service_name, status in system_health.items() %}
                     <li class="user-list-item">
+                        <span class="text-capitalize">{{ service_name }}</span>
                         {% if status and status.ok %}
                             <span class="status ok"> ✅</span>
                         {% else %}
                             <span class="status error" title="خطا: {{ status.error if status else 'نامشخص' }}"> ❌</span>
                         {% endif %}
-                        <span class="text-capitalize">{{ service_name }}</span>
                     </li>
                     {% endfor %}
                 </ul>
@@ -125,9 +121,9 @@
                 <ul class="user-list multi-column">
                     {% for user in new_users_last_24h %}
                         <li class="user-list-item">
-                            <span class="date">{{ user.created_at | to_shamsi(include_time=False) if user.created_at }}</span>
                             <span>{{ user.name }}</span>
-                        </li>
+                            <span class="date">{{ user.created_at | to_shamsi(include_time=False) if user.created_at }}</span>
+                            </li>
                     {% else %}
                         <li style="grid-column: 1 / -1;">کاربر جدیدی یافت نشد.</li>
                     {% endfor %}
@@ -139,6 +135,7 @@
                 {% set upcoming_birthdays = users_with_birthdays | selectattr('days_to_birthday', 'le', 7) | list %}
                 {% for user in upcoming_birthdays %}
                     <li class="user-list-item">
+                    <span>{{ user.name }}</span>
                     <span class="days">
                         {% if user.days_to_birthday == 0 %}
                             <strong style="color: var(--success-color);">🎉 امروز!</strong>
@@ -146,7 +143,6 @@
                             {{ user.days_to_birthday }} روز دیگر
                         {% endif %}
                     </span>
-                    <span>{{ user.name }}</span>
                     </li>
                 {% else %}
                     <li style="grid-column: 1 / -1;">کاربری با تولد نزدیک یافت نشد.</li>
@@ -158,14 +154,28 @@
                 <ul class="user-list multi-column" id="expiring-soon-list">
                     {% for user in expiring_soon_users %}
                         <li class="user-list-item" data-expire-days="{{ user.expire }}">
-                            <span class="days"></span>
                             <span>{{ user.name }}</span>
+                            <span class="days"></span>
                         </li>
                     {% else %}
                         <li style="grid-column: 1 / -1;">کاربری یافت نشد.</li>
                     {% endfor %}
                 </ul>
+            </div>
+            <div class="info-card">
+                <div class="chart-card-header">
+                  <i class="ri-pie-chart-2-line icon"></i>
+                  <span>تفکیک کاربران فعال</span>
                 </div>
+                <div id="panel-distribution-chart" style="min-height: 280px;"></div>
+            </div>
+            <div class="info-card">
+                <div class="chart-card-header">
+                  <i class="ri-calendar-todo-line icon"></i>
+                  <span>وضعیت انقضای کاربران</span>
+                </div>
+                <div id="expiration-chart" style="min-height: 280px;"></div>
+            </div>
         </div>
     </div>
 {% endblock %}
@@ -173,76 +183,118 @@
 {% block extra_js %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    const isDarkTheme = document.body.classList.contains('dark-theme');
-    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim();
+    let usageChart, topConsumersChart, panelDistChart, expirationChart;
 
-    const themeColors = {
-        text: isDarkTheme ? '#f9fafb' : '#111827',
-        secondaryText: isDarkTheme ? '#9ca3af' : '#6b7280',
-        grid: isDarkTheme ? '#374151' : '#e5e7eb',
-        cardBg: isDarkTheme ? '#1f2937' : '#ffffff'
+    const renderOrUpdateCharts = () => {
+        const isDarkTheme = document.body.classList.contains('dark-theme');
+        const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim();
+
+        const getThemeOptions = (options = {}) => {
+            const axisColor = isDarkTheme ? '#9ca3af' : '#6b7280';
+            return {
+                chart: { fontFamily: 'Vazirmatn, sans-serif', background: 'transparent', toolbar: { show: false }, ...(options.chart || {}) },
+                theme: { mode: isDarkTheme ? 'dark' : 'light' },
+                tooltip: { theme: isDarkTheme ? 'dark' : 'light' },
+                xaxis: { labels: { style: { colors: axisColor } }, axisBorder: { show: false }, axisTicks: { show: false } },
+                yaxis: { labels: { style: { colors: axisColor }, offsetX: -10 }, title: { style: { color: axisColor, fontWeight: 400 } } },
+                grid: { borderColor: isDarkTheme ? '#374151' : '#e5e7eb' },
+                legend: { labels: { colors: isDarkTheme ? '#f9fafb' : '#111827' } }
+            };
+        };
+
+        const initOrUpdate = (chartInstance, selector, options) => {
+            const container = document.querySelector(selector);
+            if (!container) return chartInstance;
+            if (chartInstance) {
+                chartInstance.updateOptions(options);
+            } else {
+                chartInstance = new ApexCharts(container, options);
+                chartInstance.render();
+            }
+            return chartInstance;
+        };
+
+        // --- Usage Chart ---
+        const usageChartData = {{ usage_chart_data | tojson | safe }};
+        const usageChartOptions = {
+            ...getThemeOptions({ chart: { type: 'area', height: 250, zoom: { enabled: false }, parentHeightOffset: 15, padding: { left: 10, right: 0 } } }),
+            series: [{ name: "مجموع کل مصرف", data: usageChartData.data }],
+            fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.2, stops: [0, 90, 100] } },
+            colors: [accentColor],
+            dataLabels: { enabled: false },
+            stroke: { curve: 'smooth', width: 2 },
+            xaxis: { categories: usageChartData.labels },
+            yaxis: { labels: { formatter: (val) => val.toFixed(0) }, title: { text: '(GB)', rotate: 0, offsetX: 10, style: { fontSize: '10px' } } },
+            tooltip: { y: { formatter: (val) => `${val.toFixed(2)} GB` } }
+        };
+        usageChart = initOrUpdate(usageChart, "#usage-chart", usageChartOptions);
+
+        // --- Top Consumers Chart ---
+        const topConsumersData = {{ (top_consumers_chart_data or {"labels": [], "data": []}) | tojson | safe }};
+        if (topConsumersData.data.length > 0) {
+            const barHeight = Math.max(220, topConsumersData.labels.length * 44);
+            const topConsumersOptions = {
+                ...getThemeOptions({ chart: { type: 'bar', height: barHeight } }),
+                series: [{ name: 'مصرف امروز', data: topConsumersData.data.slice(0, 10).reverse() }],
+                plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '60%', dataLabels: { position: 'top' } } },
+                colors: [accentColor],
+                dataLabels: { enabled: true, formatter: (val) => val.toFixed(2) + " GB", offsetX: 40, style: { fontSize: '12px', colors: [isDarkTheme ? '#f9fafb' : '#111827'] } },
+                stroke: { show: true, width: 1, colors: ['transparent'] },
+                xaxis: { categories: topConsumersData.labels.slice(0, 10).reverse(), title: { text: 'مصرف (GB)' } },
+                yaxis: { labels: { fontSize: '13px' } },
+                legend: { show: false }
+            };
+            topConsumersChart = initOrUpdate(topConsumersChart, "#top-consumers-chart", topConsumersOptions);
+        }
+
+        // --- Panel Distribution Chart ---
+        const panelDistData = {{ panel_distribution_data | tojson | safe }};
+        const panelDistOptions = {
+            ...getThemeOptions({ chart: { type: 'donut', height: 280 } }),
+            series: panelDistData.series,
+            labels: panelDistData.labels,
+            colors: ['#008FFB', '#00E396', '#FEB019'],
+            plotOptions: { pie: { donut: { size: '65%', labels: { show: true, name: { offsetY: -10 }, value: { offsetY: 5, formatter: (val) => val + " نفر" }, total: { show: true, label: 'کل کاربران فعال', formatter: () => {{ stats.active_users | default(0) }} + " نفر" } } } } },
+            dataLabels: { enabled: false },
+            legend: { position: 'bottom' },
+            tooltip: { y: { formatter: (val) => val + " کاربر فعال" } },
+            stroke: { show: false }
+        };
+        panelDistChart = initOrUpdate(panelDistChart, "#panel-distribution-chart", panelDistOptions);
+
+        // --- Expiration Chart ---
+        const expData = {{ expiration_chart_data | tojson | safe }};
+        const expOptions = {
+            ...getThemeOptions({ chart: { type: 'bar', height: 280 } }),
+            series: expData.series,
+            plotOptions: { bar: { borderRadius: 4, horizontal: false, distributed: true } },
+            dataLabels: { enabled: false },
+            xaxis: { categories: expData.labels },
+            yaxis: { title: { text: 'تعداد کاربران' } },
+            legend: { show: false },
+            tooltip: { y: { formatter: (val) => val + ' کاربر' } }
+        };
+        expirationChart = initOrUpdate(expirationChart, "#expiration-chart", expOptions);
     };
 
-    function getPersianDayString(days) {
+    // --- Initial Render & Theme Toggle Listener ---
+    getPersianDayString = (days) => {
         if (days === 0) return `<span style="color: var(--danger-color); font-weight: bold;">امروز</span>`;
-        const persianNumbers = ["یک", "دو", "سه", "چهار", "پنج", "شش", "هفت"];
-        if (days > 0 && days <= persianNumbers.length) {
-            return `<span>${persianNumbers[days - 1]} روز</span>`;
-        }
+        if (days > 0 && days <= 7) return `<span>${["یک", "دو", "سه", "چهار", "پنج", "شش", "هفت"][days - 1]} روز</span>`;
         return `<span>${days} روز</span>`;
     }
     document.querySelectorAll('#expiring-soon-list .user-list-item').forEach(item => {
-        const days = parseInt(item.dataset.expireDays, 10);
-        item.querySelector('.days').innerHTML = getPersianDayString(days);
+        item.querySelector('.days').innerHTML = getPersianDayString(parseInt(item.dataset.expireDays, 10));
     });
 
-    // Charting JavaScript remains unchanged
-    const usageChartOptions = {
-        series: [{ name: "مجموع کل مصرف", data: {{ usage_chart_data.data | tojson | safe }} }],
-        chart: { type: 'area', height: 250, toolbar: { show: false }, fontFamily: 'Vazirmatn, sans-serif', background: 'transparent', zoom: { enabled: false }, parentHeightOffset: 15, padding: { left: 10, right: 0 } },
-        fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.2, stops: [0, 90, 100] } },
-        colors: [accentColor],
-        dataLabels: { enabled: false },
-        stroke: { curve: 'smooth', width: 2 },
-        grid: { borderColor: themeColors.grid, xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
-        xaxis: { categories: {{ usage_chart_data.labels | tojson | safe }}, labels: { style: { colors: themeColors.secondaryText } }, axisBorder: { show: false }, axisTicks: { show: false } },
-        yaxis: { labels: { style: { colors: themeColors.secondaryText }, formatter: (val) => val.toFixed(0), offsetX: -15 }, title: { text: '(GB)', rotate: 0, offsetX: 10, style: { color: isDarkTheme ? '#888' : '#aaa', fontSize: '10px', fontWeight: 'normal' } } },
-        tooltip: { theme: isDarkTheme ? 'dark' : 'light', y: { formatter: (val) => `${val.toFixed(2)} GB` }, style: { fontFamily: 'Vazirmatn, sans-serif' } }
-    };
-    if (document.querySelector("#usage-chart")) { new ApexCharts(document.querySelector("#usage-chart"), usageChartOptions).render(); }
+    renderOrUpdateCharts();
 
-    const topConsumersData = {{ (top_consumers_chart_data or {"labels": [], "data": []}) | tojson | safe }};
-    if (document.querySelector("#top-consumers-chart") && topConsumersData.data.length > 0) {
-        const barHeight = Math.max(220, topConsumersData.labels.length * 44);
-        const topConsumersOptions = {
-            series: [{ name: 'مصرف امروز', data: topConsumersData.data.slice(0, 10).reverse() }],
-            chart: { type: 'bar', height: barHeight, toolbar: { show: false }, fontFamily: 'Vazirmatn, sans-serif' },
-            plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '60%', dataLabels: { position: 'top' } } },
-            colors: [accentColor],
-            dataLabels: { enabled: true, formatter: function(val) { return val.toFixed(2) + " GB"; }, offsetX: 40, style: { fontSize: '12px', colors: [themeColors.text] } },
-            stroke: { show: true, width: 1, colors: ['transparent'] },
-            xaxis: { categories: topConsumersData.labels.slice(0, 10).reverse(), labels: { show: true, style: { colors: themeColors.secondaryText } }, title: { text: 'مصرف (GB)', style: { color: isDarkTheme ? '#888' : '#aaa', fontSize: '12px' } } },
-            yaxis: { labels: { show: true, style: { colors: themeColors.secondaryText, fontSize: '13px' } } },
-            grid: { borderColor: themeColors.grid, xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } },
-            tooltip: { theme: isDarkTheme ? 'dark' : 'light', y: { formatter: function(val) { return val + " GB" }, title: { formatter: function (seriesName, opt) { return opt.w.globals.labels[opt.dataPointIndex] } } } },
-            legend: { show: false }
-        };
-        new ApexCharts(document.querySelector("#top-consumers-chart"), topConsumersOptions).render();
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            setTimeout(renderOrUpdateCharts, 150);
+        });
     }
-
-    const panelDistData = {{ panel_distribution_data | tojson | safe }};
-    const panelDistOptions = {
-        series: panelDistData.series,
-        labels: panelDistData.labels,
-        chart: { type: 'donut', height: 310, fontFamily: 'Vazirmatn, sans-serif', background: 'transparent' },
-        colors: ['#008FFB', '#00E396', '#FEB019'],
-        plotOptions: { pie: { donut: { size: '65%', labels: { show: true, name: { offsetY: -10 }, value: { offsetY: 5, formatter: (val) => val + " نفر" }, total: { show: true, label: 'کل کاربران فعال', color: isDarkTheme ? '#b0b0b0' : '#373d3f', formatter: () => {{ stats.active_users | default(0) }} + " نفر" } } } } },
-        dataLabels: { enabled: false },
-        legend: { position: 'bottom', fontFamily: 'Vazirmatn, sans-serif', labels: { colors: themeColors.secondaryText } },
-        tooltip: { theme: isDarkTheme ? 'dark' : 'light', y: { formatter: (val) => val + " کاربر فعال" }, style: { fontFamily: 'Vazirmatn, sans-serif' } },
-        stroke: { show: false }
-    };
-    if (document.querySelector("#panel-distribution-chart")) { new ApexCharts(document.querySelector("#panel-distribution-chart"), panelDistOptions).render(); }
 });
 </script>
 {% endblock %}

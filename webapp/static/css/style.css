@@ -78,7 +78,7 @@ body {
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 5px;
 }
 .header-actions .icon-btn {
     background-color: var(--card-bg);
@@ -536,9 +536,6 @@ button, input, select, textarea {
 }
 .online-users-grid .user-list {
     direction: ltr;
-}
-.online-users-grid .user-list-item {
-    text-align: left;
 }
 .user-list .user-list-item {
     display: flex; /* <-- این خط اضافه شود */

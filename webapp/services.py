@@ -66,6 +66,10 @@ def _process_user_data(all_users_data):
     db_users_map = {u['uuid']: u for u in db.get_all_user_uuids()}
     now_utc = datetime.now(pytz.utc)
 
+    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
+    exp_buckets = {"<7": 0, "7-30": 0, "30-60": 0, ">60": 0}
+    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
+
     for user in all_users_data:
         user['name'] = html_escape(user.get('name', 'کاربر ناشناس'))
         
@@ -88,7 +92,6 @@ def _process_user_data(all_users_data):
             if (now_utc - last_online_aware).total_seconds() < 180:
                 stats['online_users'] += 1
                 
-                # --- START OF FIX ---
                 h_online = next((p['data'].get('last_online') for p in user_breakdown.values() if p.get('type') == 'hiddify'), None)
                 m_online = next((p['data'].get('last_online') for p in user_breakdown.values() if p.get('type') == 'marzban'), None)
                 
@@ -96,12 +99,19 @@ def _process_user_data(all_users_data):
                     online_users_hiddify.append(user)
                 elif m_online:
                     online_users_marzban.append(user)
-                # --- END OF FIX ---
 
         expire_days = user.get('expire')
-        if expire_days is not None and 0 <= expire_days <= 7:
-            stats['expiring_soon_count'] += 1
-            expiring_soon_users.append(user)
+        if expire_days is not None:
+            if 0 <= expire_days <= 7:
+                stats['expiring_soon_count'] += 1
+                expiring_soon_users.append(user)
+            
+            # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
+            if expire_days < 7: exp_buckets["<7"] += 1
+            elif 7 <= expire_days < 30: exp_buckets["7-30"] += 1
+            elif 30 <= expire_days < 60: exp_buckets["30-60"] += 1
+            else: exp_buckets[">60"] += 1
+            # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
 
         db_user = db_users_map.get(user.get('uuid'))
         if db_user and db_user.get('created_at'):
@@ -113,7 +123,13 @@ def _process_user_data(all_users_data):
                 stats['new_users_last_24h_count'] += 1
                 new_users_last_24h.append(user)
 
-    return stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban
+    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
+    expiration_chart_data = {
+        "labels": ["کمتر از ۷ روز", "۷ تا ۳۰ روز", "۳۰ تا ۶۰ روز", "بیش از ۶۰ روز"],
+        "series": [{"name": "تعداد کاربران", "data": list(exp_buckets.values())}]
+    }
+    return stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban, expiration_chart_data
+    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
 
 # ===================================================================
 # == تابع اصلی سرویس داشبورد (نسخه نهایی و اصلاح شده) ==
@@ -131,13 +147,11 @@ def get_dashboard_data():
     }
 
     try:
-        # 🔥 تغییر اصلی اینجاست: ابتدا مصرف روزانه صحیح را برای همه کاربران یکجا می‌خوانیم
         all_daily_usages = db.get_all_daily_usage_since_midnight()
         all_users_data = get_all_users_combined()
         
         total_usage_today_gb = 0
         
-        # سپس، مصرف محاسبه‌شده را به اطلاعات هر کاربر اضافه می‌کنیم
         for user in all_users_data:
             uuid = user.get('uuid')
             if not uuid:
@@ -155,25 +169,27 @@ def get_dashboard_data():
         total_usage_today_gb = 0
 
     try:
-        # داده‌های روزهای گذشته را از دیتابیس می‌خوانیم
         daily_usage_summary = db.get_daily_usage_summary(days=7)
     except Exception as e:
         logger.error(f"Failed to get daily usage summary: {e}", exc_info=True)
         daily_usage_summary = []
     
-    # اگر هیچ کاربری وجود نداشت، یک پاسخ خالی برمی‌گردانیم
     if not all_users_data:
         return {
            "stats": empty_stats, "new_users_last_24h": [], "expiring_soon_users": [], 
            "top_consumers_today": [], "online_users_hiddify": [], "online_users_marzban": [],
            "panel_distribution_data": {"labels": ["فقط آلمان 🇩🇪", "فقط فرانسه 🇫🇷", "هر دو پنل (مشترک)"], "series": [0, 0, 0]},
            "system_health": system_health, "usage_chart_data": {"labels": [], "data": []},
-           "top_consumers_chart_data": {"labels": [], "data": []}
+           "top_consumers_chart_data": {"labels": [], "data": []},
+           # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
+           "expiration_chart_data": {"labels": [], "series": []}
+           # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
         }
 
-    stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban = _process_user_data(all_users_data)
+    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
+    stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban, expiration_chart_data = _process_user_data(all_users_data)
+    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
     
-    # آمار کارت بالای صفحه را با عدد دقیق امروز پر می‌کنیم
     stats['total_usage_today_gb'] = total_usage_today_gb
     stats['total_usage_today'] = f"{stats['total_usage_today_gb']:.2f} GB"
     
@@ -188,9 +204,7 @@ def get_dashboard_data():
         "series": [stats.get('hiddify_only_active', 0), stats.get('marzban_only_active', 0), stats.get('both_panels_active', 0)]
     }
     
-    # ✅ --- منطق جدید برای یکپارچه‌سازی داده‌های نمودار ---
     if daily_usage_summary:
-        # اگر داده‌ای برای امروز در summary وجود داشت، آن را با عدد دقیق جایگزین می‌کنیم
         today_str = datetime.now(pytz.timezone("Asia/Tehran")).strftime('%Y-%m-%d')
         found_today = False
         for item in daily_usage_summary:
@@ -198,14 +212,12 @@ def get_dashboard_data():
                 item['total_gb'] = round(total_usage_today_gb, 2)
                 found_today = True
                 break
-        # اگر داده‌ای برای امروز وجود نداشت، آن را اضافه می‌کنیم
         if not found_today:
              daily_usage_summary.append({'date': today_str, 'total_gb': round(total_usage_today_gb, 2)})
              
         usage_chart_data = { "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d'), include_time=False) for item in daily_usage_summary], "data": [item['total_gb'] for item in daily_usage_summary]}
     else: 
         usage_chart_data = {"labels": [], "data": []}
-    # ✅ --- پایان منطق جدید ---
     
     top_consumers_chart_data = {
         "labels": [html_escape(user['name']) for user in top_consumers_today],
@@ -223,7 +235,10 @@ def get_dashboard_data():
         "online_users_marzban": online_users_marzban, "panel_distribution_data": panel_distribution_data,
         "system_health": system_health, "usage_chart_data": usage_chart_data,
         "top_consumers_chart_data": top_consumers_chart_data,
-        "users_with_birthdays": users_with_birthdays
+        "users_with_birthdays": users_with_birthdays,
+        # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
+        "expiration_chart_data": expiration_chart_data
+        # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
     }
         
 # ===================================================================
@@ -297,12 +312,9 @@ def generate_comprehensive_report_data():
     
     top_consumers = sorted([u for u in all_users_data if u.get('usage', {}).get('data_limit_GB', 0) > 0], key=lambda u: u.get('usage', {}).get('total_usage_GB', 0), reverse=True)[:10]
     
-    # --- ✅ START OF THE FIX ---
-    # Convert generators to lists before passing them to the template
     users_with_payments = list(db.get_all_payments_with_user_info())
     bot_users = list(db.get_all_bot_users())
     users_with_birthdays = list(db.get_users_with_birthdays())
-    # --- ✅ END OF THE FIX ---
 
     for p in users_with_payments:
         p['payment_date_shamsi'] = to_shamsi(p.get('payment_date'), include_time=True)
@@ -333,7 +345,6 @@ def generate_comprehensive_report_data():
 
 def get_all_payments_for_admin():
     try:
-        # FIX: Convert the generator to a list immediately upon fetching
         payments_data = list(db.get_all_payments_with_user_info())
 
         for payment in payments_data:
@@ -377,9 +388,7 @@ def get_paginated_users(args):
     else:
         all_users = get_all_users_combined()
 
-    # Data Enrichment and Sanitization Loop
     for user in all_users:
-        # ✅ FIX: Securely escape all user-generated or formatted strings
         user['name'] = escape(user.get('name', 'کاربر ناشناس'))
         user['last_online_relative'] = escape(format_relative_time(user.get('last_online')))
         
@@ -409,7 +418,6 @@ def get_paginated_users(args):
         user['on_hiddify'] = any(p.get('type') == 'hiddify' for p in breakdown.values())
         user['on_marzban'] = any(p.get('type') == 'marzban' for p in breakdown.values())
 
-    # Filtering Logic
     if panel_filter != 'all':
         panel_type_to_check = 'hiddify' if panel_filter == 'de' else 'marzban'
         all_users = [u for u in all_users if u.get(f'on_{panel_type_to_check}')]
@@ -426,7 +434,6 @@ def get_paginated_users(args):
 
     all_users.sort(key=lambda u: u.get('name', '').lower())
 
-    # Pagination Logic
     total = len(all_users)
     start = (page - 1) * per_page
     end = start + per_page
@@ -579,11 +586,8 @@ def get_analytics_data():
     start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     new_users_today_count = db.get_new_users_in_range(start_of_today_utc, now_utc)
     
-    # --- START OF FIX for Analytics Page ---
-    # مانند داشبورد، اینجا هم محاسبه مصرف روزانه را با فراخوانی تابع بهینه انجام می‌دهیم
     all_daily_usages = db.get_all_daily_usage_since_midnight()
     total_usage_today = sum(sum(usages.values()) for usages in all_daily_usages.values())
-    # --- END OF FIX for Analytics Page ---
     
     new_users_stats = db.get_new_users_per_month_stats(months=6)
     new_users_chart = {

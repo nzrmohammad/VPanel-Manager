@@ -73,9 +73,11 @@
     #dailyUsageChart {
         transform: translateX(-20px);
     }
-    .header-wallet-balance {
-        display: none;
+    /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
+    .header-actions .header-item {
+        display: none; /* مخفی کردن کامل کادر نگهدارنده کیف پول */
     }
+    /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
 }
 
 /* === موبایل (کمتر از 768 پیکسل) === */
@@ -328,22 +330,7 @@
     .info-card {
         overflow: hidden;
     }
-    .make-two-column {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-    }
-    .make-two-column .user-list-item {
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--border-color);
-    }
-    .make-two-column .user-list-item:nth-last-child(-n+2) {
-        border-bottom: none;
-    }
-    .sidebar-column .user-list-item {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.25rem;
+    .header-actions {
+        gap: 0.5rem; /* کاهش فاصله بین دکمه‌های هدر */
     }
 }
