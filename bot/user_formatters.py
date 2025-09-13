@@ -676,7 +676,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     lines.append("")
     lines.append(create_progress_bar(usage_percentage))
     uuid_escaped = escape_markdown(user_uuid)
-    lines.append(f"\n||{uuid_escaped}||")
+    lines.append(f"\n||{escape_markdown(user_uuid)}||")
 
     final_text = "\n".join(lines)
     return final_text, "MarkdownV2"
