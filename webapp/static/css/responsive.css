@@ -235,33 +235,33 @@
     #payments-list .data-table td:nth-of-type(6)::before { content: 'تاریخ پرداخت'; }
 
     #tab-online-active .data-table td:nth-of-type(1)::before { content: 'نام'; }
-    #tab-online-active .data-table td:nth-of-type(2)::before { content: 'پنل ها'; }
+    #tab-online-active .data-table td:nth-of-type(2)::before { content: 'سرور ها'; }
     #tab-online-active .data-table td:nth-of-type(3)::before { content: 'آخرین اتصال'; }
     #tab-online-active .data-table td:nth-of-type(4)::before { content: 'انقضا (روز)'; }
 
     #tab-expiring-soon .data-table td:nth-of-type(1)::before { content: 'نام'; }
-    #tab-expiring-soon .data-table td:nth-of-type(2)::before { content: 'پنل ها'; }
+    #tab-expiring-soon .data-table td:nth-of-type(2)::before { content: 'سرور ها'; }
     #tab-expiring-soon .data-table td:nth-of-type(3)::before { content: 'انقضا'; }
     #tab-expiring-soon .data-table td:nth-of-type(4)::before { content: 'مصرف کل'; }
 
     #tab-inactive .data-table td:nth-of-type(1)::before { content: 'نام'; }
-    #tab-inactive .data-table td:nth-of-type(2)::before { content: 'پنل ها'; }
+    #tab-inactive .data-table td:nth-of-type(2)::before { content: 'سرور ها'; }
     #tab-inactive .data-table td:nth-of-type(3)::before { content: 'آخرین اتصال'; }
     #tab-inactive .data-table td:nth-of-type(4)::before { content: 'انقضا (روز)'; }
 
     #tab-top-consumers .data-table td:nth-of-type(1)::before { content: 'رتبه'; }
     #tab-top-consumers .data-table td:nth-of-type(2)::before { content: 'نام کاربری'; }
-    #tab-top-consumers .data-table td:nth-of-type(3)::before { content: 'پنل ها'; }
+    #tab-top-consumers .data-table td:nth-of-type(3)::before { content: 'سرور ها'; }
     #tab-top-consumers .data-table td:nth-of-type(4)::before { content: 'مصرف / کل'; }
 
     #tab-payments .data-table td:nth-of-type(1)::before { content: 'شناسه تلگرام'; }
     #tab-payments .data-table td:nth-of-type(2)::before { content: 'نام تلگرام'; }
     #tab-payments .data-table td:nth-of-type(3)::before { content: 'نام کاربر'; }
-    #tab-payments .data-table td:nth-of-type(4)::before { content: 'پنل ها'; }
+    #tab-payments .data-table td:nth-of-type(4)::before { content: 'سرور ها'; }
     #tab-payments .data-table td:nth-of-type(5)::before { content: 'تاریخ پرداخت'; }
 
     #tab-birthdays .data-table td:nth-of-type(1)::before { content: 'نام'; }
-    #tab-birthdays .data-table td:nth-of-type(2)::before { content: 'پنل ها'; }
+    #tab-birthdays .data-table td:nth-of-type(2)::before { content: 'سرور ها'; }
     #tab-birthdays .data-table td:nth-of-type(3)::before { content: 'تاریخ تولد'; }
     #tab-birthdays .data-table td:nth-of-type(4)::before { content: 'روز مانده'; }
 

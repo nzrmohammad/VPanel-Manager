@@ -14,72 +14,34 @@
     input:checked + .slider { background-color: var(--accent-color); }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    /* استایل‌های بخش کنترل‌ها (جستجو و فیلتر) */
-    .table-controls {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 1.5rem;
-        border-bottom: 1px solid var(--border-color);
-        flex-wrap: wrap;
-        gap: 1.5rem;
+    /*
+      <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>>
+      استایل‌های زیر از صفحه مدیریت کاربران کپی شده تا ظاهر هدر جدول کاملاً یکسان شود
+    */
+    .table-header {display: flex;justify-content: space-between;align-items: center;padding: 1rem 1.5rem;gap: 1.5rem;flex-wrap: wrap;border-bottom: 1px solid var(--border-color);}
+    .table-filters {display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;}
+    .table-filters .filter-group { display: flex; align-items: center; gap: 0.5rem; }
+    .table-filters label { font-size: 0.9rem; color: var(--text-secondary); white-space: nowrap; }
+    .table-filters select {padding: 0.75rem;border-radius: 8px;border: 1px solid var(--border-color);background-color: var(--bg-color);color: var(--text-color);-webkit-appearance: none;-moz-appearance: none;appearance: none;background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");background-position: left 0.5rem center;background-repeat: no-repeat;background-size: 1.5em 1.5em;padding-left: 2.5rem;}
+    body.dark-theme .table-filters select {background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");}
+
+    /* استایل واکنش‌گرایی برای فیلترها در موبایل */
+    @media (max-width: 767px) {
+        .table-filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* ایجاد دو ستون مساوی */
+            gap: 1rem;
+            width: 100%;
+        }
+        .table-filters .filter-group {
+            width: 100%; /* هر گروه فیلتر عرض کامل ستون خود را بگیرد */
+        }
+        .table-filters .filter-group select {
+            width: 100%; /* سلکت باکس هم عرض کامل بگیرد */
+        }
     }
-    .table-controls h3 {
-        margin: 0;
-        font-size: 1.2rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    .filter-controls-wrapper {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        flex-wrap: wrap;
-    }
-    .search-box {
-        position: relative;
-        min-width: 280px;
-    }
-    .search-box input {
-        width: 100%;
-        padding: 9px 40px 9px 12px;
-        border-radius: 8px;
-        border: 1px solid var(--border-color);
-        background-color: var(--bg-color);
-        color: var(--text-color);
-        transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .search-box input:focus {
-        outline: none;
-        border-color: var(--accent-color);
-        box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
-    }
-    .search-box .ri-search-line {
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--text-secondary);
-        font-size: 1.2rem;
-    }
-    .filter-group {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-    .filter-group label {
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-        white-space: nowrap;
-    }
-    .filter-group select {
-        padding: 9px 12px;
-        border-radius: 8px;
-        border: 1px solid var(--border-color);
-        background-color: var(--bg-color);
-        color: var(--text-color);
-    }
+    /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
+
 </style>
 {% endblock %}
 
@@ -88,35 +50,33 @@
     {% include 'partials/_header.html' %}
 
     <div class="info-card data-table-container" id="user-access-management">
-    <div class="table-controls">
-            <h3><i class="ri-shield-user-line" style="vertical-align: middle;"></i> لیست کاربران</h3>
-            <div class="filter-controls-wrapper">
-                <div class="search-box">
-                    <i class="ri-search-line"></i>
-                    <input type="text" id="searchInput" placeholder="جستجوی کاربر یا نام کانفیگ...">
-                </div>
-                <div class="filter-group">
-                    <label for="vipFilter">وضعیت VIP:</label>
-                    <select id="vipFilter">
-                        <option value="all">همه</option>
-                        <option value="vip">فقط VIP</option>
-                        <option value="normal">کاربران عادی</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="serverFilter">دسترسی سرور:</label>
-                    <select id="serverFilter">
-                        <option value="all">همه</option>
-                        <option value="de">شامل آلمان 🇩🇪</option>
-                        <option value="fr">شامل فرانسه 🇫🇷</option>
-                        <option value="tr">شامل ترکیه 🇹🇷</option>
-                        <option value="us">شامل آمریکا 🇺🇸</option>
-                    </select>
-                </div>
+    <div class="table-header">
+        <div class="search-box">
+            <i class="ri-search-line"></i>
+            <input type="text" id="searchInput" placeholder="جستجوی کاربر یا نام کانفیگ...">
+        </div>
+        <div class="table-filters">
+            <div class="filter-group">
+                <label for="vipFilter">وضعیت:</label>
+                <select id="vipFilter">
+                    <option value="all">همه</option>
+                    <option value="vip">فقط VIP</option>
+                    <option value="normal">کاربران عادی</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="serverFilter">سرور:</label>
+                <select id="serverFilter">
+                    <option value="all">همه</option>
+                    <option value="de">شامل آلمان 🇩🇪</option>
+                    <option value="fr">شامل فرانسه 🇫🇷</option>
+                    <option value="tr">شامل ترکیه 🇹🇷</option>
+                    <option value="us">شامل آمریکا 🇺🇸</option>
+                </select>
             </div>
         </div>
-
-        <div class="table-responsive">
+    </div>
+    <div class="table-responsive">
             <table class="data-table">
                 <thead>
                     <tr>
@@ -240,7 +200,21 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function showToast(message, isSuccess) {
-        console.log(`Toast: ${message} (Success: ${isSuccess})`);
+        // A simple toast notification function, you can replace with a more robust library
+        const toast = document.createElement('div');
+        toast.textContent = message;
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.right = '20px';
+        toast.style.padding = '10px 20px';
+        toast.style.borderRadius = '8px';
+        toast.style.backgroundColor = isSuccess ? '#28a745' : '#dc3545';
+        toast.style.color = 'white';
+        toast.style.zIndex = '1050';
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 3000);
     }
 });
 </script>
