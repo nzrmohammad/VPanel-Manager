@@ -18,11 +18,11 @@ logger = logging.getLogger(__name__)
 def nightly_report(bot, target_user_id: int = None) -> None:
     """
     گزارش شبانه را برای کاربران و گزارش جامع را برای ادمین‌ها ارسال می‌کند.
+    (نسخه اصلاح شده با مدیریت خطا در حلقه)
     """
     tehran_tz = pytz.timezone("Asia/Tehran")
     now_gregorian = datetime.now(tehran_tz)
     
-    # اگر جمعه بود، از ارسال گزارش روزانه برای کاربران عادی صرف‌نظر می‌شود
     if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6:
         logger.info("SCHEDULER (Nightly): Friday, skipping daily report for users.")
         return
@@ -48,7 +48,6 @@ def nightly_report(bot, target_user_id: int = None) -> None:
                 admin_report_text = fmt_admin_report(all_users_info_from_api, db)
                 admin_full_message = admin_header + admin_report_text
                 
-                # مدیریت پیام‌های طولانی برای ادمین
                 if len(admin_full_message) > 4096:
                     chunks = [admin_full_message[i:i + 4090] for i in range(0, len(admin_full_message), 4090)]
                     for i, chunk in enumerate(chunks):
@@ -98,6 +97,7 @@ def nightly_report(bot, target_user_id: int = None) -> None:
 def weekly_report(bot, target_user_id: int = None) -> None:
     """
     گزارش هفتگی مصرف را برای کاربران ارسال می‌کند.
+    (نسخه اصلاح شده با مدیریت خطا در حلقه)
     """
     now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(pytz.timezone("Asia/Tehran"))).strftime("%Y/%m/%d - %H:%M")
     all_users_info = combined_handler.get_all_users_combined()
@@ -139,8 +139,9 @@ def weekly_report(bot, target_user_id: int = None) -> None:
 def send_weekly_admin_summary(bot) -> None:
     """
     گزارش هفتگی پرمصرف‌ترین کاربران را برای ادمین‌ها ارسال می‌کند و به ۱۰ نفر اول پیام تبریک/انگیزشی می‌فرستد.
+    (نسخه اصلاح شده با مدیریت خطا در حلقه)
     """
-    from .rewards import notify_user_achievement # Import محلی برای جلوگیری از خطای وابستگی چرخه‌ای
+    from .rewards import notify_user_achievement 
     from .warnings import send_warning_message
 
     logger.info("SCHEDULER: Sending weekly admin summary and top user notifications.")
@@ -148,7 +149,6 @@ def send_weekly_admin_summary(bot) -> None:
         report_data = db.get_weekly_top_consumers_report()
         report_text = fmt_weekly_admin_summary(report_data)
 
-        # ارسال گزارش به ادمین‌ها
         for admin_id in ADMIN_IDS:
             try:
                 bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
@@ -160,7 +160,6 @@ def send_weekly_admin_summary(bot) -> None:
             all_bot_users_with_uuids = db.get_all_bot_users_with_uuids()
             user_map = {user['config_name']: user['user_id'] for user in all_bot_users_with_uuids}
 
-            # اهدای نشان قهرمان هفته
             if len(top_users) > 0:
                 champion = top_users[0]
                 champion_name = champion.get('name')
@@ -169,27 +168,30 @@ def send_weekly_admin_summary(bot) -> None:
                     if db.add_achievement(champion_id, 'weekly_champion'):
                         notify_user_achievement(bot, champion_id, 'weekly_champion')
 
-            # ارسال پیام به ۱۰ نفر اول
             for i, user in enumerate(top_users):
-                rank = i + 1
-                user_name = user.get('name')
-                usage = user.get('total_usage', 0)
-                
-                user_id = user_map.get(user_name)
+                try:
+                    rank = i + 1
+                    user_name = user.get('name')
+                    usage = user.get('total_usage', 0)
+                    
+                    user_id = user_map.get(user_name)
 
-                if user_id:
-                    lang_code = db.get_user_language(user_id)
-                    
-                    message_key = f"weekly_top_user_rank_{rank}" if 1 <= rank <= 3 else "weekly_top_user_rank_4_to_10"
-                    
-                    fun_message_template = get_string(message_key, lang_code)
-                    final_message = fun_message_template.format(
-                        usage=escape_markdown(f"{usage:.2f} GB"),
-                        rank=rank
-                    )
-                    
-                    send_warning_message(bot, user_id, final_message, name=user_name)
-                    time.sleep(0.5)
+                    if user_id:
+                        lang_code = db.get_user_language(user_id)
+                        
+                        message_key = f"weekly_top_user_rank_{rank}" if 1 <= rank <= 3 else "weekly_top_user_rank_4_to_10"
+                        
+                        fun_message_template = get_string(message_key, lang_code)
+                        final_message = fun_message_template.format(
+                            usage=escape_markdown(f"{usage:.2f} GB"),
+                            rank=rank
+                        )
+                        
+                        send_warning_message(bot, user_id, final_message, name=user_name)
+                        time.sleep(0.5)
+                except Exception as e:
+                    logger.error(f"Failed to send weekly top user notification to user: {user.get('name')}. Error: {e}", exc_info=True)
+
 
     except Exception as e:
         logger.error(f"Failed to generate or process weekly admin summary: {e}", exc_info=True)
@@ -198,6 +200,7 @@ def send_weekly_admin_summary(bot) -> None:
 def send_daily_achievements_report(bot) -> None:
     """
     گزارش روزانه دستاوردهای کسب شده را برای ادمین‌ها ارسال می‌کند.
+    (نسخه اصلاح شده با مدیریت خطا در حلقه)
     """
     logger.info("SCHEDULER: Sending daily achievements report.")
     try:

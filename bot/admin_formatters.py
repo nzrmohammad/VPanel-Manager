@@ -963,7 +963,10 @@ def fmt_scheduled_tasks(tasks: list) -> str:
 
 
 def fmt_daily_achievements_report(daily_achievements: list) -> str:
-    """گزارش روزانه دستاوردهای کسب شده توسط کاربران را برای ادمین فرمت‌بندی می‌کند."""
+    """
+    گزارش روزانه دستاوردهای کسب شده توسط کاربران را برای ادمین فرمت‌بندی می‌کند.
+    (نسخه اصلاح شده با escape کردن پرانتزها)
+    """
     if not daily_achievements:
         return "🎖️ *گزارش دستاوردهای امروز*\n\nامروز هیچ کاربری دستاورد جدیدی کسب نکرده است."
 
@@ -981,7 +984,7 @@ def fmt_daily_achievements_report(daily_achievements: list) -> str:
         users_achievements[user_id]['badges'].append(achievement['badge_code'])
 
     for user_id, data in users_achievements.items():
-        lines.append(f"👤 *{data['first_name']}* (`{user_id}`):")
+        lines.append(f"👤 *{data['first_name']}* \\(`{user_id}`\\):")
         
         total_points_today = 0
         for badge_code in data['badges']:
