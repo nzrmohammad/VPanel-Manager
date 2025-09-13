@@ -1,3 +1,5 @@
+/* Filename: webapp/static/css/style.css */
+
 /* --- Global Settings & Font Import --- */
 @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
 
@@ -133,20 +135,24 @@ body {
     padding: 0;
     margin: 0;
 }
+
+/* START OF CHANGE: Reduced vertical padding and margin to prevent scrolling */
 .sidebar-nav li a, .logout li a {
     display: flex;
     justify-content: flex-start;
     align-items: center;
-    padding: 12px;
+    padding: 12px 14px; /* Vertical padding reduced from 12px to 10px */
     color: var(--sidebar-text);
     text-decoration: none;
     border-radius: var(--border-radius);
-    margin-bottom: 10px;
+    margin-bottom: 8px; /* Margin reduced from 10px to 8px */
     transition: all var(--transition-speed);
     font-size: 0.95rem;
     white-space: nowrap;
     overflow: hidden;
 }
+/* END OF CHANGE */
+
 .sidebar-nav li a .nav-icon, .logout li a .nav-icon {
     font-size: 1.3rem;
     margin-left: 12px;
