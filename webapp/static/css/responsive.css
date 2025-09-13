@@ -78,6 +78,16 @@
         display: none; /* مخفی کردن کامل کادر نگهدارنده کیف پول */
     }
     /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
+    #user-access-management .table-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+    #user-access-management .filter-controls-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
 }
 
 /* === موبایل (کمتر از 768 پیکسل) === */
@@ -270,7 +280,24 @@
     #templates-list .data-table td:nth-of-type(3)::before { content: 'وضعیت'; }
     #templates-list .data-table td:nth-of-type(4)::before { content: 'سرور'; }
     #templates-list .data-table td:nth-of-type(5)::before { content: 'عملیات'; }
+    /* Labels for each column in the mobile view */
+    #user-access-management .data-table td:nth-of-type(1)::before { content: 'نام تلگرام'; }
+    #user-access-management .data-table td:nth-of-type(2)::before { content: 'نام کانفیگ'; }
+    #user-access-management .data-table td:nth-of-type(3)::before { content: 'پنل‌ها'; }
+    #user-access-management .data-table td:nth-of-type(4)::before { content: 'VIP ⭐'; }
+    #user-access-management .data-table td:nth-of-type(5)::before { content: 'آلمان 🇩🇪'; }
+    #user-access-management .data-table td:nth-of-type(6)::before { content: 'فرانسه 🇫🇷'; }
+    #user-access-management .data-table td:nth-of-type(7)::before { content: 'ترکیه 🇹🇷'; }
+    #user-access-management .data-table td:nth-of-type(8)::before { content: 'آمریکا 🇺🇸'; }
 
+    #user-access-management .data-table td > span {
+        text-align: left;
+        direction: ltr;
+        word-break: break-all; /* Prevents long names from breaking layout */
+    }
+    #user-access-management .data-table td > span code {
+        direction: ltr;
+    }
 
     /* --- مودال و فرم --- */
     .modal-body {

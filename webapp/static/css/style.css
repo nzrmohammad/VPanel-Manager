@@ -289,8 +289,8 @@ h3.section-title {
     display: flex;
     align-items: center;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 0 1rem;
+    /* border-radius: 8px; */
+    /* padding: 0 1rem; */
     background-color: var(--card-bg);
     transition: border-color 0.2s, box-shadow 0.2s;
 }

@@ -4,8 +4,8 @@
 
 {% block extra_css %}
 <style>
-    /* --- استایل‌های اختصاصی این صفحه (برگرفته از style.css و responsive.css) --- */
-    
+    /* --- استایل‌های اختصاصی و غیررسپانسیو این صفحه --- */
+
     /* استایل سوییچ سفارشی */
     .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
@@ -14,7 +14,7 @@
     input:checked + .slider { background-color: var(--accent-color); }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    /* استایل بخش کنترل‌ها (جستجو و فیلتر) */
+    /* استایل‌های بخش کنترل‌ها (جستجو و فیلتر) */
     .table-controls {
         display: flex;
         justify-content: space-between;
@@ -24,17 +24,30 @@
         flex-wrap: wrap;
         gap: 1.5rem;
     }
+    .table-controls h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .filter-controls-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
     .search-box {
         position: relative;
-        flex-grow: 1;
         min-width: 280px;
     }
     .search-box input {
         width: 100%;
-        padding: 9px 40px 9px 12px; /* اصلاح پدینگ برای راست‌چین */
+        padding: 9px 40px 9px 12px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
         background-color: var(--bg-color);
+        color: var(--text-color);
         transition: border-color 0.2s, box-shadow 0.2s;
     }
     .search-box input:focus {
@@ -44,7 +57,7 @@
     }
     .search-box .ri-search-line {
         position: absolute;
-        right: 12px; /* اصلاح موقعیت آیکون برای راست‌چین */
+        right: 12px;
         top: 50%;
         transform: translateY(-50%);
         color: var(--text-secondary);
@@ -58,64 +71,14 @@
     .filter-group label {
         color: var(--text-secondary);
         font-size: 0.9rem;
+        white-space: nowrap;
     }
     .filter-group select {
         padding: 9px 12px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
         background-color: var(--bg-color);
-    }
-    /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
-    .filters-wrapper {
-        display: flex;
-        gap: 1.5rem;
-        flex-wrap: wrap;
-    }
-    /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
-
-
-    /* واکنشگرایی برای موبایل */
-    @media (max-width: 767px) {
-        .table-controls {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 1rem;
-        }
-        /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
-        .filters-wrapper {
-            display: grid;
-            grid-template-columns: 1fr 1fr; /* ایجاد دو ستون مساوی */
-            width: 100%;
-            gap: 1rem;
-        }
-        .filter-group {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        .filter-group select {
-            width: 100%; /* سلکت باکس هم عرض کامل بگیرد */
-        }
-        /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
-
-        /* --- برچسب‌های جدول واکنشگرا --- */
-        .data-table thead { display: none; }
-        .data-table tr { display: block; border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1rem; padding: 0.75rem; }
-        .data-table td { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 0; border-bottom: 1px dashed var(--border-color); text-align: left !important; }
-        .data-table td:last-child { border-bottom: none; }
-        .data-table td::before { font-weight: bold; color: var(--text-secondary); }
-
-        /* اصلاح ترتیب ستون‌ها برای نمایش در موبایل */
-        .data-table td:nth-of-type(1)::before { content: 'کاربر'; }
-        .data-table td:nth-of-type(2)::before { content: 'نام کانفیگ'; }
-        .data-table td:nth-of-type(3)::before { content: 'پنل‌ها'; }
-        .data-table td:nth-of-type(4)::before { content: 'VIP ⭐'; }
-        .data-table td:nth-of-type(5)::before { content: 'آلمان 🇩🇪'; }
-        .data-table td:nth-of-type(6)::before { content: 'فرانسه 🇫🇷'; }
-        .data-table td:nth-of-type(7)::before { content: 'ترکیه 🇹🇷'; }
-        /* <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>> */
-        .data-table td:nth-of-type(8)::before { content: 'آمریکا 🇺🇸'; }
-        /* <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>> */
+        color: var(--text-color);
     }
 </style>
 {% endblock %}
@@ -124,13 +87,14 @@
     {% set page_title='مدیریت دسترسی کاربران' %}
     {% include 'partials/_header.html' %}
 
-    <div class="info-card data-table-container">
-        <div class="table-controls">
-            <div class="search-box">
-                <i class="ri-search-line"></i>
-                <input type="text" id="searchInput" placeholder="جستجوی کاربر یا نام کانفیگ...">
-            </div>
-            <div class="filters-wrapper">
+    <div class="info-card data-table-container" id="user-access-management">
+    <div class="table-controls">
+            <h3><i class="ri-shield-user-line" style="vertical-align: middle;"></i> لیست کاربران</h3>
+            <div class="filter-controls-wrapper">
+                <div class="search-box">
+                    <i class="ri-search-line"></i>
+                    <input type="text" id="searchInput" placeholder="جستجوی کاربر یا نام کانفیگ...">
+                </div>
                 <div class="filter-group">
                     <label for="vipFilter">وضعیت VIP:</label>
                     <select id="vipFilter">
@@ -151,6 +115,7 @@
                 </div>
             </div>
         </div>
+
         <div class="table-responsive">
             <table class="data-table">
                 <thead>
@@ -168,9 +133,14 @@
                 <tbody id="user-table-body">
                     {% for user in bot_users %}
                         <tr data-uuid-id="{{ user.uuid_id }}" data-uuid="{{ user.uuid }}">
-                            <td>{{ user.first_name or 'کاربر' }} (<code>{{ user.user_id }}</code>)</td>
-                            <td>{{ user.config_name }}</td>
-                            <td class="panel-display-cell">🇩🇪 {% if user.is_on_marzban %}🇫🇷{% endif %}</td>
+                            <td><span>{{ user.first_name or 'کاربر' }} (<code>{{ user.user_id }}</code>)</span></td>
+                            <td><span>{{ user.config_name }}</span></td>
+                            <td class="panel-display-cell">
+                                <span>
+                                    {% if user.has_access_de %}🇩🇪{% endif %}
+                                    {% if user.is_on_marzban %} 🇫🇷{% endif %}
+                                </span>
+                            </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="toggle-vip" {% if user.is_vip %}checked{% endif %}><span class="slider"></span></label>
                             </td>
@@ -182,15 +152,15 @@
                             </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="tr" {% if user.has_access_tr %}checked{% endif %}><span class="slider"></span></label>
-                            </td> 
-                            <td class="access-toggle-cell"> 
+                            </td>
+                            <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="us" {% if user.has_access_us %}checked{% endif %}><span class="slider"></span></label>
-                            </td>  
+                            </td>
                         </tr>
                     {% else %}
-                        <tr><td colspan="8" class="text-center py-4">هیچ کاربری در ربات ثبت‌نام نکرده است.</td></tr>
+                        <tr><td colspan="8" style="text-align: center; padding: 1.5rem;">هیچ کاربری در ربات ثبت‌نام نکرده است.</td></tr>
                     {% endfor %}
-                    <tr id="no-results-row" style="display: none;"><td colspan="8" class="text-center py-4">هیچ کاربری با این مشخصات یافت نشد.</td></tr>
+                    <tr id="no-results-row" style="display: none;"><td colspan="8" style="text-align: center; padding: 1.5rem;">هیچ کاربری با این مشخصات یافت نشد.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -200,7 +170,6 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- انتخاب عناصر ---
     const csrfToken = '{{ csrf_token() }}';
     const tableBody = document.getElementById('user-table-body');
     const searchInput = document.getElementById('searchInput');
@@ -208,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const serverFilter = document.getElementById('serverFilter');
     const noResultsRow = document.getElementById('no-results-row');
 
-    // --- تابع اصلی فیلتر و جستجو ---
     function filterAndSearch() {
         const searchTerm = searchInput.value.toLowerCase().trim();
         const vipStatus = vipFilter.value;
@@ -234,7 +202,6 @@ document.addEventListener('DOMContentLoaded', function() {
         noResultsRow.style.display = visibleCount === 0 ? '' : 'none';
     }
 
-    // --- اتصال Event Listener ها ---
     let debounceTimer;
     searchInput.addEventListener('input', () => {
         clearTimeout(debounceTimer);
@@ -243,7 +210,6 @@ document.addEventListener('DOMContentLoaded', function() {
     vipFilter.addEventListener('change', filterAndSearch);
     serverFilter.addEventListener('change', filterAndSearch);
 
-    // --- منطق مربوط به سوییچ‌ها ---
     tableBody.addEventListener('change', function(e) {
         const checkbox = e.target;
         if (!checkbox.matches('.access-toggle, .toggle-vip')) return;
@@ -273,11 +239,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-        // Placeholder for showToast function if you have one
-        function showToast(message, isSuccess) {
-            // Implement your toast notification logic here
-            console.log((isSuccess ? "SUCCESS: " : "ERROR: ") + message);
-        }
-    });
+    function showToast(message, isSuccess) {
+        console.log(`Toast: ${message} (Success: ${isSuccess})`);
+    }
+});
 </script>
 {% endblock %}
