@@ -46,15 +46,17 @@ def start_broadcast_flow(call, params):
 
         counts['all'] = len(all_bot_user_ids)
 
-        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
-            types.InlineKeyboardButton(f"📣 همه کاربران ربات ({counts['all']})", callback_data="admin:broadcast_target:all"),
             types.InlineKeyboardButton(f"🟢 آنلاین در ۳ دقیقه اخیر ({counts['online']})", callback_data="admin:broadcast_target:online"),
-            types.InlineKeyboardButton(f"✅ فعال در ۲۴ ساعت اخیر ({counts['active_1']})", callback_data="admin:broadcast_target:active_1"),
-            types.InlineKeyboardButton(f"⚠️ غیرفعال در ۷ روز گذشته ({counts['inactive_7']})", callback_data="admin:broadcast_target:inactive_7"),
-            types.InlineKeyboardButton(f"🚫 هرگز متصل نشده ({counts['inactive_0']})", callback_data="admin:broadcast_target:inactive_0"),
-            types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel")
+            types.InlineKeyboardButton(f"✅ فعال در ۲۴ ساعت اخیر ({counts['active_1']})", callback_data="admin:broadcast_target:active_1")
         )
+        kb.add(
+            types.InlineKeyboardButton(f"⚠️ غیرفعال در ۷ روز گذشته ({counts['inactive_7']})", callback_data="admin:broadcast_target:inactive_7"),
+            types.InlineKeyboardButton(f"🚫 هرگز متصل نشده ({counts['inactive_0']})", callback_data="admin:broadcast_target:inactive_0")
+        )
+        kb.add(types.InlineKeyboardButton(f"📣 همه کاربران ربات ({counts['all']})", callback_data="admin:broadcast_target:all"))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         prompt = "لطفاً جامعه هدف برای ارسال پیام همگانی را انتخاب کنید:"
         _safe_edit(uid, msg_id, prompt, reply_markup=kb)
 

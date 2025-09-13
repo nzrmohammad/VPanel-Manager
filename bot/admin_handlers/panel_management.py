@@ -24,19 +24,28 @@ def handle_panel_management_menu(call, params):
     """منوی اصلی مدیریت پنل‌ها را نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     panels = db.get_all_panels()
-    prompt = "⚙️ *مدیریت پنل‌ها*\n\nدر این بخش می‌توانید سرورهای Hiddify و Marzban متصل به ربات را مدیریت کنید."
     
-    kb = types.InlineKeyboardMarkup(row_width=1)
+    prompt = f"⚙️ *{escape_markdown('مدیریت پنل‌ها')}*\n\n{escape_markdown('در این بخش می‌توانید سرورهای Hiddify و Marzban متصل به ربات را مدیریت کنید.')}"
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    
+    buttons = []
     for p in panels:
         status_emoji = "✅" if p['is_active'] else "❌"
-        btn_text = f"{status_emoji} {p['name']} ({p['panel_type']})"
-        # دکمه جزئیات بعداً تکمیل می‌شود
-        kb.add(types.InlineKeyboardButton(btn_text, callback_data=f"admin:panel_details:{p['id']}"))
+        panel_type_fa = "Hiddify" if p['panel_type'] == 'hiddify' else "Marzban"
+        btn_text = f"{status_emoji} {p['name']} ({panel_type_fa})"
+        buttons.append(types.InlineKeyboardButton(btn_text, callback_data=f"admin:panel_details:{p['id']}"))
+    
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            kb.add(buttons[i], buttons[i+1])
+        else:
+            kb.add(buttons[i])
     
     kb.add(types.InlineKeyboardButton("➕ افزودن پنل جدید", callback_data="admin:panel_add_start"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
     
-    _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
 
 # --- Start of Add Panel Conversation ---
 

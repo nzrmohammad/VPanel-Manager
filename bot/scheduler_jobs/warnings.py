@@ -87,6 +87,8 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         )
                         if send_warning_message(bot, user_id_in_telegram, welcome_text):
                             db.mark_welcome_message_as_sent(uuid_id_in_db)
+                            db.create_notification(user_id_in_telegram, "خوش آمدید!", "از اینکه به ما اعتماد کردید خوشحالیم. امیدواریم از کیفیت سرویس لذت ببرید.", "info")
+
 
                 # 2. ارسال یادآوری تمدید
                 expire_days = info.get('expire')
@@ -99,6 +101,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                     kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚀 مشاهده و تمدید سرویس‌ها", callback_data="view_plans"))
                     if bot.send_message(user_id_in_telegram, renewal_text, parse_mode="MarkdownV2", reply_markup=kb):
                         db.set_renewal_reminder_sent(uuid_id_in_db)
+                        db.create_notification(user_id_in_telegram, "یادآوری تمدید", f"تنها ۱ روز از اعتبار اکانت «{user_name}» شما باقی مانده است.", "warning")
 
                 # 3. ارسال هشدار انقضای اکانت
                 if user_settings.get('expiry_warnings') and expire_days is not None and 1 < expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
@@ -106,6 +109,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
                         if send_warning_message(bot, user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
                             db.log_warning(uuid_id_in_db, 'expiry')
+                            db.create_notification(user_id_in_telegram, "هشدار انقضای اکانت", f"اکانت «{user_name}» شما تا {expire_days} روز دیگر منقضی می‌شود.", "warning")
                 
                 # 4. ارسال هشدارهای اتمام حجم
                 breakdown = info.get('breakdown', {})
@@ -120,10 +124,12 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                 msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *آلمان 🇩🇪* مصرف شده است\\.")
                                 if send_warning_message(bot, user_id_in_telegram, msg):
                                     db.log_warning(uuid_id_in_db, 'low_data_hiddify')
+                                    db.create_notification(user_id_in_telegram, "هشدار اتمام حجم", f"بیش از {int(WARNING_USAGE_THRESHOLD)}% از حجم سرویس شما در سرور آلمان 🇩🇪 مصرف شده است.", "warning")
                             if usage >= limit and not hiddify_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_hiddify'):
                                 msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *آلمان 🇩🇪* به پایان رسیده و این سرور برای شما غیرفعال شده است\\.")
                                 if send_warning_message(bot, user_id_in_telegram, msg):
                                     db.log_warning(uuid_id_in_db, 'volume_depleted_hiddify')
+                                    db.create_notification(user_id_in_telegram, "اتمام حجم", "حجم سرویس شما در سرور آلمان 🇩🇪 به پایان رسیده است.", "warning")
                                     
                 marzban_info = next((p.get('data', {}) for p in breakdown.values() if p.get('type') == 'marzban'), None)
                 if marzban_info and uuid_record:
@@ -145,11 +151,13 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                 msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *{server_display_name}* مصرف شده است\\.")
                                 if send_warning_message(bot, user_id_in_telegram, msg):
                                     db.log_warning(uuid_id_in_db, 'low_data_marzban')
+                                    db.create_notification(user_id_in_telegram, "هشدار اتمام حجم", f"بیش از {int(WARNING_USAGE_THRESHOLD)}% از حجم سرویس شما در سرور {server_display_name} مصرف شده است.", "warning")
                                     
                             if usage >= limit and not marzban_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_marzban'):
                                 msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *{server_display_name}* به پایان رسیده و این سرور برای شما غیرفعال شده است\\.")
                                 if send_warning_message(bot, user_id_in_telegram, msg):
                                     db.log_warning(uuid_id_in_db, 'volume_depleted_marzban')
+                                    db.create_notification(user_id_in_telegram, "اتمام حجم", f"حجم سرویس شما در سرور {server_display_name} به پایان رسیده است.", "warning")
 
                 # 5. ارسال پیام به کاربران غیرفعال
                 last_online = info.get('last_online')
@@ -161,6 +169,12 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             "اگه روش اتصال رو نمیدونی و یا اشتراک برات کار نکرد، با پشتیبانی در ارتباط باش تا برات حلش کنیم\\.")
                         if send_warning_message(bot, user_id_in_telegram, msg):
                             db.log_warning(uuid_id_in_db, 'inactive_user_reminder')
+                            db.create_notification(
+                                user_id_in_telegram,
+                                "یادآوری عدم فعالیت",
+                                "چند روز از آخرین اتصال شما می‌گذرد. در صورت وجود مشکل در اتصال، لطفاً با پشتیبانی تماس بگیرید.",
+                                "warning"
+                            )
 
                 # 6. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
                 if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
@@ -170,7 +184,13 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                         f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
                                         f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
                         for admin_id in ADMIN_IDS:
-                            send_warning_message(bot, admin_id, alert_message) # Use the safe function
+                            if send_warning_message(bot, admin_id, alert_message): # Use the safe function
+                                db.create_notification(
+                                    admin_id,
+                                    "مصرف غیرعادی روزانه",
+                                    f"کاربر «{user_name}» امروز بیش از {DAILY_USAGE_ALERT_THRESHOLD_GB} GB مصرف داشته است (مصرف کل: {format_daily_usage(total_daily_usage)}).",
+                                    "broadcast" # دسته broadcast انتخاب شد تا در صندوق ورودی ادمین مهم به نظر برسد
+                                )
                         db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
 
                 # 7. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
@@ -180,7 +200,13 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                     f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
                                     f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
                     for admin_id in ADMIN_IDS:
-                        send_warning_message(bot, admin_id, alert_message) # Use the safe function
+                        if send_warning_message(bot, admin_id, alert_message): # Use the safe function
+                            db.create_notification(
+                                admin_id,
+                                "تعداد دستگاه بالا",
+                                f"کاربر «{user_name}» بیش از ۵ دستگاه ({device_count} دستگاه) متصل کرده است. احتمال به اشتراک گذاری لینک وجود دارد.",
+                                "broadcast"
+                            )
                     db.log_warning(uuid_id_in_db, 'too_many_devices')
 
             except Exception as e:

@@ -609,16 +609,15 @@ class Menu:
         return kb
 
     def admin_backup_selection_menu(self) -> types.InlineKeyboardMarkup:
-        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
-            # FIX: گزینه جدید برای پشتیبان‌گیری از کاربران پنل آلمان اضافه شد
             types.InlineKeyboardButton("📄 کاربران آلمان (Hiddify)", callback_data="admin:backup:hiddify"),
-            types.InlineKeyboardButton("📄 کاربران فرانسه (Marzban)", callback_data="admin:backup:marzban"),
-            types.InlineKeyboardButton("🗄️ دیتابیس ربات", callback_data="admin:backup:bot_db")
+            types.InlineKeyboardButton("📄 کاربران فرانسه (Marzban)", callback_data="admin:backup:marzban")
         )
+        kb.add(types.InlineKeyboardButton("🗄️ دیتابیس ربات", callback_data="admin:backup:bot_db"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
-    # =============================================================================
+    
     # Utility & Helper Menus
     # =============================================================================
     def create_pagination_menu(self, base_callback: str, current_page: int, total_items: int, back_callback: str, lang_code: Optional[str] = None, context: Optional[str] = None) -> types.InlineKeyboardMarkup:
