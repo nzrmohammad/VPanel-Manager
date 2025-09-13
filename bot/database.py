@@ -2436,27 +2436,30 @@ class DatabaseManager:
         return list(weekly_usage_by_user_id.values())
 
     def get_previous_day_total_usage(self, uuid_id: int) -> float:
-        """مجموع مصرف کل یک کاربر در روز گذشته را محاسبه می‌کند."""
+        """مجموع مصرف کل یک کاربر در روز گذشته را به صورت دقیق محاسبه می‌کند."""
         tehran_tz = pytz.timezone("Asia/Tehran")
         yesterday_tehran = datetime.now(tehran_tz).date() - timedelta(days=1)
-        
+
         day_start_utc = datetime(yesterday_tehran.year, yesterday_tehran.month, yesterday_tehran.day, tzinfo=tehran_tz).astimezone(pytz.utc)
         day_end_utc = day_start_utc + timedelta(days=1)
 
         with self._conn() as c:
-            query = """
-                SELECT
-                    (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
-                    (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as m_usage
-                FROM usage_snapshots
-                WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
-            """
-            row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
+            last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, day_start_utc)).fetchone()
+            snapshots_yesterday = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? ORDER BY taken_at ASC", (uuid_id, day_start_utc, day_end_utc)).fetchall()
 
-            h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
-            m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
-            
-            return h_usage + m_usage
+            last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+            last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
+
+            total_usage = 0.0
+            for snap in snapshots_yesterday:
+                h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
+                m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
+                total_usage += h_diff + m_diff
+
+                last_h = snap['hiddify_usage_gb'] or 0.0
+                last_m = snap['marzban_usage_gb'] or 0.0
+
+            return total_usage
 
     def create_notification(self, user_id: int, title: str, message: str, category: str = 'info'):
         """یک اعلان جدید برای کاربر در دیتابیس ثبت می‌کند."""

@@ -142,6 +142,8 @@ def serve_base64_subscription(uuid):
 @user_bp.route('/<string:uuid>/links')
 def subscription_links_page(uuid):
     user_record = db.get_user_uuid_record(uuid)
+    user_data = user_service.get_processed_user_data(uuid)
+
     if not user_record or not user_record.get('user_id'):
         abort(404, "کاربر یا شناسه کاربری یافت نشد")
     
@@ -171,7 +173,6 @@ def subscription_links_page(uuid):
         {"type": "همه کانفیگ‌ها (Base64)", "url": url_for('user.serve_base64_subscription', uuid=uuid, _external=True, _scheme='https')}
     ]
     
-    user_data = {"username": "کاربر"}
     return render_template('subscription_links_page.html', user=user_data, subscription_links=subscription_links, individual_configs=individual_configs)
 
 

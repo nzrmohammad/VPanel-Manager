@@ -73,6 +73,9 @@
     #dailyUsageChart {
         transform: translateX(-20px);
     }
+    .header-wallet-balance {
+        display: none;
+    }
 }
 
 /* === موبایل (کمتر از 768 پیکسل) === */
@@ -136,17 +139,17 @@
     .user-list.multi-column .user-list-item:not(:nth-last-child(-n+2)) {
         border-bottom: 1px solid var(--border-color);
     }
-    .make-two-column {
+  .make-two-column {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 1rem;
+        gap: 0.5rem 1.5rem; /* فاصله عمودی و افقی بین آیتم‌ها */
     }
     .make-two-column .user-list-item {
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: none; /* حذف خط زیرین پیش‌فرض */
     }
-    .make-two-column .user-list-item:nth-last-child(-n+2) {
-        border-bottom: none;
+    /* اضافه کردن خط جداکننده به آیتم‌هایی که در انتهای سطر نیستند */
+    .make-two-column .user-list-item:not(:nth-last-child(-n+2)) {
+         border-bottom: 1px solid var(--border-color);
     }
     .sidebar-column .user-list-item {
         display: flex;
@@ -324,5 +327,23 @@
     }
     .info-card {
         overflow: hidden;
+    }
+    .make-two-column {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+    .make-two-column .user-list-item {
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .make-two-column .user-list-item:nth-last-child(-n+2) {
+        border-bottom: none;
+    }
+    .sidebar-column .user-list-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
     }
 }

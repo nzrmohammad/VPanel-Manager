@@ -528,3 +528,23 @@ button, input, select, textarea {
     font-size: 0.8rem;
     color: var(--text-secondary);
 }
+.online-users-grid .user-list {
+    direction: ltr;
+}
+.online-users-grid .user-list-item {
+    text-align: left;
+}
+.user-list .user-list-item {
+    display: flex; /* <-- این خط اضافه شود */
+    align-items: center; /* <-- این خط اضافه شود */
+    justify-content: space-between; /* <-- این خط اضافه شود */
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.user-list li:last-child {
+    border-bottom: none;
+}
+.ltr-list {
+    direction: ltr;
+    text-align: left;
+}

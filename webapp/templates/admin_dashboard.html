@@ -67,13 +67,13 @@
                 <div class="online-users-grid">
                     <div>
                         <h4>Hiddify 🇩🇪</h4>
-                        <ul class="user-list">
+                        <ul class="user-list make-two-column ltr-list">
                             {% for user in online_users_hiddify %}<li class="user-list-item"><span>{{ user.name }}</span></li>{% else %}<li>-</li>{% endfor %}
                         </ul>
                     </div>
                     <div>
                         <h4>Marzban 🇫🇷</h4>
-                        <ul class="user-list">
+                        <ul class="user-list make-two-column ltr-list">
                             {% for user in online_users_marzban %}<li class="user-list-item"><span>{{ user.name }}</span></li>{% else %}<li>-</li>{% endfor %}
                         </ul>
                     </div>
@@ -84,7 +84,7 @@
         <div class="sidebar-column">
             <div class="info-card">
                 <div class="card-header"><i class="ri-heart-pulse-line icon"></i><span>وضعیت سلامت سیستم</span></div>
-                <ul class="user-list health-status-list">
+                <ul class="user-list health-status-list make-two-column">
                     {% for service_name, status in system_health.items() %}
                     <li class="user-list-item">
                         <span class="text-capitalize">{{ service_name }}</span>
@@ -99,7 +99,7 @@
             </div>
             <div class="info-card">
                 <div class="card-header"><i class="ri-user-add-line icon"></i><span>کاربران جدید</span></div>
-                <ul class="user-list">
+                <ul class="user-list make-two-column">
                     {% for user in new_users_last_24h %}
                         <li class="user-list-item">
                             <span>{{ user.name }}</span>
