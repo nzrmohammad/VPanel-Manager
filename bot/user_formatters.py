@@ -321,8 +321,19 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             total_h_usage = sum(d.get('hiddify_usage', 0.0) for d in daily_history)
             total_m_usage = sum(d.get('marzban_usage', 0.0) for d in daily_history)
             
-            most_used_server = "آلمان 🇩🇪" if total_h_usage >= total_m_usage else "فرانسه/ترکیه/آمریکا 🇫🇷🇹🇷🇺🇸"
+            most_used_server_parts = []
+            if total_h_usage >= total_m_usage and user_record.get('has_access_de'):
+                most_used_server_parts.append("آلمان 🇩🇪")
+            else:
+                flags = []
+                if user_record.get('has_access_fr'): flags.append("فرانسه 🇫🇷")
+                if user_record.get('has_access_tr'): flags.append("ترکیه 🇹🇷")
+                if user_record.get('has_access_us'): flags.append("آمریکا 🇺🇸")
+                if flags:
+                    most_used_server_parts.append("/".join(flags))
             
+            most_used_server = " و ".join(most_used_server_parts) if most_used_server_parts else "سرور اصلی"
+
             time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
             busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get) if any(v > 0 for v in time_of_day_stats.values()) else None
             period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}

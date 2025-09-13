@@ -24,17 +24,25 @@ def handle_plan_management_menu(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id
     plans = load_service_plans()
     
-    prompt = "🗂️ *مدیریت پلن‌های فروش*\n\nدر این بخش می‌توانید پلن‌های فروش سرویس را مشاهده، ویرایش، حذف یا اضافه کنید."
+    prompt = f"🗂️ *{escape_markdown('مدیریت پلن‌های فروش')}*\n\n{escape_markdown('در این بخش می‌توانید پلن‌های فروش سرویس را مشاهده، ویرایش، حذف یا اضافه کنید.')}"
     
-    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    
+    buttons = []
     for i, plan in enumerate(plans):
         plan_name = plan.get('name', f'پلن بدون نام {i+1}')
-        kb.add(types.InlineKeyboardButton(f"🔸 {plan_name}", callback_data=f"admin:plan_details:{i}"))
+        buttons.append(types.InlineKeyboardButton(f"🔸 {plan_name}", callback_data=f"admin:plan_details:{i}"))
     
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            kb.add(buttons[i], buttons[i+1])
+        else:
+            kb.add(buttons[i])
+
     kb.add(types.InlineKeyboardButton("➕ افزودن پلن جدید", callback_data="admin:plan_add_start"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
     
-    _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
 
 def handle_plan_details_menu(call, params):
     """جزئیات یک پلن خاص را به همراه دکمه‌های ویرایش و حذف نمایش می‌دهد."""

@@ -168,7 +168,7 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
     lines.append("🥇 *۱۰ کاربر برتر این هفته:*")
 
     if not report_data.get('top_10_overall'):
-        lines.append("_هیچ مصرفی در این هفته ثبت نشده است._")
+        lines.append("هیچ مصرفی در این هفته ثبت نشده است.")
     else:
         for i, user in enumerate(report_data['top_10_overall']):
             usage_str = format_daily_usage(user['total_usage'])
@@ -180,7 +180,7 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
     day_names = ["🗓️ شنبه", "🗒️ یکشنبه", "🗓️ دوشنبه", "🗒️ سه‌شنبه", "🗓️ چهارشنبه", "🗒️ پنجشنبه", "🎉 جمعه"]
 
     if not report_data.get('top_daily'):
-        lines.append("_هنوز داده‌ای برای نمایش قهرمان روزانه وجود ندارد._")
+        lines.append("هنوز داده‌ای برای نمایش قهرمان روزانه وجود ندارد.")
     else:
         for i, day_name in enumerate(day_names):
             top_user = report_data['top_daily'].get(i)
@@ -188,7 +188,7 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
                 usage_str = format_daily_usage(top_user['usage'])
                 lines.append(f"*{escape_markdown(day_name)}:* {escape_markdown(top_user['name'])} \\({escape_markdown(usage_str)}\\)")
             else:
-                lines.append(f"*{escape_markdown(day_name)}:* _{escape_markdown('مصرفی ثبت نشده')}_")
+                lines.append(f"*{escape_markdown(day_name)}:* {escape_markdown('مصرفی ثبت نشده')}")
     
     return "\n".join(lines)
 
