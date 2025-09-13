@@ -542,7 +542,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     user_id = db.get_user_id_by_uuid(user_uuid)
     wallet_balance = 0.0
     achievement_points = 0
-    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
+    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False}
     vip_text = ""
     user_badges = []
 
@@ -583,6 +583,9 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if access_rights.get('has_access_de'): access_flags.append("🇩🇪")
     if access_rights.get('has_access_fr'): access_flags.append("🇫🇷")
     if access_rights.get('has_access_tr'): access_flags.append("🇹🇷")
+    # <<<<<<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>>>>>
+    if access_rights.get('has_access_us'): access_flags.append("🇺🇸")
+    # <<<<<<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>>>>>
     access_text = f"🛰️ سرورها : {''.join(access_flags)}" if access_flags else ""
 
     # --- 6. ساخت پیام نهایی ---
@@ -608,46 +611,49 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     lines.append("")
 
     # --- 7. منطق تفکیک اطلاعات بر اساس سرور ---
+    # <<<<<<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>>>>>
     marzban_flags_list = []
     if access_rights.get('has_access_fr'): marzban_flags_list.append("🇫🇷")
     if access_rights.get('has_access_tr'): marzban_flags_list.append("🇹🇷")
+    if access_rights.get('has_access_us'): marzban_flags_list.append("🇺🇸")
     marzban_flag_str = "".join(marzban_flags_list)
+    # <<<<<<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>>>>>
 
     # A. حجم کل
     lines.append(f"📦 حجم کل : *{escape_markdown(f'{total_limit_gb:.2f}')} GB*")
     if hiddify_info and access_rights.get('has_access_de'):
         limit = hiddify_info.get('usage_limit_GB', 0)
-        lines.append(f"  🇩🇪 {escape_markdown(f'{limit:.2f} GB')}")
+        lines.append(f"  🇩🇪 {escape_markdown(f'{limit:.2f} GB')}")
     if marzban_info and marzban_flag_str:
         limit = marzban_info.get('usage_limit_GB', 0)
-        lines.append(f"  {marzban_flag_str} {escape_markdown(f'{limit:.2f} GB')}")
+        lines.append(f"  {marzban_flag_str} {escape_markdown(f'{limit:.2f} GB')}")
 
     # B. مجموع مصرف شده
     lines.append(f"🔥 مجموع مصرف شده: *{escape_markdown(f'{total_usage_gb:.2f}')} GB*")
     if hiddify_info and access_rights.get('has_access_de'):
         usage = hiddify_info.get('current_usage_GB', 0)
-        lines.append(f"  🇩🇪 {escape_markdown(f'{usage:.2f} GB')}")
+        lines.append(f"  🇩🇪 {escape_markdown(f'{usage:.2f} GB')}")
     if marzban_info and marzban_flag_str:
         usage = marzban_info.get('current_usage_GB', 0)
-        lines.append(f"  {marzban_flag_str} {escape_markdown(f'{usage:.2f} GB')}")
+        lines.append(f"  {marzban_flag_str} {escape_markdown(f'{usage:.2f} GB')}")
 
     # C. مجموع باقیمانده
     lines.append(f"📥 مجموع باقیمانده: *{escape_markdown(f'{total_remaining_gb:.2f}')} GB*")
     if hiddify_info and access_rights.get('has_access_de'):
         remaining = hiddify_info.get('remaining_GB', 0)
-        lines.append(f"  🇩🇪 {escape_markdown(f'{remaining:.2f} GB')}")
+        lines.append(f"  🇩🇪 {escape_markdown(f'{remaining:.2f} GB')}")
     if marzban_info and marzban_flag_str:
         remaining = marzban_info.get('remaining_GB', 0)
-        lines.append(f"  {marzban_flag_str} {escape_markdown(f'{remaining:.2f} GB')}")
+        lines.append(f"  {marzban_flag_str} {escape_markdown(f'{remaining:.2f} GB')}")
 
     # D. مصرف امروز
     lines.append(f"⚡️ مصرف امروز : *{total_daily_usage_str}*")
     if hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001 and access_rights.get('has_access_de'):
         daily_h = daily_usage_dict['hiddify']
-        lines.append(f"  🇩🇪 {escape_markdown(format_daily_usage(daily_h))}")
+        lines.append(f"  🇩🇪 {escape_markdown(format_daily_usage(daily_h))}")
     if marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str:
         daily_m = daily_usage_dict['marzban']
-        lines.append(f"  {marzban_flag_str} {escape_markdown(format_daily_usage(daily_m))}")
+        lines.append(f"  {marzban_flag_str} {escape_markdown(format_daily_usage(daily_m))}")
     
     # E. دستگاه‌های متصل
     if user_uuid and (uuid_id := db.get_uuid_id_by_uuid(user_uuid)):
@@ -669,7 +675,8 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     # --- 8. بخش پایانی ---
     lines.append("")
     lines.append(create_progress_bar(usage_percentage))
-    lines.append(f"`{uuid_escaped}`")
+    uuid_escaped = escape_markdown(user_uuid)
+    lines.append(f"\n||{uuid_escaped}||")
 
     final_text = "\n".join(lines)
     return final_text, "MarkdownV2"

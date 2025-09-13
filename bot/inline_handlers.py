@@ -172,9 +172,12 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
     """
     query = inline_query.query.strip().lower()
     results = []
+    user_id = inline_query.from_user.id
+    lang_code = db.get_user_language(user_id)
 
     try:
         if not query:
+            # --- بخش ۱: لیست‌های هوشمند و ابزارهای ادمین (بدون تغییر) ---
             expiring_soon_users, top_consumers = get_cached_smart_lists()
             
             if expiring_soon_users:
@@ -202,21 +205,46 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
                 id='menu_search', title="🔎 جستجوی کاربر", description="برای جستجو، شروع به تایپ نام یا UUID کاربر کنید...",
                 input_message_content=types.InputTextMessageContent("برای جستجوی کاربر، نام یا UUID او را پس از آیدی ربات تایپ کنید.")
             ))
-            bot.answer_inline_query(inline_query.id, results, cache_time=5)
-            return
 
-        if query.startswith("copy_link:"):
-            parts = query.split(":", 2); link_type, uuid = parts[1], parts[2]
-            WEBAPP_BASE_URL = "https://panel.cloudvibe.ir" # آدرس وب‌اپ خود را وارد کنید
-            link_to_copy = f"{WEBAPP_BASE_URL}/user/sub/{uuid}" if link_type == "normal" else f"{WEBAPP_BASE_URL}/user/sub/b64/{uuid}"
-            result = types.InlineQueryResultArticle(
-                id=f'copy_{link_type}_{uuid}', title=f"ارسال لینک {link_type.capitalize()} (قابل کپی)",
-                input_message_content=types.InputTextMessageContent(f"`{escape_markdown(link_to_copy)}`", parse_mode="MarkdownV2")
-            )
-            bot.answer_inline_query(inline_query.id, [result], cache_time=1)
-            return
+            # --- بخش ۲: افزودن گزینه‌های ارسال لیست پلن‌ها ---
+            all_plans = load_service_plans()
+            if all_plans:
+                # پلن‌ها را بر اساس نوعشان دسته‌بندی می‌کنیم
+                plans_by_type = {}
+                for plan in all_plans:
+                    plan_type = plan.get("type", "unknown")
+                    if plan_type not in plans_by_type:
+                        plans_by_type[plan_type] = []
+                    plans_by_type[plan_type].append(plan)
 
-        # جستجوی کاربر
+                # یک دیکشنری برای تعریف عنوان و نوع هر دکمه
+                type_map = {
+                    "combined": ("🚀 ارسال پلن‌های ترکیبی", "combined"),
+                    "germany": ("🇩🇪 ارسال پلن‌های آلمان", "germany"),
+                    "france": ("🇫🇷 ارسال پلن‌های فرانسه", "france"),
+                    "turkey": ("🇹🇷 ارسال پلن‌های ترکیه", "turkey"),
+                    "usa": ("🇺🇸 ارسال پلن‌های آمریکا", "usa"),
+                }
+
+                for key, (title, plan_type) in type_map.items():
+                    if plan_type in plans_by_type:
+                        # متن کامل پلن‌های این دسته را با استفاده از فرمت‌کننده موجود می‌سازیم
+                        category_text = fmt_service_plans(plans_by_type[plan_type], plan_type, lang_code)
+                        
+                        # یک آیتم نتیجه اینلاین برای این دسته ایجاد می‌کنیم
+                        results.append(types.InlineQueryResultArticle(
+                            id=f"send_plan_list_{key}",
+                            title=title,
+                            description=f"ارسال لیست پلن‌های {plan_type} در چت.",
+                            input_message_content=types.InputTextMessageContent(
+                                message_text=category_text,
+                                parse_mode="MarkdownV2"
+                            )
+                        ))
+            
+            bot.answer_inline_query(inline_query.id, results[:50], cache_time=10)
+            return
+                
         found_users = combined_handler.search_user(query)
         for i, user in enumerate(found_users[:10]):
             formatted_text, parse_mode = fmt_inline_result(user)

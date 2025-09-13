@@ -193,6 +193,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "system_status_menu": _handle_system_status_menu,
     "ep": user_management.handle_select_panel_for_edit,
     "plan_manage": plan_management.handle_plan_management_menu,
+    "plan_show_category": plan_management.handle_show_plans_by_category,
     "plan_details": plan_management.handle_plan_details_menu,
     "plan_delete_confirm": plan_management.handle_delete_plan_confirm,
     "plan_delete_execute": plan_management.handle_delete_plan_execute,

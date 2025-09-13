@@ -6,11 +6,13 @@ from ..utils import _safe_edit, escape_markdown, load_service_plans, save_servic
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
 
+
 def initialize_plan_management_handlers(b, conv_dict):
     """مقادیر bot و admin_conversations را از فایل اصلی دریافت می‌کند."""
     global bot, admin_conversations
     bot = b
     admin_conversations = conv_dict
+
 
 def _delete_user_message(msg: types.Message):
     """پیام کاربر را برای تمیز ماندن چت حذف می‌کند."""
@@ -19,28 +21,62 @@ def _delete_user_message(msg: types.Message):
     except Exception:
         pass
 
+
 def handle_plan_management_menu(call, params):
-    """منوی اصلی مدیریت پلن‌ها را نمایش می‌دهد."""
+    """منوی اصلی مدیریت پلن‌ها را با دسته‌بندی نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
-    plans = load_service_plans()
+    prompt = f"🗂️ *{escape_markdown('مدیریت پلن‌های فروش')}*\n\n{escape_markdown('لطفاً دسته‌بندی مورد نظر را برای مشاهده یا ویرایش پلن‌ها انتخاب کنید.')}"
+    kb = types.InlineKeyboardMarkup(row_width=2)
     
-    prompt = f"🗂️ *{escape_markdown('مدیریت پلن‌های فروش')}*\n\n{escape_markdown('در این بخش می‌توانید پلن‌های فروش سرویس را مشاهده، ویرایش، حذف یا اضافه کنید.')}"
+    kb.add(
+        types.InlineKeyboardButton("🇺🇸 پلن‌های آمریکا", callback_data="admin:plan_show_category:usa"),
+        types.InlineKeyboardButton("🇩🇪 پلن‌های آلمان", callback_data="admin:plan_show_category:germany")
+    )
+    kb.add(
+        types.InlineKeyboardButton("🇫🇷 پلن‌های فرانسه", callback_data="admin:plan_show_category:france"),
+        types.InlineKeyboardButton("🇹🇷 پلن‌های ترکیه", callback_data="admin:plan_show_category:turkey")
+    )
+    kb.add(
+        types.InlineKeyboardButton("🚀 پلن‌های ترکیبی", callback_data="admin:plan_show_category:combined"),
+        types.InlineKeyboardButton("➕ افزودن پلن جدید", callback_data="admin:plan_add_start")
+    )
+    
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
+    
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
+
+def handle_show_plans_by_category(call, params):
+    """لیست پلن‌های یک دسته‌بندی خاص را برای مدیریت نمایش می‌دهد."""
+    plan_type = params[0]
+    uid, msg_id = call.from_user.id, call.message.message_id
+    all_plans = load_service_plans()
+    
+    type_map = {
+        "combined": "ترکیبی",
+        "germany": "آلمان",
+        "france": "فرانسه",
+        "turkey": "ترکیه",
+        "usa": "آمریکا"
+    }
+    category_name = type_map.get(plan_type, plan_type.capitalize())
+    
+    prompt = f"🗂️ *{escape_markdown(f'لیست پلن‌های دسته: {category_name}')}*"
     
     kb = types.InlineKeyboardMarkup(row_width=2)
     
     buttons = []
-    for i, plan in enumerate(plans):
-        plan_name = plan.get('name', f'پلن بدون نام {i+1}')
-        buttons.append(types.InlineKeyboardButton(f"🔸 {plan_name}", callback_data=f"admin:plan_details:{i}"))
-    
+    for i, plan in enumerate(all_plans):
+        if plan.get('type') == plan_type:
+            plan_name = plan.get('name', f'پلن بدون نام {i+1}')
+            buttons.append(types.InlineKeyboardButton(f"🔸 {plan_name}", callback_data=f"admin:plan_details:{i}"))
+            
     for i in range(0, len(buttons), 2):
         if i + 1 < len(buttons):
             kb.add(buttons[i], buttons[i+1])
         else:
             kb.add(buttons[i])
-
-    kb.add(types.InlineKeyboardButton("➕ افزودن پلن جدید", callback_data="admin:plan_add_start"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
+            
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به دسته‌بندی‌ها", callback_data="admin:plan_manage"))
     
     _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="MarkdownV2")
 
@@ -57,14 +93,14 @@ def handle_plan_details_menu(call, params):
     plan = plans[plan_index]
     plan_type = plan.get('type')
     
-    details = [f"🔸 *نام پلن:* {escape_markdown(plan.get('name', ''))}"]
+    details = [f"🔸 *{escape_markdown('نام پلن:')}* {escape_markdown(plan.get('name', ''))}"]
 
     if plan_type == 'combined':
         details.extend([
-            f"🔹 *نوع:* ترکیبی",
-            f"📦 *حجم کل:* {escape_markdown(plan.get('total_volume', '0'))}",
-            f"🇩🇪 *حجم آلمان:* {escape_markdown(plan.get('volume_de', '0'))}",
-            f"🇫🇷 *حجم فرانسه:* {escape_markdown(plan.get('volume_fr', '0'))}"
+            f"🔹 *{escape_markdown('نوع:')}* ترکیبی",
+            f"📦 *{escape_markdown('حجم کل:')}* {escape_markdown(plan.get('total_volume', '0'))}",
+            f"🇩🇪 *{escape_markdown('حجم آلمان:')}* {escape_markdown(plan.get('volume_de', '0'))}",
+            f"🇫🇷 *{escape_markdown('حجم فرانسه:')}* {escape_markdown(plan.get('volume_fr', '0'))}"
         ])
     else: 
         volume = ""
@@ -72,15 +108,19 @@ def handle_plan_details_menu(call, params):
             volume = f"{escape_markdown(plan.get('volume_de'))} 🇩🇪"
         elif plan_type == 'france' and plan.get('volume_fr'):
             volume = f"{escape_markdown(plan.get('volume_fr'))} 🇫🇷"
+        elif plan_type == 'turkey' and plan.get('volume_tr'):
+            volume = f"{escape_markdown(plan.get('volume_tr'))} 🇹🇷"
+        elif plan_type == 'usa' and plan.get('volume_us'):
+            volume = f"{escape_markdown(plan.get('volume_us'))} 🇺🇸"
         
         details.extend([
-            f"🔹 *نوع:* ساده",
-            f"📦 *حجم کل:* {volume}"
+            f"🔹 *{escape_markdown('نوع:')}* اختصاصی",
+            f"📦 *{escape_markdown('حجم:')}* {volume}"
         ])
     
     details.extend([
-        f"📅 *مدت زمان:* {escape_markdown(plan.get('duration', '0'))}",
-        f"💰 *قیمت \\(تومان\\):* `{escape_markdown(str(plan.get('price', 0)))}`"
+        f"📅 *{escape_markdown('مدت زمان:')}* {escape_markdown(plan.get('duration', '0'))}",
+        f"💰 *{escape_markdown('قیمت (تومان):')}* `{escape_markdown(str(plan.get('price', 0)))}`"
     ])
     
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -88,9 +128,9 @@ def handle_plan_details_menu(call, params):
         types.InlineKeyboardButton("🗑 حذف پلن", callback_data=f"admin:plan_delete_confirm:{plan_index}"),
         types.InlineKeyboardButton("✏️ ویرایش پلن", callback_data=f"admin:plan_edit_start:{plan_index}")
     )
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin:plan_manage"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data=f"admin:plan_show_category:{plan_type}"))
     
-    _safe_edit(uid, msg_id, "\n".join(details), reply_markup=kb)
+    _safe_edit(uid, msg_id, "\n".join(details), reply_markup=kb, parse_mode="MarkdownV2")
 
 def handle_delete_plan_confirm(call, params):
     """از ادمین برای حذف یک پلن تاییدیه می‌گیرد."""
