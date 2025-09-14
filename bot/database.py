@@ -871,9 +871,9 @@ class DatabaseManager:
         این تابع برای پنل ادمین جهت نمایش همه کاربران استفاده می‌شود.
         """
         with self.write_conn() as c:
-            # ✅ **تغییر اصلی:** ستون‌های is_vip, has_access_de, has_access_fr به کوئری اضافه شدند
             query = """
-                SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr
+                SELECT id, user_id, uuid, name, is_active, created_at, is_vip, 
+                       has_access_de, has_access_fr, has_access_tr, has_access_us
                 FROM user_uuids
                 ORDER BY created_at DESC
             """

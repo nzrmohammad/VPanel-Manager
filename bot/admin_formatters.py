@@ -594,7 +594,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         f"💳 پرداخت‌های امروز : *{payments_today_count}*",
         f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
         f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-        # ✅ **اصلاح اصلی اول:** پرچم آمریکا به اینجا اضافه شد
         f" 🇫🇷🇹🇷🇺🇸 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
 
@@ -616,7 +615,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 flags = []
                 if user_db_record.get('has_access_fr'): flags.append("🇫🇷")
                 if user_db_record.get('has_access_tr'): flags.append("🇹🇷")
-                # ✅ **اصلاح اصلی دوم:** پرچم آمریکا اینجا اضافه شد
                 if user_db_record.get('has_access_us'): flags.append("🇺🇸")
                 if flags:
                     usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(marzban_usage))}")
@@ -666,21 +664,45 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     sent_warnings = db_manager.get_sent_warnings_since_midnight()
     if sent_warnings:
         report_lines.append("───────────────")
-        warning_map = {
-            "expiry": "انقضای سرویس", 
-            "low_data_hiddify": "کمبود حجم 🇩🇪", 
-            "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸",
-            "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-            "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸",
-            "unusual_daily_usage": "مصرف غیرعادی", 
-            "too_many_devices": "تعداد دستگاه بالا",
-            "inactive_user_reminder": "یادآوری عدم فعالیت"
-        }
-        user_warnings = [f"• {escape_markdown(w.get('name', 'N/A'))} : {escape_markdown(warning_map.get(w.get('warning_type'), w.get('warning_type')))}" for w in sent_warnings]
         report_lines.append(f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*")
-        report_lines.extend(user_warnings)
+
+        name_to_user_map = {u.get('name'): u for u in all_users_from_api}
+        
+        for warning in sent_warnings:
+            user_name = warning.get('name', 'N/A')
+            warning_type = warning.get('warning_type')
+            
+            warning_text = ""
+            if warning_type in ["low_data_marzban", "volume_depleted_marzban"]:
+                user_record = name_to_user_map.get(user_name)
+                flags = []
+                if user_record and user_record.get('uuid'):
+                    db_rec = db_users_map.get(user_record['uuid'])
+                    if db_rec:
+                        if db_rec.get('has_access_fr'): flags.append("🇫🇷")
+                        if db_rec.get('has_access_tr'): flags.append("🇹🇷")
+                        if db_rec.get('has_access_us'): flags.append("🇺🇸")
+                
+                # ✅ **اصلاح اصلی سوم:** حالت پیش‌فرض حذف شد تا فقط پرچم‌های واقعی نمایش داده شوند
+                flag_str = "".join(flags) if flags else ""
+                base_text = "کمبود حجم" if "low" in warning_type else "اتمام حجم"
+                warning_text = f"{base_text} {flag_str}"
+            else:
+                warning_map = {
+                    "expiry": "انقضای سرویس", 
+                    "low_data_hiddify": "کمبود حجم 🇩🇪", 
+                    "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
+                    "unusual_daily_usage": "مصرف غیرعادی", 
+                    "too_many_devices": "تعداد دستگاه بالا",
+                    "inactive_user_reminder": "یادآوری عدم فعالیت"
+                }
+                warning_text = warning_map.get(warning_type, warning_type)
+
+            if warning_text.strip(): # فقط در صورتی که متنی برای نمایش وجود داشته باشد، آن را اضافه می‌کنیم
+                report_lines.append(f"• {escape_markdown(user_name)} : {escape_markdown(warning_text)}")
             
     return "\n".join(report_lines)
+
 
 def fmt_top_consumers(users: list, page: int) -> str:
     title = "پرمصرف‌ترین کاربران"

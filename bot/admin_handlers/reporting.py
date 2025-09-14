@@ -8,7 +8,7 @@ from ..database import db
 from ..menu import menu
 from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
-    fmt_top_consumers, fmt_bot_users_list, fmt_birthdays_list,
+    fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
     fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks, fmt_leaderboard_list, fmt_user_balances_list
 )
@@ -94,6 +94,7 @@ def handle_paginated_list(call, params):
     (نسخه نهایی و کامل) گزارش‌های صفحه‌بندی شده را برای ادمین مدیریت می‌کند.
     این نسخه شامل صفحه‌بندی برای تمام لیست‌ها و اصلاح منطق کاربران آنلاین است.
     """
+    from ..admin_formatters import fmt_top_consumers
     list_type, page = params[0], int(params[-1])
     panel_type = params[1] if len(params) > 2 else None
     _safe_edit(call.from_user.id, call.message.message_id, escape_markdown("⏳ در حال دریافت و پردازش اطلاعات..."), reply_markup=None)
