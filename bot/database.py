@@ -1124,15 +1124,6 @@ class DatabaseManager:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
 
-    def get_total_payments_in_range(self, start_date: datetime, end_date: datetime) -> int:
-        """تعداد کل پرداخت‌ها در یک بازه زمانی مشخص را برمی‌گرداند."""
-        with self.write_conn() as c:
-            row = c.execute(
-                "SELECT COUNT(payment_id) as count FROM payments WHERE payment_date >= ? AND payment_date < ?",
-                (start_date, end_date)
-            ).fetchone()
-            return row['count'] if row else 0
-
     def get_new_users_in_range(self, start_date: datetime, end_date: datetime) -> int:
         """تعداد کاربران جدید در یک بازه زمانی را برمی‌گرداند."""
         with self.write_conn() as c:
@@ -2092,15 +2083,15 @@ class DatabaseManager:
             if plan_total_volume == int(current_limit_gb):
                 return plan.get('price')
         return None
-
+    
     def get_total_payments_in_range(self, start_date: datetime, end_date: datetime) -> int:
-            """تعداد کل پرداخت‌ها در یک بازه زمانی مشخص را برمی‌گرداند."""
-            with self.write_conn() as c:
-                row = c.execute(
-                    "SELECT COUNT(payment_id) as count FROM payments WHERE payment_date >= ? AND payment_date < ?",
-                    (start_date, end_date)
-                ).fetchone()
-                return row['count'] if row else 0
+        """تعداد کل پرداخت‌ها در یک بازه زمانی مشخص را برمی‌گرداند."""
+        with self.write_conn() as c:
+            row = c.execute(
+                "SELECT COUNT(payment_id) as count FROM payments WHERE payment_date >= ? AND payment_date < ?",
+                (start_date, end_date)
+            ).fetchone()
+            return row['count'] if row else 0
 
     def get_all_users_by_points(self) -> List[Dict[str, Any]]:
         """
@@ -2563,6 +2554,12 @@ class DatabaseManager:
                 'total_purchases': total_purchases,
                 'gift_purchases': gift_purchases
             }
+
+    def count_vip_users(self) -> int:
+        """تعداد کل کاربران VIP فعال را می‌شمارد."""
+        with self.write_conn() as c:
+            row = c.execute("SELECT COUNT(id) as count FROM user_uuids WHERE is_active = 1 AND is_vip = 1").fetchone()
+            return row['count'] if row else 0
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

@@ -66,9 +66,7 @@ def _process_user_data(all_users_data):
     db_users_map = {u['uuid']: u for u in db.get_all_user_uuids()}
     now_utc = datetime.now(pytz.utc)
 
-    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
     exp_buckets = {"<7": 0, "7-30": 0, "30-60": 0, ">60": 0}
-    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
 
     for user in all_users_data:
         user['name'] = html_escape(user.get('name', 'کاربر ناشناس'))
@@ -106,12 +104,10 @@ def _process_user_data(all_users_data):
                 stats['expiring_soon_count'] += 1
                 expiring_soon_users.append(user)
             
-            # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
             if expire_days < 7: exp_buckets["<7"] += 1
             elif 7 <= expire_days < 30: exp_buckets["7-30"] += 1
             elif 30 <= expire_days < 60: exp_buckets["30-60"] += 1
             else: exp_buckets[">60"] += 1
-            # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
 
         db_user = db_users_map.get(user.get('uuid'))
         if db_user and db_user.get('created_at'):
@@ -123,13 +119,11 @@ def _process_user_data(all_users_data):
                 stats['new_users_last_24h_count'] += 1
                 new_users_last_24h.append(user)
 
-    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
     expiration_chart_data = {
         "labels": ["کمتر از ۷ روز", "۷ تا ۳۰ روز", "۳۰ تا ۶۰ روز", "بیش از ۶۰ روز"],
         "series": [{"name": "تعداد کاربران", "data": list(exp_buckets.values())}]
     }
     return stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban, expiration_chart_data
-    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
 
 # ===================================================================
 # == تابع اصلی سرویس داشبورد (نسخه نهایی و اصلاح شده) ==
@@ -137,13 +131,13 @@ def _process_user_data(all_users_data):
 def get_dashboard_data():
     """
     داده‌های کامل و پردازش‌شده را برای داشبورد ادمین جمع‌آوری می‌کند.
-    این نسخه شامل اصلاحیه محاسبه دقیق مصرف روزانه است.
     """
     system_health = _check_system_health()
     
     empty_stats = {
         "total_users": 0, "active_users": 0, "expiring_soon_count": 0, 
-        "online_users": 0, "total_usage_today": "0 GB", "new_users_last_24h_count": 0
+        "online_users": 0, "total_usage_today": "0 GB", "new_users_last_24h_count": 0,
+        "payments_today": 0, "vip_users": 0
     }
 
     try:
@@ -181,17 +175,20 @@ def get_dashboard_data():
            "panel_distribution_data": {"labels": ["فقط آلمان 🇩🇪", "فقط فرانسه 🇫🇷", "هر دو پنل (مشترک)"], "series": [0, 0, 0]},
            "system_health": system_health, "usage_chart_data": {"labels": [], "data": []},
            "top_consumers_chart_data": {"labels": [], "data": []},
-           # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
-           "expiration_chart_data": {"labels": [], "series": []}
-           # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
+           "expiration_chart_data": {"labels": [], "series": []},
+           "plan_distribution_chart_data": {"labels": [], "series": []},
+           "usage_comparison_chart_data": {"labels": [], "series": []}
         }
 
-    # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
     stats, expiring_soon_users, new_users_last_24h, online_users_hiddify, online_users_marzban, expiration_chart_data = _process_user_data(all_users_data)
-    # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
     
     stats['total_usage_today_gb'] = total_usage_today_gb
     stats['total_usage_today'] = f"{stats['total_usage_today_gb']:.2f} GB"
+    
+    # آمار کارت‌های جدید
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    stats['payments_today'] = db.get_total_payments_in_range(start_of_today_utc, datetime.now(pytz.utc))
+    stats['vip_users'] = db.count_vip_users()
     
     top_consumers_today = sorted(
         [u for u in all_users_data if u.get('daily_usage_gb', 0) > 0.01], 
@@ -229,6 +226,27 @@ def get_dashboard_data():
         user['name'] = html_escape(user.get('first_name', 'کاربر'))
         user['days_to_birthday'] = days_until_next_birthday(user.get('birthday'))
 
+    # داده نمودار مقایسه پنل‌ها
+    daily_usage_per_panel = db.get_daily_usage_per_panel(days=7)
+    usage_comparison_labels = [to_shamsi(datetime.strptime(d['date'], '%Y-%m-%d')) for d in daily_usage_per_panel]
+    usage_comparison_series = [{"name": "آلمان 🇩🇪", "data": [d['total_h_gb'] for d in daily_usage_per_panel]}, {"name": "فرانسه 🇫🇷", "data": [d['total_m_gb'] for d in daily_usage_per_panel]}]
+    usage_comparison_chart_data = {"labels": usage_comparison_labels, "series": usage_comparison_series}
+
+    # داده نمودار توزیع پلن‌ها
+    plan_buckets = {"0-50": 0, "50-100": 0, "100-150": 0, "150-200": 0, ">200": 0, "نامحدود": 0}
+    for user in all_users_data:
+        limit = user.get('usage', {}).get('data_limit_GB', 0)
+        if limit == 0: plan_buckets["نامحدود"] += 1
+        elif limit <= 50: plan_buckets["0-50"] += 1
+        elif limit <= 100: plan_buckets["50-100"] += 1
+        elif limit <= 150: plan_buckets["100-150"] += 1
+        elif limit <= 200: plan_buckets["150-200"] += 1
+        else: plan_buckets[">200"] += 1
+    
+    plan_labels = ["۰-۵۰ گیگ", "۵۰-۱۰۰ گیگ", "۱۰۰-۱۵۰ گیگ", "۱۵۰-۲۰۰ گیگ", "بیش از ۲۰۰ گیگ", "نامحدود"]
+    plan_series = list(plan_buckets.values())
+    plan_distribution_chart_data = {"labels": plan_labels, "series": plan_series}
+
     return {
         "stats": stats, "new_users_last_24h": new_users_last_24h, "expiring_soon_users": expiring_soon_users, 
         "top_consumers_today": top_consumers_today, "online_users_hiddify": online_users_hiddify, 
@@ -236,9 +254,9 @@ def get_dashboard_data():
         "system_health": system_health, "usage_chart_data": usage_chart_data,
         "top_consumers_chart_data": top_consumers_chart_data,
         "users_with_birthdays": users_with_birthdays,
-        # <<<<<<<<<<<<<<<<<<<< START OF CHANGES >>>>>>>>>>>>>>>>
-        "expiration_chart_data": expiration_chart_data
-        # <<<<<<<<<<<<<<<<<<<< END OF CHANGES >>>>>>>>>>>>>>>>
+        "expiration_chart_data": expiration_chart_data,
+        "plan_distribution_chart_data": plan_distribution_chart_data,
+        "usage_comparison_chart_data": usage_comparison_chart_data
     }
         
 # ===================================================================

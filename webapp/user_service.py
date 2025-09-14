@@ -4,7 +4,7 @@ import pytz
 from bot.database import db
 from bot.combined_handler import get_combined_user_info
 from bot.utils import to_shamsi, days_until_next_birthday, load_service_plans, parse_volume_string, get_loyalty_progress_message
-
+import jdatetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,8 @@ class UserService:
         labels, hiddify_data, marzban_data = [], [], []
         total_usage_7_days = 0
         
+        daily_usages = {}
+
         with db._conn() as c:
             for i in range(6, -1, -1):
                 target_date = datetime.now(tehran_tz) - timedelta(days=i)
@@ -33,17 +35,16 @@ class UserService:
                 hiddify_data.append(round(h_usage, 2))
                 marzban_data.append(round(m_usage, 2))
                 total_usage_7_days += h_usage + m_usage
+
+                daily_usages[target_date.date()] = {'hiddify_usage': h_usage, 'marzban_usage': m_usage}
         
         avg_daily_usage = total_usage_7_days / 7 if total_usage_7_days > 0 else 0
         chart_data = {"labels": labels, "hiddify_data": hiddify_data, "marzban_data": marzban_data}
         
-        return chart_data, avg_daily_usage
+        return chart_data, avg_daily_usage, daily_usages
 
     @staticmethod
     def recommend_plan(current_usage_gb):
-        """
-        این تابع اصلاح شده است تا بر اساس مصرف فعلی کاربر، پلن پیشنهاد دهد.
-        """
         if current_usage_gb < 1:
             return None, 0
 
@@ -59,7 +60,6 @@ class UserService:
                     smallest_diff = diff
                     best_plan = plan
         
-        # اگر هیچ پلنی حجمش بیشتر از مصرف فعلی نبود، بزرگترین پلن را پیشنهاد بده
         if not best_plan and all_plans:
             best_plan = max(all_plans, key=lambda p: parse_volume_string(p.get('total_volume') or p.get('volume_de') or p.get('volume_fr') or p.get('volume_tr') or '0'))
 
@@ -117,6 +117,41 @@ class UserService:
             breakdown[panel_name]['data'] = panel_data
             
         return breakdown
+    
+    @staticmethod
+    def get_smart_summary(daily_usages, previous_week_usage, breakdown, uuid_id):
+        if not daily_usages or sum(v['hiddify_usage'] + v['marzban_usage'] for v in daily_usages.values()) < 0.1:
+            return None
+
+        # پیدا کردن پرمصرف‌ترین روز
+        busiest_day_date = max(daily_usages, key=lambda d: daily_usages[d]['hiddify_usage'] + daily_usages[d]['marzban_usage'])
+        busiest_day_shamsi = jdatetime.datetime.fromgregorian(date=busiest_day_date).strftime('%A')
+
+        # پیدا کردن پرمصرف‌ترین سرور
+        total_h_usage = sum(item.get('hiddify_usage', 0) for item in daily_usages.values())
+        total_m_usage = sum(item.get('marzban_usage', 0) for item in daily_usages.values())
+        most_used_server = "آلمان 🇩🇪" if total_h_usage >= total_m_usage else "فرانسه/ترکیه 🇫🇷🇹🇷"
+
+        # مقایسه با هفته قبل
+        current_week_usage = total_h_usage + total_m_usage
+        usage_comparison_text = ""
+        if previous_week_usage > 0.01:
+            change_percent = ((current_week_usage - previous_week_usage) / previous_week_usage) * 100
+            change_word = "بیشتر" if change_percent >= 0 else "کمتر"
+            usage_comparison_text = f"این هفته <b>{abs(change_percent):.0f}% {change_word}</b> از هفته قبل مصرف کرده‌اید."
+        
+        # پیدا کردن شلوغ‌ترین بازه زمانی
+        time_of_day_stats = db.get_weekly_usage_by_time_of_day(uuid_id)
+        busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get) if any(v > 0 for v in time_of_day_stats.values()) else None
+        period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}
+        busiest_period_name = period_map.get(busiest_period_key, 'ساعات مختلف')
+
+        return {
+            "busiest_day": busiest_day_shamsi,
+            "most_used_server": most_used_server,
+            "usage_comparison": usage_comparison_text,
+            "busiest_period": busiest_period_name
+        }
 
     @staticmethod
     def get_processed_user_data(uuid):
@@ -141,27 +176,9 @@ class UserService:
             usage_limit = combined_info.get('usage', {}).get('data_limit_GB', 0)
             usage_percentage = (current_usage / usage_limit * 100) if usage_limit > 0 else 0
             
-            # --- START: بخش جدید مقایسه مصرف ---
             usage_today_dict = db.get_usage_since_midnight_by_uuid(uuid)
-            usage_today_gb = sum(usage_today_dict.values())
-            usage_yesterday_gb = db.get_previous_day_total_usage(uuid_id)
             
-            usage_comparison = {
-                "today_gb": usage_today_gb,
-                "yesterday_gb": usage_yesterday_gb,
-                "change_percentage": 0,
-                "status": "neutral" # neutral, increase, decrease
-            }
-            if usage_yesterday_gb > 0.01:
-                change = ((usage_today_gb - usage_yesterday_gb) / usage_yesterday_gb) * 100
-                usage_comparison['change_percentage'] = int(round(change))
-                if change > 5:
-                    usage_comparison['status'] = 'increase'
-                elif change < -5:
-                    usage_comparison['status'] = 'decrease'
-            # --- END: بخش جدید ---
-
-            chart_data, avg_daily_usage = UserService.get_user_usage_stats(uuid_id)
+            chart_data, avg_daily_usage, daily_usages_for_summary = UserService.get_user_usage_stats(uuid_id)
 
             remaining_gb = usage_limit - current_usage
             days_to_depletion = (remaining_gb / avg_daily_usage) if avg_daily_usage > 0 and remaining_gb > 0 else 0
@@ -173,8 +190,6 @@ class UserService:
             created_at_shamsi = to_shamsi(uuid_record.get('created_at'))
             expire_shamsi = to_shamsi(datetime.now() + timedelta(days=expire_days)) if expire_days is not None else "نامحدود"
             
-            recommended_plan, actual_usage = UserService.recommend_plan(current_usage)
-            
             loyalty_data = get_loyalty_progress_message(user_id) if user_id else None
             loyalty_message = None
             if loyalty_data:
@@ -185,6 +200,11 @@ class UserService:
                 )
 
             achievements = db.get_user_achievements(user_id) if user_id else []
+            
+            previous_week_usage = db.get_previous_week_usage(uuid_id)
+            smart_summary = UserService.get_smart_summary(daily_usages_for_summary, previous_week_usage, combined_info.get('breakdown', {}), uuid_id)
+            
+            usage_pattern_data = db.get_weekly_usage_by_time_of_day(uuid_id)
 
             return {
                 "is_active": is_active,
@@ -195,7 +215,6 @@ class UserService:
                 "last_payment_shamsi": escape(last_payment_shamsi),
                 "payment_count": payment_count,
                 "avg_daily_usage_GB": avg_daily_usage,
-                "days_to_depletion": days_to_depletion,
                 "online_status": escape(online_status),
                 "online_class": escape(online_class),
                 "created_at_shamsi": escape(created_at_shamsi),
@@ -203,20 +222,15 @@ class UserService:
                 "usage_limit_GB": usage_limit,
                 "usage_percentage": round(usage_percentage, 1),
                 "usage_chart_data": chart_data,
-                "breakdown": UserService.get_user_breakdown_data(combined_info, usage_today_dict), # ارسال دیکشنری مصرف به جای عدد
+                "breakdown": UserService.get_user_breakdown_data(combined_info, usage_today_dict),
                 **UserService.get_birthday_info(user_basic),
-                "payment_history": payment_history,
-                "recommended_plan": recommended_plan,
-                "actual_last_30_days_usage": actual_usage,
                 "loyalty_progress_message": loyalty_message,
                 "achievements": achievements,
-                "has_access_de": uuid_record.get('has_access_de', False),
-                "has_access_fr": uuid_record.get('has_access_fr', False),
-                "has_access_tr": uuid_record.get('has_access_tr', False),
-                "has_access_us": uuid_record.get('has_access_us', False),
-                "usage_comparison": usage_comparison, # افزودن داده جدید
-                "unread_notifications_count": len(db.get_notifications_for_user(user_id)) if user_id else 0,
+                "smart_summary": smart_summary,
                 "wallet_balance": user_basic.get('wallet_balance', 0.0),
+                "achievement_points": user_basic.get('achievement_points', 0),
+                "usage_pattern_data": usage_pattern_data,
+                "unread_notifications_count": len(db.get_notifications_for_user(user_id)) if user_id else 0,
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)
@@ -246,7 +260,6 @@ class UserService:
                     except ValueError:
                         logger.warning(f"فرمت تاریخ تولد نامعتبر: {birthday_str}")
             
-            # --- START OF FIX ---
             settings_keys = {
                 'daily_reports': 'daily_reports',
                 'weekly_reports': 'weekly_reports',
@@ -258,10 +271,8 @@ class UserService:
                 'promotional_alerts': 'promotional_alerts'
             }
             for form_key, db_key in settings_keys.items():
-                # اگر کلید در فرم بود یعنی روشن است، در غیر این صورت خاموش است
                 value = form_key in form_data
                 db.update_user_setting(user_id, db_key, value)
-            # --- END OF FIX ---
 
             return True, "تغییرات با موفقیت ذخیره شد."
         except Exception as e:

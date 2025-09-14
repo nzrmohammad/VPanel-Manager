@@ -15,7 +15,7 @@
     .progress-warning { background-color: #f59e0b; }
     .progress-danger { background-color: #ef4444; }
     .server-stats li > .dash-progress-wrapper { width: 100%; }
-    .chart-container { position: relative; height: 280px; padding: 10px; }
+    .chart-container { position: relative; height: 300px; padding: 10px; } /* <<<< ارتفاع اصلاح شد */
     .chart-container canvas { width: 100% !important; height: 100% !important; }
     .btn-renew { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; padding: 8px 16px; border-radius: 8px; font-weight: 500; transition: all 0.2s; text-decoration: none; }
     .btn-renew:hover { background: #1d4ed8; }
@@ -29,17 +29,7 @@
     .status-dot.offline { background: #ef4444; }
     .status-dot.recent { background: #f59e0b; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    
-    /* --- START: استایل‌های جدید برای کارت مقایسه --- */
-    .comparison-card .card-content { display: flex; align-items: center; justify-content: space-between; }
-    .comparison-details { display: flex; flex-direction: column; }
-    .comparison-change { font-size: 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
-    .comparison-change.increase { color: var(--danger-color); }
-    .comparison-change.decrease { color: var(--success-color); }
-    .comparison-change.neutral { color: var(--text-secondary); }
-    .comparison-change .icon { font-size: 1.8rem; }
-    .comparison-yesterday { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
-    /* --- END: استایل‌های جدید --- */
+    .chart-legend { font-size: 0.75rem; color: var(--text-color-secondary); text-align: center; margin-top: -10px; padding-bottom: 10px; }
 </style>
 {% endblock %}
 
@@ -52,24 +42,27 @@
         <a href="{{ url_for('user.buy_service_page', uuid=uuid) }}" class="btn-renew"><i class="ri-shopping-cart-line"></i> تمدید سرویس</a>
     </div>
 
+    {% if user.smart_summary %}
+    <div class="info-card" style="margin-top: 15px; margin-bottom: 15px;">
+        <div class="card-header"><i class="ri-brain-line icon"></i><span>خلاصه هفتگی هوشمند</span></div>
+        <div class="card-content" style="font-size: 0.9rem; font-weight: normal; line-height: 1.8;">
+            این هفته <b>{{ user.smart_summary.busiest_day }}</b> پرمصرف‌ترین روز شما بود و بیشتر از سرور <b>{{ user.smart_summary.most_used_server }}</b> استفاده کردید.
+            معمولاً در بازه زمانی <b>{{ user.smart_summary.busiest_period }}</b> فعال‌تر هستید. {{ user.smart_summary.usage_comparison | safe }}
+        </div>
+    </div>
+    {% endif %}
+
     {% if user.loyalty_progress_message %}
-    <div class="user-card" style="margin-top: 15px;">
-        <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: right;">
-            <div class="user-info" style="font-size: 1.05rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                <i class="ri-award-line"></i>
-                <span>مسیر وفاداری شما</span>
-            </div>
-            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.7;">
-                {{ user.loyalty_progress_message | safe }}
-            </div>
+    <div class="info-card" style="margin-top: 15px; margin-bottom: 15px;">
+        <div class="card-header"><i class="ri-award-line icon"></i><span>مسیر وفاداری شما</span></div>
+        <div class="card-content" style="font-size: 0.9rem; font-weight: normal; line-height: 1.8;">
+            {{ user.loyalty_progress_message | safe }}
         </div>
     </div>
     {% endif %}
 
     {% if user.achievements %}
-    {# --- START: اصلاح فاصله‌گذاری کارت نشان‌ها --- #}
     <div class="info-card" style="margin-top: 15px; margin-bottom: 15px;">
-    {# --- END: اصلاح فاصله‌گذاری --- #}
         <div class="card-header"><i class="ri-medal-line icon"></i><span>نشان‌های افتخار شما</span></div>
         <div class="card-content" style="display: flex; gap: 1rem; font-size: 2rem;">
             {% for badge_code in user.achievements %}
@@ -88,7 +81,7 @@
         {% if parts|length >= 3 %}{{ parts[2] }}/{{ month_map.get(parts[1], '') }}/{{ parts[0].zfill(2) }}{% else %}{{ shamsi_date_str }}{% endif %}
     {%- endmacro %}
 
-    <section class="info-grid">
+    <section class="info-grid" style="margin-top: 15px;">
         <div class="info-card">
             <div class="card-header"><i class="ri-shield-check-line icon"></i><span>وضعیت کلی</span></div>
             <div class="card-content"><span class="status-badge {{ user.general_status.class }}">{{ user.general_status.text }}</span></div>
@@ -106,31 +99,18 @@
             <div class="card-header"><i class="ri-calendar-event-line icon"></i><span>تاریخ انقضا</span></div>
             <div class="card-content"><span>{{ format_date_numeric(user.expire_shamsi) }}</span>{% if user.expire != "" and user.expire > 0 %}<small> ({{ user.expire }} روز)</small>{% endif %}</div>
         </div>
-        
-        {# --- START: کارت جدید مقایسه مصرف --- #}
-        <div class="info-card comparison-card">
-            <div class="card-header"><i class="ri-line-chart-line icon"></i><span>مصرف امروز</span></div>
-            <div class="card-content">
-                <div class="comparison-details">
-                    <span class="value">{{ "%.2f"|format(user.usage_comparison.today_gb) }} <small>GB</small></span>
-                    <span class="comparison-yesterday">دیروز: {{ "%.2f"|format(user.usage_comparison.yesterday_gb) }} GB</span>
-                </div>
-                {% if user.usage_comparison.yesterday_gb > 0.01 %}
-                    <div class="comparison-change {{ user.usage_comparison.status }}">
-                        {% if user.usage_comparison.status == 'increase' %}
-                            <i class="ri-arrow-up-line icon"></i>
-                        {% elif user.usage_comparison.status == 'decrease' %}
-                             <i class="ri-arrow-down-line icon"></i>
-                        {% else %}
-                             <i class="ri-subtract-line icon"></i>
-                        {% endif %}
-                        <span>{{ user.usage_comparison.change_percentage }}%</span>
-                    </div>
-                {% endif %}
-            </div>
+        <div class="info-card">
+            <div class="card-header"><i class="ri-wallet-3-line icon"></i><span>کیف پول</span></div>
+            <div class="card-content">{{ "{:,.0f}".format(user.wallet_balance) }} <small>تومان</small></div>
         </div>
-        {# --- END: کارت جدید --- #}
-
+        <div class="info-card">
+            <div class="card-header"><i class="ri-trophy-line icon"></i><span>امتیازات</span></div>
+            <div class="card-content">{{ user.achievement_points }}</div>
+        </div>
+        <div class="info-card {% if user.birthday_message %}birthday-card{% endif %}">
+            <div class="card-header"><i class="ri-cake-2-line icon"></i><span>تولد</span></div>
+            <div class="card-content">{% if user.has_birthday %}{% if user.birthday_message %}<div>{{ user.birthday_message }}</div>{% else %}<span>{{ user.days_until_birthday }}<small> روز مانده</small></span>{% endif %}{% else %}<small>ثبت نشده</small>{% endif %}</div>
+        </div>
         <div class="info-card">
             <div class="card-header"><i class="ri-user-add-line icon"></i><span>تاریخ عضویت</span></div>
             <div class="card-content"><span>{{ format_date_numeric(user.created_at_shamsi) }}</span></div>
@@ -148,10 +128,6 @@
         <div class="info-card">
             <div class="card-header"><i class="ri-line-chart-line icon"></i><span>میانگین مصرف</span></div>
             <div class="card-content"><span>{{ "%.2f" | format(user.avg_daily_usage_GB) }} <small>GB / روز</small></span></div>
-        </div>
-        <div class="info-card {% if user.birthday_message %}birthday-card{% endif %}">
-            <div class="card-header"><i class="ri-cake-2-line icon"></i><span>تولد</span></div>
-            <div class="card-content">{% if user.has_birthday %}{% if user.birthday_message %}<div>{{ user.birthday_message }}</div>{% else %}<span>{{ user.days_until_birthday }}<small> روز مانده</small></span>{% endif %}{% else %}<small>ثبت نشده</small>{% endif %}</div>
         </div>
     </section>
 
@@ -176,7 +152,6 @@
             
             <div class="info-card panel-card">
                 <div class="panel-header">
-                    {# --- START: اصلاح بخش پرچم‌ها --- #}
                     <h4>
                         {% if panel_type == 'hiddify' %}
                             سرور آلمان
@@ -185,15 +160,14 @@
                         {% endif %}
                     </h4>
                     <span style="font-size: 1.5rem;">
-                        {% if panel_type == 'hiddify' and user.has_access_de %}
+                        {% if panel_type == 'hiddify' %}
                             <span class="fi fi-de"></span>
                         {% elif panel_type == 'marzban' %}
-                            {% if user.has_access_fr %}<span class="fi fi-fr"></span>{% endif %}
-                            {% if user.has_access_tr %}<span class="fi fi-tr"></span>{% endif %}
-                            {% if user.has_access_us %}<span class="fi fi-us"></span>{% endif %}
+                            <span class="fi fi-fr"></span>
+                            <span class="fi fi-tr"></span>
+                            <span class="fi fi-us"></span>
                         {% endif %}
                     </span>
-                    {# --- END: اصلاح بخش پرچم‌ها --- #}
                 </div>
                 <ul class="server-stats">
                     <li><div class="stat-label"><i class="ri-toggle-line"></i><span>وضعیت اتصال</span></div><span class="stat-value connection-status"><span class="status-dot {{ 'online' if panel_data.online_status == 'آنلاین' else 'recent' if panel_data.online_status == 'اخیراً آنلاین' else 'offline' }}"></span>{{ panel_data.online_status }}</span></li>
@@ -217,9 +191,16 @@
     {% endif %}
 </section>
 
-    <div class="info-card chart-container" style="margin-top: 20px;">
-        <div class="card-header"><i class="ri-bar-chart-grouped-line icon"></i><span>نمودار مصرف هفتگی</span></div>
-        <canvas id="weeklyChart"></canvas>
+    <div class="details-grid" style="margin-top: 20px;">
+        <div class="info-card chart-container">
+            <div class="card-header"><i class="ri-bar-chart-grouped-line icon"></i><span>نمودار مصرف هفتگی</span></div>
+            <canvas id="weeklyChart"></canvas>
+        </div>
+        <div class="info-card chart-container">
+            <div class="card-header"><i class="ri-radar-line icon"></i><span>الگوی مصرف در ساعات مختلف روز</span></div>
+            <div class="chart-legend">این نمودار نشان می‌دهد در کدام ساعات روز بیشترین مصرف را داشته‌اید.</div>
+            <div id="usagePatternChart" style="height: calc(100% - 30px);"></div>
+        </div>
     </div>
 {% endblock %}
 
@@ -227,32 +208,34 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('weeklyChart');
-    if (ctx) {
-        const themeToggle = document.getElementById('theme-toggle');
-        let weeklyChart;
+    const weeklyCtx = document.getElementById('weeklyChart');
+    const patternContainer = document.getElementById('usagePatternChart');
 
-        const renderOrUpdateChart = () => {
+    if (weeklyCtx && patternContainer) {
+        const themeToggle = document.getElementById('theme-toggle');
+        let weeklyChart, patternChart;
+
+        const renderOrUpdateCharts = () => {
             const isDarkTheme = document.body.classList.contains('dark-theme');
-            const chartColors = { 
+            const themeColors = { 
                 textColor: isDarkTheme ? '#f9fafb' : '#111827',
                 gridColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
             };
 
-            const chartOptions = {
+            // --- Weekly Usage Line Chart (Chart.js) ---
+            const weeklyChartOptions = {
                 responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6, font: { size: 12 }, color: chartColors.textColor } } },
+                plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6, font: { size: 12 }, color: themeColors.textColor } } },
                 scales: {
-                    y: { beginAtZero: true, ticks: { font: { size: 10 }, color: chartColors.textColor }, grid: { color: chartColors.gridColor } },
-                    x: { ticks: { font: { size: 10 }, color: chartColors.textColor }, grid: { color: chartColors.gridColor } }
+                    y: { beginAtZero: true, ticks: { font: { size: 10 }, color: themeColors.textColor }, grid: { color: themeColors.gridColor } },
+                    x: { ticks: { font: { size: 10 }, color: themeColors.textColor }, grid: { color: themeColors.gridColor } }
                 }
             };
-            
             if (weeklyChart) {
-                weeklyChart.options = chartOptions;
+                weeklyChart.options = weeklyChartOptions;
                 weeklyChart.update();
             } else {
-                weeklyChart = new Chart(ctx, {
+                weeklyChart = new Chart(weeklyCtx, {
                     type: 'line',
                     data: {
                         labels: {{ user.usage_chart_data.labels|tojson }},
@@ -264,14 +247,44 @@ document.addEventListener('DOMContentLoaded', function() {
                             borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.3, pointRadius: 2, borderWidth: 1.5
                         }]
                     },
-                    options: chartOptions
+                    options: weeklyChartOptions
                 });
             }
+
+            // --- Usage Pattern Radar Chart (ApexCharts) ---
+            const patternData = {{ user.usage_pattern_data | tojson }};
+            const patternSeriesData = [
+                Math.round(patternData.morning * 100) / 100,
+                Math.round(patternData.afternoon * 100) / 100,
+                Math.round(patternData.evening * 100) / 100,
+                Math.round(patternData.night * 100) / 100
+            ];
+
+            const patternOptions = {
+                series: [{ name: 'مصرف هفتگی (GB)', data: patternSeriesData }],
+                chart: { height: '100%', type: 'radar', toolbar: { show: false }, parentHeightOffset: 0 },
+                xaxis: { categories: ['صبح', 'ظهر', 'عصر', 'شب'], labels: { style: { colors: [themeColors.textColor, themeColors.textColor, themeColors.textColor, themeColors.textColor], fontSize: '12px' } } },
+                yaxis: { show: false },
+                stroke: { width: 2 },
+                fill: { opacity: 0.2, colors: ['#3b82f6'] },
+                markers: { size: 3 },
+                theme: { mode: isDarkTheme ? 'dark' : 'light' },
+                tooltip: { y: { formatter: (val) => val + " GB" } }
+            };
+
+            if (patternChart) {
+                patternChart.updateOptions(patternOptions);
+            } else {
+                patternChart = new ApexCharts(patternContainer, patternOptions);
+                patternChart.render();
+            }
         };
-        renderOrUpdateChart();
+        
+        renderOrUpdateCharts();
+        
         if (themeToggle) {
             themeToggle.addEventListener('click', () => {
-                setTimeout(renderOrUpdateChart, 50);
+                setTimeout(renderOrUpdateCharts, 50);
             });
         }
     }
