@@ -178,24 +178,24 @@ def send_subscription_link(call: types.CallbackQuery):
             streisand_deep_link = f"streisand://import/{b64_sub_link}"
             v2box_deep_link = f"v2box://import/?url={urllib.parse.quote(b64_sub_link)}"
 
-            kb.add(create_redirect_button("Streisand", streisand_deep_link))
-            kb.add(create_redirect_button("V2Box", v2box_deep_link))
+            kb.add(create_redirect_button("Streisand", streisand_deep_link),
+                   create_redirect_button("V2Box", v2box_deep_link))
+            kb.add(create_redirect_button("Hiddify", hiddify_deep_link))
 
         else:
             v2rayng_deep_link = f"v2rayng://install-sub/?url={urllib.parse.quote(normal_sub_link)}"
             happ_deep_link = f"happ://add/{normal_sub_link}"
 
-            kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link))
-            kb.add(create_redirect_button("HAPP", happ_deep_link))
-
-        kb.add(create_redirect_button("Hiddify", hiddify_deep_link))
+            kb.add(create_redirect_button("V2rayNG", v2rayng_deep_link),
+                   create_redirect_button("HAPP", happ_deep_link))
+            kb.add(create_redirect_button("Hiddify", hiddify_deep_link))
 
         kb.add(types.InlineKeyboardButton(get_string("back", lang_code), callback_data=f"getlinks_{uuid_id}"))
 
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception as e:
-            logger.warning(f"Could not delete old message {call.message.message_id}: {e}")
+            logger.warning(f"Could not delete old message {call.message.message.id}: {e}")
 
         bot.send_photo(uid, photo=stream, caption=message_text, reply_markup=kb, parse_mode="MarkdownV2")
 
