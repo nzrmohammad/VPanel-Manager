@@ -188,112 +188,135 @@ def parse_volume_string(volume_str: str) -> int:
 
 def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
     """
-    Parses a user-agent string to identify the client app, OS, and version with professional accuracy,
-    including detailed OS version mapping and browser identification.
+    رشته user-agent را برای شناسایی دقیق برنامه، سیستم‌عامل و نسخه تجزیه می‌کند.
+    این نسخه از یک رویکرد داده-محور برای خوانایی و توسعه‌پذیری بهتر استفاده می‌کند.
     """
     if not user_agent or "TelegramBot" in user_agent:
         return None
 
-    logger.info(f"Processing User-Agent: {user_agent}")
-
-    # --- Tier 1: Specific VPN Client Signatures ---
-    v2box_ios_match = re.search(r"^(V2Box)\s+([\d.]+);(IOS)\s+([\d.]+)", user_agent, re.IGNORECASE)
-    if v2box_ios_match:
-        return {
-            "client": v2box_ios_match.group(1),
-            "version": v2box_ios_match.group(2),
-            "os": f"{v2box_ios_match.group(3).upper()} {v2box_ios_match.group(4)}"
+    # الگوهای شناسایی کلاینت‌ها به ترتیب اولویت
+    CLIENT_PATTERNS = [
+        {
+            "name": "V2Box",
+            "regex": re.compile(r"^(V2Box)\s+([\d.]+);(IOS)\s+([\d.]+)"),
+            "extractor": lambda m: {"client": m.group(1), "version": m.group(2), "os": f"iOS {m.group(4)}"}
+        },
+        {
+            "name": "Apple Clients",
+            "regex": re.compile(r"CFNetwork/.*? Darwin/([\d.]+)"),
+            "extractor": lambda m: _extract_apple_client_details(user_agent, m)
+        },
+        {
+            "name": "Hiddify",
+            "regex": re.compile(r'HiddifyNextX?/([\d.]+)\s+\((\w+)\)'),
+            "extractor": lambda m: {"client": "Hiddify", "version": m.group(1), "os": m.group(2).capitalize()}
+        },
+        {
+            "name": "v2rayNG",
+            "regex": re.compile(r"v2rayNG/([\d.]+)"),
+            "extractor": lambda m: {"client": "v2rayNG", "version": m.group(1), "os": "Android"}
+        },
+        {
+            "name": "v2rayN",
+            "regex": re.compile(r"v2rayN/([\d.]+)"),
+            "extractor": lambda m: {"client": "v2rayN", "version": m.group(1), "os": "Windows"}
+        },
+        {
+            "name": "NekoRay",
+            "regex": re.compile(r"nekoray/([\d.]+)"),
+            "extractor": lambda m: {"client": "NekoRay", "version": m.group(1), "os": "Linux"}
+        },
+        {
+            "name": "Throne",
+            "regex": re.compile(r'Throne/([\d.]+)\s+\((\w+);\s*(\w+)\)'),
+            "extractor": lambda m: {"client": "Throne", "version": m.group(1), "os": f"{m.group(2).capitalize()} {m.group(3)}"}
+        },
+        {
+            "name": "NapsternetV",
+            "regex": re.compile(r'NapsternetV/([\d.]+)'),
+            "extractor": lambda m: {
+                "client": "NapsternetV", 
+                "version": m.group(1), 
+                "os": "Android" if 'android' in user_agent.lower() else "iOS" if 'ios' in user_agent.lower() else None
+            }
+        },
+        {
+            "name": "Happ",
+            "regex": re.compile(r'Happ/([\d.]+)'),
+            "extractor": lambda m: {
+                "client": "Happ",
+                "version": m.group(1),
+                "os": "Windows" if 'windows' in user_agent.lower() else
+                    "Android" if 'android' in user_agent.lower() else
+                    "iOS" if 'ios' in user_agent.lower() else
+                    "macOS" if 'darwin' in user_agent.lower() else
+                    "Linux" if 'linux' in user_agent.lower() else None
+            }
+        },
+        # --- مرورگرها (به عنوان آخرین گزینه‌ها) ---
+        {
+            "name": "Browser",
+            "regex": re.compile(r"(Chrome|Firefox|Safari|OPR)/([\d.]+)"),
+            "extractor": lambda m: _extract_browser_details(user_agent, m)
         }
+    ]
 
-    if "CFNetwork" in user_agent and "Darwin" in user_agent:
-        client_name, client_version = "Unknown Apple Client", None
-        client_patterns = {
-            "Shadowrocket": r"Shadowrocket/([\d.]+)", "Stash": r"Stash/([\d.]+)",
-            "Quantumult X": r"Quantumult%20X/([\d.]+)", "Loon": r"Loon/([\d.]+)",
-            "V2Box": r"V2Box/([\d.]+)", "Streisand": r"Streisand/([\d.]+)"
-        }
-        for name, pattern in client_patterns.items():
-            match = re.search(pattern, user_agent)
-            if match:
-                client_name, client_version = name, match.group(1)
-                break
-
-        os_name = "macOS" if "Mac" in user_agent else "iOS"
-        os_version = None
-        darwin_match = re.search(r"Darwin/([\d.]+)", user_agent)
-        if darwin_match:
-            darwin_version = int(darwin_match.group(1).split('.')[0])
-            darwin_to_os = { 24: "18", 23: "17", 22: "16", 21: "15", 20: "14", 19: "13" }
-            os_version = darwin_to_os.get(darwin_version)
-
-        device_model_match = re.search(r'\((iPhone|iPad|Mac)[^;]*;', user_agent)
-        if device_model_match:
-            os_name = device_model_match.group(1).replace("iPhone", "iOS").replace("iPad", "iPadOS")
-
-        final_os_str = f"{os_name} {os_version}" if os_version else os_name
-        return {"client": client_name, "os": final_os_str, "version": client_version}
-
-    # --- START: FIX for HiddifyNext on Linux ---
-    client_patterns = {
-        'NekoBox': (r"NekoBox/([\d.]+)", lambda m: (m.group(1), 'Android')),
-        'Throne': (r'Throne/([\d.]+)\s+\((\w+);\s*(\w+)\)', lambda m: (m.group(1), f"{m.group(2).capitalize()} {m.group(3)}")),
-        'Hiddify': (r'HiddifyNextX?/([\d.]+)\s+\((\w+)\)', lambda m: (m.group(1), m.group(2).capitalize())),
-        'v2rayNG': (r"v2rayNG/([\d.]+)", lambda m: (m.group(1), 'Android')),
-        'v2rayN': (r"v2rayN/([\d.]+)", lambda m: (m.group(1), 'Windows')),
-        'NekoRay': (r"nekoray/([\d.]+)", lambda m: (m.group(1), 'Linux')),
-        'Happ': (r'Happ/([\d.]+)', lambda m: (m.group(1), None)),
-    }
-    for client_name, (pattern, extractor) in client_patterns.items():
-        match = re.search(pattern, user_agent, re.IGNORECASE)
+    for pattern in CLIENT_PATTERNS:
+        match = pattern["regex"].search(user_agent)
         if match:
-            client_version, os_name = extractor(match)
-            if not os_name:
-                if 'android' in user_agent.lower(): os_name = 'Android'
-                elif 'windows' in user_agent.lower(): os_name = 'Windows'
-                elif 'linux' in user_agent.lower(): os_name = 'Linux'
-            
-            # Correct the client name if it was matched with the optional 'X'
-            final_client_name = 'HiddifyNextX' if client_name == 'HiddifyNext' and 'HiddifyNextX' in match.group(0) else client_name
-            return {"client": final_client_name, "os": os_name, "version": client_version}
-    # --- END: FIX for HiddifyNext on Linux ---
+            result = pattern["extractor"](match)
+            if result:
+                return result
 
-    # --- Tier 2: Common Web Browsers ---
-    browser_patterns = {
-        'Chrome': r"Chrome/([\d.]+)",
-        'Firefox': r"Firefox/([\d.]+)",
-        'Safari': r"Version/([\d.]+).*Safari/",
-        'Opera': r"OPR/([\d.]+)",
-        'Mozilla': r"Mozilla/([\d.]+)" # Generic fallback
-    }
-    for browser_name, version_pattern in browser_patterns.items():
-        version_match = re.search(version_pattern, user_agent)
-        if version_match:
-            if browser_name == 'Safari' and 'Chrome' in user_agent: continue
-            if browser_name == 'Mozilla' and ('Chrome' in user_agent or 'Safari' in user_agent or 'Firefox' in user_agent): continue
-
-            version = version_match.group(1)
-            os_str = "Unknown OS"
-            
-            if "Windows" in user_agent:
-                if "Windows NT 10.0" in user_agent:
-                    os_str = "Windows 10/11"
-                else:
-                    os_str = "Windows"
-            elif "Android" in user_agent:
-                android_match = re.search(r"Android ([\d.]+)", user_agent)
-                os_str = android_match.group(0) if android_match else "Android"
-            elif "Macintosh" in user_agent:
-                mac_match = re.search(r"Mac OS X ([\d_]+)", user_agent)
-                os_str = f"macOS {mac_match.group(1).replace('_', '.')}" if mac_match else "macOS"
-            elif "Linux" in user_agent: os_str = "Linux"
-
-            logger.info(f"Identified standard browser: {browser_name} on {os_str}")
-            return {"client": browser_name, "os": os_str, "version": version}
-
-    # --- Tier 3: Generic Fallback ---
-    logger.warning(f"Unmatched User-Agent (using generic fallback): {user_agent}")
     generic_client = user_agent.split('/')[0].split(' ')[0]
     return {"client": generic_client, "os": "Unknown", "version": None}
+
+def _extract_apple_client_details(user_agent: str, darwin_match: re.Match) -> Dict[str, Optional[str]]:
+    """تابع کمکی برای استخراج جزئیات از user-agent های پیچیده اپل."""
+    client_name, client_version = "Unknown Apple Client", None
+    client_patterns = {
+        "Shadowrocket": r"Shadowrocket/([\d.]+)", "Stash": r"Stash/([\d.]+)",
+        "Quantumult X": r"Quantumult%20X/([\d.]+)", "Loon": r"Loon/([\d.]+)",
+        "V2Box": r"V2Box/([\d.]+)", "Streisand": r"Streisand/([\d.]+)",
+        "Fair VPN": r"Fair%20VPN/([\d.]+)"
+    }
+    for name, pattern in client_patterns.items():
+        match = re.search(pattern, user_agent)
+        if match:
+            client_name, client_version = name, match.group(1)
+            break
+
+    os_version = None
+    darwin_version = int(darwin_match.group(1).split('.')[0])
+    darwin_to_os = { 24: "18", 23: "17", 22: "16", 21: "15", 20: "14", 19: "13" }
+    os_version = darwin_to_os.get(darwin_version)
+
+    os_name = "macOS" if "Mac" in user_agent else "iOS"
+    device_model_match = re.search(r'\((iPhone|iPad|Mac)[^;]*;', user_agent)
+    if device_model_match:
+        os_name = device_model_match.group(1).replace("iPhone", "iOS").replace("iPad", "iPadOS")
+
+    final_os_str = f"{os_name} {os_version}" if os_version else os_name
+    return {"client": client_name, "os": final_os_str, "version": client_version}
+
+def _extract_browser_details(user_agent: str, browser_match: re.Match) -> Optional[Dict[str, Optional[str]]]:
+    """تابع کمکی برای استخراج جزئیات از user-agent مرورگرها."""
+    browser_name = browser_match.group(1)
+    if browser_name == 'OPR': browser_name = 'Opera'
+    if browser_name == 'Safari' and 'Chrome' in user_agent: return None
+
+    os_str = "Unknown OS"
+    if "Windows NT 10.0" in user_agent: os_str = "Windows 10/11"
+    elif "Windows" in user_agent: os_str = "Windows"
+    elif "Android" in user_agent:
+        android_match = re.search(r"Android ([\d.]+)", user_agent)
+        os_str = android_match.group(0) if android_match else "Android"
+    elif "Mac OS X" in user_agent:
+        mac_match = re.search(r"Mac OS X ([\d_]+)", user_agent)
+        os_str = f"macOS {mac_match.group(1).replace('_', '.')}" if mac_match else "macOS"
+    elif "Linux" in user_agent: os_str = "Linux"
+    
+    return {"client": browser_name, "os": os_str, "version": browser_match.group(2)}
 
 
 def format_daily_usage(gb: float) -> str:
