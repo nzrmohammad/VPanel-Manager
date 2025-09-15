@@ -484,11 +484,10 @@ class Menu:
              types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}"),
              types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}")
         )
-
         kb.add(
-            types.InlineKeyboardButton("📣 اهدای نشان یار رسانه‌ای", callback_data=f"admin:award_badge:media_partner:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🛠️ اهدای نشان همیار پشتیبانی", callback_data=f"admin:award_badge:support_contributor:{identifier}{context_suffix}")
-            )
+            types.InlineKeyboardButton("📣 اهدای نشان یار رسانه‌ای", callback_data=f"admin:awd_b:mp:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("🛠️ اهدای نشان همیار پشتیبانی", callback_data=f"admin:awd_b:sc:{identifier}{context_suffix}")
+        )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))

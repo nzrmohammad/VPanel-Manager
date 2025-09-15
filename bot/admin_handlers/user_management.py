@@ -1176,10 +1176,20 @@ def handle_reset_all_balances_execute(call, params):
 
 def handle_award_badge(call, params):
     """
-    یک نشان خاص را به صورت دستی توسط ادمین به کاربر اهدا می‌کند.
+    Awards a specific badge to a user, initiated by an admin.
     """
-    badge_code, identifier = params[0], params[1]
+    badge_short_code, identifier = params[0], params[1]
     context = "search" if len(params) > 2 and params[2] == 'search' else None
+    
+    badge_map = {
+        'mp': 'media_partner',
+        'sc': 'support_contributor'
+    }
+    badge_code = badge_map.get(badge_short_code)
+
+    if not badge_code:
+        bot.answer_callback_query(call.id, "❌ کد نشان نامعتبر است.", show_alert=True)
+        return
     
     info = combined_handler.get_combined_user_info(identifier)
     if not info or not info.get('uuid'):
