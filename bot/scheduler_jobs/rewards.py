@@ -245,7 +245,6 @@ def check_achievements_and_anniversary(bot) -> None:
             if user_id in lucky_users and db.add_achievement(user_id, 'lucky_one'):
                 notify_user_achievement(bot, user_id, 'lucky_one')
 
-            # --- ✅ **کد جدید برای یادآوری دستاورد** ---
             # ۳. بررسی یادآوری تشویقی
             next_reward_tier = min([tier for tier in LOYALTY_REWARDS.keys() if tier > payment_count], default=None)
             if next_reward_tier and next_reward_tier - payment_count == 1:
@@ -260,7 +259,11 @@ def check_achievements_and_anniversary(bot) -> None:
                         )
                         if send_warning_message(bot, user_id, reminder_message):
                             db.log_warning(user_id, 'loyalty_reminder')
-            # --- **پایان کد جدید** ---
+
+            user_badges = db.get_user_achievements(user_id)
+            if 'collector' not in user_badges and len(user_badges) >= 10:
+                if db.add_achievement(user_id, 'collector'):
+                    notify_user_achievement(bot, user_id, 'collector')
 
             # --- بررسی هدیه سالگرد ---
             current_year = datetime.now(pytz.utc).year

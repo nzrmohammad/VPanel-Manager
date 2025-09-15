@@ -7,7 +7,8 @@ from .. import combined_handler
 from ..admin_formatters import fmt_admin_user_summary, fmt_user_payment_history
 from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans
 
-from ..config import LOYALTY_REWARDS, REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS
+from ..config import LOYALTY_REWARDS, REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS, ACHIEVEMENTS
+from ..scheduler_jobs.rewards import notify_user_achievement
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -1172,3 +1173,26 @@ def handle_reset_all_balances_execute(call, params):
         logger.error(f"Error while resetting all wallet balances: {e}", exc_info=True)
         error_msg = escape_markdown("❌ خطا در هنگام ریست کردن موجودی‌ها. لطفاً لاگ‌ها را بررسی کنید.")
         _safe_edit(uid, msg_id, error_msg, reply_markup=menu.admin_system_tools_menu(), parse_mode="MarkdownV2")
+
+def handle_award_badge(call, params):
+    """
+    یک نشان خاص را به صورت دستی توسط ادمین به کاربر اهدا می‌کند.
+    """
+    badge_code, identifier = params[0], params[1]
+    context = "search" if len(params) > 2 and params[2] == 'search' else None
+    
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+    if not user_telegram_id:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    if db.add_achievement(user_telegram_id, badge_code):
+        notify_user_achievement(bot, user_telegram_id, badge_code)
+        bot.answer_callback_query(call.id, f"✅ نشان «{ACHIEVEMENTS.get(badge_code, {}).get('name', '')}» با موفقیت اهدا شد.", show_alert=True)
+    else:
+        bot.answer_callback_query(call.id, "ℹ️ این کاربر قبلاً این نشان را دریافت کرده است.", show_alert=True)

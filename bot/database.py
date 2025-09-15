@@ -235,6 +235,12 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS weekly_champion_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    win_date DATE NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
                 CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
@@ -1526,6 +1532,7 @@ class DatabaseManager:
     def get_sent_warnings_since_midnight(self) -> list:
         """
         گزارشی از هشدارهایی که از نیمه‌شب امروز ارسال شده‌اند را برمی‌گرداند.
+        (نسخه نهایی: UUID برای شناسایی دقیق کاربر اضافه شده است)
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         today_midnight_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1534,6 +1541,7 @@ class DatabaseManager:
         query = """
             SELECT
                 uu.name,
+                uu.uuid,
                 wl.warning_type
             FROM warning_log wl
             JOIN user_uuids uu ON wl.uuid_id = uu.id
@@ -2560,6 +2568,48 @@ class DatabaseManager:
         with self.write_conn() as c:
             row = c.execute("SELECT COUNT(id) as count FROM user_uuids WHERE is_active = 1 AND is_vip = 1").fetchone()
             return row['count'] if row else 0
+
+    def log_weekly_champion_win(self, user_id: int):
+        """یک رکورد برای قهرمانی هفتگی کاربر ثبت می‌کند."""
+        today = datetime.now(pytz.utc).date()
+        with self.write_conn() as c:
+            c.execute(
+                "INSERT INTO weekly_champion_log (user_id, win_date) VALUES (?, ?)",
+                (user_id, today)
+            )
+
+# ... (داخل کلاس DatabaseManager، یک متد جدید دیگر اضافه کنید)
+    def count_consecutive_weekly_wins(self, user_id: int) -> int:
+        """تعداد قهرمانی‌های هفتگی متوالی یک کاربر را محاسبه می‌کند."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT win_date FROM weekly_champion_log WHERE user_id = ? ORDER BY win_date DESC",
+                (user_id,)
+            ).fetchall()
+
+        if not rows:
+            return 0
+
+        consecutive_wins = 0
+        last_win_date = None
+
+        for row in rows:
+            win_date = row['win_date']
+            if isinstance(win_date, str):
+                win_date = datetime.strptime(win_date, '%Y-%m-%d').date()
+
+            if last_win_date is None:
+                consecutive_wins = 1
+            else:
+                # بررسی می‌کند که آیا فاصله بین دو قهرمانی حدود یک هفته است یا نه
+                if (last_win_date - win_date).days in [6, 7, 8]:
+                    consecutive_wins += 1
+                else:
+                    break # توالی قطع شده است
+            
+            last_win_date = win_date
+            
+        return consecutive_wins
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

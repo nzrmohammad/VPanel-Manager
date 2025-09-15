@@ -10,7 +10,7 @@ from bot.database import db
 from bot.utils import escape_markdown
 from bot.admin_formatters import fmt_admin_report, fmt_weekly_admin_summary, fmt_daily_achievements_report
 from bot.user_formatters import fmt_user_report, fmt_user_weekly_report
-from bot.config import ADMIN_IDS
+from bot.config import ADMIN_IDS, ACHIEVEMENTS
 from bot.language import get_string
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ def weekly_report(bot, target_user_id: int = None) -> None:
 def send_weekly_admin_summary(bot) -> None:
     """
     گزارش هفتگی پرمصرف‌ترین کاربران را برای ادمین‌ها ارسال می‌کند و به ۱۰ نفر اول پیام تبریک/انگیزشی می‌فرستد.
-    (نسخه اصلاح شده با مدیریت خطا در حلقه)
+    (نسخه نهایی با منطق قهرمانی متوالی)
     """
     from .rewards import notify_user_achievement 
     from .warnings import send_warning_message
@@ -165,11 +165,33 @@ def send_weekly_admin_summary(bot) -> None:
                 champion_name = champion.get('name')
                 champion_id = user_map.get(champion_name)
                 if champion_id:
-                    if db.add_achievement(champion_id, 'weekly_champion'):
+                    # ثبت قهرمانی این هفته
+                    db.log_weekly_champion_win(champion_id)
+                    
+                    is_first_time_win = db.add_achievement(champion_id, 'weekly_champion')
+                    
+                    if is_first_time_win:
                         notify_user_achievement(bot, champion_id, 'weekly_champion')
+                    else:
+                        badge = ACHIEVEMENTS.get('weekly_champion')
+                        if badge and badge.get("points", 0) > 0:
+                            points = badge["points"]
+                            db.add_achievement_points(champion_id, points)
+                            recurring_win_message = (
+                                f"🏆 *قهرمانی دوباره\\!* 🏆\n\n"
+                                f"شما این هفته نیز به عنوان *پرمصرف‌ترین کاربر* انتخاب شدید و *{points} امتیاز* دیگر دریافت کردید\\.\n\n"
+                                f"به این روند فوق‌العاده ادامه بده\\!"
+                            )
+                            send_warning_message(bot, champion_id, recurring_win_message)
+                    
+                    consecutive_wins = db.count_consecutive_weekly_wins(champion_id)
+                    if consecutive_wins == 8:
+                        if db.add_achievement(champion_id, 'serial_champion'):
+                            notify_user_achievement(bot, champion_id, 'serial_champion')
 
             for i, user in enumerate(top_users):
                 try:
+                    if i == 0: continue
                     rank = i + 1
                     user_name = user.get('name')
                     usage = user.get('total_usage', 0)
@@ -178,20 +200,16 @@ def send_weekly_admin_summary(bot) -> None:
 
                     if user_id:
                         lang_code = db.get_user_language(user_id)
-                        
-                        message_key = f"weekly_top_user_rank_{rank}" if 1 <= rank <= 3 else "weekly_top_user_rank_4_to_10"
-                        
+                        message_key = f"weekly_top_user_rank_{rank}" if 2 <= rank <= 3 else "weekly_top_user_rank_4_to_10"
                         fun_message_template = get_string(message_key, lang_code)
                         final_message = fun_message_template.format(
                             usage=escape_markdown(f"{usage:.2f} GB"),
                             rank=rank
                         )
-                        
                         send_warning_message(bot, user_id, final_message, name=user_name)
                         time.sleep(0.5)
                 except Exception as e:
                     logger.error(f"Failed to send weekly top user notification to user: {user.get('name')}. Error: {e}", exc_info=True)
-
 
     except Exception as e:
         logger.error(f"Failed to generate or process weekly admin summary: {e}", exc_info=True)
