@@ -101,7 +101,9 @@
                         <span class="notification-title">{{ notif.title }}</span>
                         <span class="notification-date">{{ notif.shamsi_date }}</span>
                     </div>
-                    <p class="notification-body">{{ notif.message }}</p>
+                    {# --- START OF FINAL CHANGE --- #}
+                    <p class="notification-body">{{ notif.message | safe }}</p>
+                    {# --- END OF FINAL CHANGE --- #}
                 </div>
             </div>
         {% else %}

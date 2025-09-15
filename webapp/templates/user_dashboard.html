@@ -15,7 +15,7 @@
     .progress-warning { background-color: #f59e0b; }
     .progress-danger { background-color: #ef4444; }
     .server-stats li > .dash-progress-wrapper { width: 100%; }
-    .chart-container { position: relative; height: 300px; padding: 10px; } /* <<<< ارتفاع اصلاح شد */
+    .chart-container { position: relative; height: 380px; padding: 10px; } 
     .chart-container canvas { width: 100% !important; height: 100% !important; }
     .btn-renew { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; padding: 8px 16px; border-radius: 8px; font-weight: 500; transition: all 0.2s; text-decoration: none; }
     .btn-renew:hover { background: #1d4ed8; }
@@ -29,7 +29,6 @@
     .status-dot.offline { background: #ef4444; }
     .status-dot.recent { background: #f59e0b; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    .chart-legend { font-size: 0.75rem; color: var(--text-color-secondary); text-align: center; margin-top: -10px; padding-bottom: 10px; }
 </style>
 {% endblock %}
 
@@ -46,7 +45,7 @@
     <div class="info-card" style="margin-top: 15px; margin-bottom: 15px;">
         <div class="card-header"><i class="ri-brain-line icon"></i><span>خلاصه هفتگی هوشمند</span></div>
         <div class="card-content" style="font-size: 0.9rem; font-weight: normal; line-height: 1.8;">
-            این هفته <b>{{ user.smart_summary.busiest_day }}</b> پرمصرف‌ترین روز شما بود و بیشتر از سرور <b>{{ user.smart_summary.most_used_server }}</b> استفاده کردید.
+            این هفته <b>{{ user.smart_summary.busiest_day }}</b> پرمصرف‌ترین روز شما بود و بیشتر از سرور <b>{{ user.smart_summary.most_used_server | safe }}</b> استفاده کردید.
             معمولاً در بازه زمانی <b>{{ user.smart_summary.busiest_period }}</b> فعال‌تر هستید. {{ user.smart_summary.usage_comparison | safe }}
         </div>
     </div>
@@ -198,8 +197,10 @@
         </div>
         <div class="info-card chart-container">
             <div class="card-header"><i class="ri-radar-line icon"></i><span>الگوی مصرف در ساعات مختلف روز</span></div>
-            <div class="chart-legend">این نمودار نشان می‌دهد در کدام ساعات روز بیشترین مصرف را داشته‌اید.</div>
-            <div id="usagePatternChart" style="height: calc(100% - 30px);"></div>
+            {# --- START OF FINAL CHANGE --- #}
+            {# توضیح نمودار به طور کامل حذف شد #}
+            <div id="usagePatternChart" style="margin-top: -15px;"></div> {# <<<< استایل برای بالاتر بردن نمودار اضافه شد #}
+            {# --- END OF FINAL CHANGE --- #}
         </div>
     </div>
 {% endblock %}
@@ -262,7 +263,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const patternOptions = {
                 series: [{ name: 'مصرف هفتگی (GB)', data: patternSeriesData }],
-                chart: { height: '100%', type: 'radar', toolbar: { show: false }, parentHeightOffset: 0 },
+                chart: { 
+                    height: '100%', 
+                    type: 'radar', 
+                    toolbar: { show: false }, 
+                    parentHeightOffset: 0,
+                    background: 'transparent'
+                },
                 xaxis: { categories: ['صبح', 'ظهر', 'عصر', 'شب'], labels: { style: { colors: [themeColors.textColor, themeColors.textColor, themeColors.textColor, themeColors.textColor], fontSize: '12px' } } },
                 yaxis: { show: false },
                 stroke: { width: 2 },

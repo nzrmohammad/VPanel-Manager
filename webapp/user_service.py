@@ -1,3 +1,5 @@
+# nzrmohammad/vpanel-manager/VPanel-Manager-d7e402c07646dd8f8f10f027f7b8a5c1c0a6f8fb/webapp/user_service.py
+
 from markupsafe import escape
 from datetime import datetime, timedelta
 import pytz
@@ -127,10 +129,13 @@ class UserService:
         busiest_day_date = max(daily_usages, key=lambda d: daily_usages[d]['hiddify_usage'] + daily_usages[d]['marzban_usage'])
         busiest_day_shamsi = jdatetime.datetime.fromgregorian(date=busiest_day_date).strftime('%A')
 
-        # پیدا کردن پرمصرف‌ترین سرور
+        # پیدا کردن پرمصرف‌ترین سرور و نمایش فقط پرچم‌ها
         total_h_usage = sum(item.get('hiddify_usage', 0) for item in daily_usages.values())
         total_m_usage = sum(item.get('marzban_usage', 0) for item in daily_usages.values())
-        most_used_server = "آلمان 🇩🇪" if total_h_usage >= total_m_usage else "فرانسه/ترکیه 🇫🇷🇹🇷"
+        if total_h_usage >= total_m_usage:
+            most_used_server = '<span class="fi fi-de"></span>'
+        else:
+            most_used_server = '<span class="fi fi-fr"></span><span class="fi fi-tr"></span><span class="fi fi-us"></span>'
 
         # مقایسه با هفته قبل
         current_week_usage = total_h_usage + total_m_usage
@@ -231,6 +236,10 @@ class UserService:
                 "achievement_points": user_basic.get('achievement_points', 0),
                 "usage_pattern_data": usage_pattern_data,
                 "unread_notifications_count": len(db.get_notifications_for_user(user_id)) if user_id else 0,
+                "has_access_de": uuid_record.get('has_access_de', False),
+                "has_access_fr": uuid_record.get('has_access_fr', False),
+                "has_access_tr": uuid_record.get('has_access_tr', False),
+                "has_access_us": uuid_record.get('has_access_us', False),
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)

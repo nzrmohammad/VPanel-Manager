@@ -144,21 +144,23 @@
                 <li class="transaction-item">
                     <i class="{{ icon_class }} transaction-icon"></i>
                     <div class="transaction-info">
+                        {# --- START OF FINAL CHANGE --- #}
                         <div class="description">
                             {% if t.type == 'purchase' and t.description and ('plan_purchase:' in t.description or 'خرید سرویس:' in t.description) %}
-                                خرید سرویس: {{ t.description.split(':')[1] }}
+                                خرید سرویس: {{ t.description.split(':')[1] | safe }}
                             {% elif t.type == 'purchase' and t.description and 'خرید هدیه:' in t.description %}
-                                {{ t.description }}
+                                {{ t.description | safe }}
                             {% elif t.type == 'deposit' %}
                                 افزایش موجودی توسط ادمین
                             {% elif t.type == 'wallet_transfer_sender' and t.description and 'wallet_transfer_sender:' in t.description %}
-                                انتقال وجه به: {{ t.description.split(':')[1] }}
+                                انتقال وجه به: {{ t.description.split(':')[1] | safe }}
                             {% elif t.type == 'wallet_transfer_receiver' and t.description and 'wallet_transfer_receiver:' in t.description %}
-                                دریافت وجه از: {{ t.description.split(':')[1] }}
+                                دریافت وجه از: {{ t.description.split(':')[1] | safe }}
                             {% else %}
-                                {{ t.description or t.type|replace('_', ' ')|capitalize }}
+                                {{ (t.description or t.type|replace('_', ' ')|capitalize) | safe }}
                             {% endif %}
                         </div>
+                        {# --- END OF FINAL CHANGE --- #}
                         <div class="date">{{ t.shamsi_date }}</div>
                     </div>
                     <div class="transaction-amount" style="color: {{ amount_color }};">
