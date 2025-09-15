@@ -9,7 +9,7 @@ from bot.config import DAILY_REPORT_TIME, TEHRAN_TZ, USAGE_WARNING_CHECK_HOURS, 
 from bot.scheduler_jobs import reports, warnings, rewards, maintenance
 
 logger = logging.getLogger(__name__)
-scheduler_lock = threading.Lock()
+scheduler_lock = threading.RLock()
 
 class SchedulerManager:
     def __init__(self, bot: TeleBot) -> None:
@@ -36,6 +36,8 @@ class SchedulerManager:
 
         # --- زمان‌بندی تمام وظایف از ماژول‌های مربوطه ---
         schedule.every(1).hours.at(":01").do(self._run_job, maintenance.hourly_snapshots)
+        schedule.every().day.at("09:00", self.tz_str).do(self._run_job, rewards.notify_admin_of_upcoming_event)
+        schedule.every().saturday.at("09:30", self.tz_str).do(self._run_job, rewards.send_weekly_admin_digest)
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._run_job, warnings.check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._run_job, reports.nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._run_job, reports.send_daily_achievements_report)
@@ -80,6 +82,10 @@ class SchedulerManager:
     def _weekly_report(self, target_user_id: int = None):
         self._run_job(reports.weekly_report, target_user_id=target_user_id)
 
+    def _send_weekly_admin_summary(self):
+        """تابع جدید برای تست گزارش هفتگی ادمین."""
+        self._run_job(reports.send_weekly_admin_summary)
+
     def _check_for_warnings(self, target_user_id: int = None):
         self._run_job(warnings.check_for_warnings, target_user_id=target_user_id)
         
@@ -88,3 +94,11 @@ class SchedulerManager:
 
     def _birthday_gifts_job(self):
         self._run_job(rewards.birthday_gifts_job)
+
+    def _test_upcoming_event_notification(self):
+        """(تابع تست جدید) تابع اطلاع‌رسانی رویداد را به صورت دستی اجرا می‌کند."""
+        self._run_job(rewards.notify_admin_of_upcoming_event)
+
+    def _test_weekly_digest(self):
+        """(تابع تست جدید) تابع گزارش هفتگی مدیریتی را به صورت دستی اجرا می‌کند."""
+        self._run_job(rewards.send_weekly_admin_digest)

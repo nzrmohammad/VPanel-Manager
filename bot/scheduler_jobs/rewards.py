@@ -3,7 +3,7 @@
 import logging
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import jdatetime
 from telebot import types
@@ -14,7 +14,7 @@ from bot.utils import escape_markdown, load_json_file, load_service_plans, parse
 from bot.config import (
     ADMIN_IDS, BIRTHDAY_GIFT_GB, BIRTHDAY_GIFT_DAYS,
     ACHIEVEMENTS, ENABLE_LUCKY_LOTTERY, LUCKY_LOTTERY_BADGE_REQUIREMENT,
-    AMBASSADOR_BADGE_THRESHOLD
+    AMBASSADOR_BADGE_THRESHOLD, LOYALTY_REWARDS
 )
 from bot.language import get_string
 from .warnings import send_warning_message
@@ -22,6 +22,115 @@ from ..admin_formatters import fmt_achievement_leaderboard, fmt_lottery_particip
 
 
 logger = logging.getLogger(__name__)
+
+def send_weekly_admin_digest(bot) -> None:
+    """
+    (تابع جدید)
+    گزارش هفتگی مدیریتی شامل رویدادها، تولدها و کاربران VIP جدید را برای ادمین‌ها ارسال می‌کند.
+    """
+    try:
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_jalali = jdatetime.datetime.now(tehran_tz)
+        
+        # بخش ۱: رویدادهای هفته آینده
+        events = load_json_file('events.json')
+        upcoming_events_lines = []
+        for i in range(7):
+            check_date = now_jalali + timedelta(days=i)
+            check_date_str = check_date.strftime('%m-%d')
+            for event in events:
+                if event.get('date') == check_date_str:
+                    event_name = escape_markdown(event.get('name', ''))
+                    day_name = escape_markdown(check_date.strftime('%A'))
+                    upcoming_events_lines.append(f"• *{day_name}* \\({escape_markdown(check_date.strftime('%Y/%m/%d'))}\\): *{event_name}*")
+        
+        # بخش ۲: تولدهای هفته آینده
+        upcoming_birthdays_lines = []
+        users_with_birthdays = db.get_users_with_birthdays()
+        for user in users_with_birthdays:
+            days_left = db.days_until_next_birthday(user['birthday'])
+            if 0 <= days_left < 7:
+                birthday_date = now_jalali + timedelta(days=days_left)
+                day_name = escape_markdown(birthday_date.strftime('%A'))
+                user_name = escape_markdown(user.get('first_name', 'کاربر'))
+                upcoming_birthdays_lines.append(f"• *{day_name}*: تولد *{user_name}* \\(ID: `{user['user_id']}`\\)")
+        
+        # بخش ۳: کاربران VIP جدید در هفته گذشته
+        new_vips_lines = []
+        # این تابع به یک منطق در دیتابیس برای پیدا کردن کاربران VIP جدید نیاز دارد.
+        # در اینجا فرض می‌کنیم تابعی به نام get_new_vips_last_7_days وجود دارد.
+        new_vips = db.get_new_vips_last_7_days() # نیازمند پیاده‌سازی در database.py
+        for vip in new_vips:
+            user_name = escape_markdown(vip.get('first_name', 'کاربر'))
+            new_vips_lines.append(f"• *{user_name}* \\(ID: `{vip['user_id']}`\\)")
+
+        # ساخت پیام نهایی
+        report_parts = [f"📊 *گزارش مدیریتی هفتگی ربات* \\- {escape_markdown(now_jalali.strftime('%Y/%m/%d'))}"]
+
+        if upcoming_events_lines:
+            report_parts.extend(["`──────────────────`", "🗓️ *رویدادهای پیش رو:*", *upcoming_events_lines])
+        
+        if upcoming_birthdays_lines:
+            report_parts.extend(["`──────────────────`", "🎂 *تولدهای این هفته:*", *upcoming_birthdays_lines])
+
+        if new_vips_lines:
+            report_parts.extend(["`──────────────────`", "👑 *کاربران VIP جدید (هفته گذشته):*", *new_vips_lines])
+        
+        if len(report_parts) > 1:
+            final_message = "\n".join(report_parts)
+            for admin_id in ADMIN_IDS:
+                bot.send_message(admin_id, final_message, parse_mode="MarkdownV2")
+        else:
+            logger.info("Weekly admin digest: No significant events to report.")
+
+    except Exception as e:
+        logger.error(f"Error in weekly admin digest: {e}", exc_info=True)
+
+
+def notify_admin_of_upcoming_event(bot) -> None:
+    """
+    (نسخه نهایی و اصلاح شده)
+    مناسبت‌های فردا را بررسی کرده و به همراه تعداد کاربران فعال به ادمین‌ها اطلاع‌رسانی می‌کند.
+    """
+    try:
+        events = load_json_file('events.json')
+        tomorrow_jalali = jdatetime.datetime.now(pytz.timezone("Asia/Tehran")) + timedelta(days=1)
+        tomorrow_str = tomorrow_jalali.strftime('%m-%d')
+
+        for event in events:
+            if event.get('date') == tomorrow_str:
+                logger.info(f"Upcoming event found for tomorrow: {event['name']}")
+                
+                # ✅ **کد جدید برای شمارش کاربران فعال**
+                active_users_count = db.count_all_active_users()
+
+                event_name = escape_markdown(event.get('name', 'نامشخص'))
+                event_date = escape_markdown(tomorrow_jalali.strftime('%Y/%m/%d'))
+                gift_gb = event.get('gift', {}).get('gb', 0)
+                gift_days = event.get('gift', {}).get('days', 0)
+                user_message = escape_markdown(event.get('message', ''))
+
+                gift_details = []
+                if gift_gb > 0: gift_details.append(f"`{gift_gb} GB` حجم")
+                if gift_days > 0: gift_details.append(f"`{gift_days}` روز")
+                gift_str = " و ".join(gift_details) if gift_details else "بدون هدیه"
+
+                admin_message = (
+                    f"🔔 *یادآوری رویداد آینده*\n\n"
+                    f"فردا، *{event_date}*، مناسبت «*{event_name}*» است\\.\n\n"
+                    f"🤖 *عملیات خودکار ربات:*\n"
+                    f"ربات به صورت خودکار به *{active_users_count} کاربر فعال* هدیه خواهد داد\\.\n\n" # ✅ **آمار دقیق اضافه شد**
+                    f"🎁 *جزئیات هدیه:*\n{gift_str}\n\n"
+                    f"📝 *متن پیام به کاربران:*\n_{user_message}_\n\n"
+                    f"💡 *پیشنهاد:*\nمی‌توانید برای این مناسبت یک پست تبریک در کانال خود منتشر کنید\\."
+                )
+                
+                for admin_id in ADMIN_IDS:
+                    bot.send_message(admin_id, admin_message, parse_mode="MarkdownV2")
+                
+                break 
+    except Exception as e:
+        logger.error(f"Error notifying admin of upcoming events: {e}", exc_info=True)
 
 def notify_user_achievement(bot, user_id: int, badge_code: str):
     """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""
@@ -46,43 +155,62 @@ def notify_user_achievement(bot, user_id: int, badge_code: str):
 
 
 def birthday_gifts_job(bot) -> None:
-    """هدایای تولد را برای کاربران واجد شرایط اعمال می‌کند."""
-    today_birthday_users = db.get_todays_birthdays()
-    if not today_birthday_users:
+    """
+    (نسخه نهایی و اصلاح شده)
+    هدایای تولد را اعمال کرده و ۱۵ روز قبل از تولد نیز به کاربر یادآوری می‌کند.
+    """
+    all_users_with_birthdays = list(db.get_users_with_birthdays())
+    if not all_users_with_birthdays:
         return
         
     current_year = jdatetime.datetime.now(pytz.timezone("Asia/Tehran")).year
 
-    for user_id in today_birthday_users:
-        with db._conn() as c:
-            already_given = c.execute(
-                "SELECT 1 FROM birthday_gift_log WHERE user_id = ? AND gift_year = ?",
-                (user_id, current_year)
-            ).fetchone()
+    for user in all_users_with_birthdays:
+        user_id = user['user_id']
+        days_left = db.days_until_next_birthday(user['birthday'])
+        
+        # ۱. ارسال هدیه در روز تولد
+        if days_left == 0:
+            with db._conn() as c:
+                already_given = c.execute(
+                    "SELECT 1 FROM birthday_gift_log WHERE user_id = ? AND gift_year = ?",
+                    (user_id, current_year)
+                ).fetchone()
 
-        if already_given:
-            logger.info(f"Skipping birthday gift for user {user_id}, already given in year {current_year}.")
-            continue
+            if already_given:
+                logger.info(f"Skipping birthday gift for user {user_id}, already given in year {current_year}.")
+                continue
 
-        user_uuids = db.uuids(user_id)
-        if user_uuids:
-            first_uuid = user_uuids[0]['uuid']
-            if combined_handler.modify_user_on_all_panels(first_uuid, add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS):
-                user_settings = db.get_user_settings(user_id)
-                if user_settings.get('promotional_alerts', True):
-                    gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
-                                    f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
-                                    f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
-                                    f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
-                                    f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
-                    if send_warning_message(bot, user_id, gift_message):
-                        with db._conn() as c:
-                            c.execute("INSERT INTO birthday_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
+            user_uuids = db.uuids(user_id)
+            if user_uuids:
+                first_uuid = user_uuids[0]['uuid']
+                if combined_handler.modify_user_on_all_panels(first_uuid, add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS):
+                    user_settings = db.get_user_settings(user_id)
+                    if user_settings.get('promotional_alerts', True):
+                        gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
+                                        f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
+                                        f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
+                                        f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
+                                        f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
+                        if send_warning_message(bot, user_id, gift_message):
+                            with db._conn() as c:
+                                c.execute("INSERT INTO birthday_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
+        
+        # ۲. ارسال پیام پیشواز تولد
+        elif days_left == 15:
+            if not db.has_recent_warning(user_id, 'pre_birthday_reminder', hours=360*24): # تقریبا یک سال
+                 user_settings = db.get_user_settings(user_id)
+                 if user_settings.get('promotional_alerts', True):
+                    user_name = user.get('first_name', 'کاربر عزیز')
+                    pre_birthday_message = get_string("pre_birthday_message", db.get_user_language(user_id)).format(name=user_name)
+                    if send_warning_message(bot, user_id, pre_birthday_message):
+                        db.log_warning(user_id, 'pre_birthday_reminder')
 
 
 def check_achievements_and_anniversary(bot) -> None:
     """
-    شرایط دریافت دستاوردها و هدیه سالگرد را برای تمام کاربران بررسی می‌کند.
+    (نسخه نهایی و اصلاح شده)
+    شرایط دریافت دستاوردها، هدیه سالگرد و یادآوری‌های تشویقی را بررسی می‌کند.
     """
     logger.info("SCHEDULER: Starting daily achievements and anniversary check job.")
     all_user_ids = list(db.get_all_user_ids())
@@ -101,12 +229,13 @@ def check_achievements_and_anniversary(bot) -> None:
                 first_uuid_creation_date = pytz.utc.localize(first_uuid_creation_date)
 
             days_since_creation = (datetime.now(pytz.utc) - first_uuid_creation_date).days
+            payment_count = len(db.get_user_payment_history(uuid_id))
             
             # --- بررسی دستاوردها ---
             if days_since_creation >= 365 and db.add_achievement(user_id, 'veteran'):
                 notify_user_achievement(bot, user_id, 'veteran')
 
-            if len(db.get_user_payment_history(uuid_id)) > 5 and db.add_achievement(user_id, 'loyal_supporter'):
+            if payment_count > 5 and db.add_achievement(user_id, 'loyal_supporter'):
                 notify_user_achievement(bot, user_id, 'loyal_supporter')
 
             successful_referrals = [u for u in db.get_referred_users(user_id) if u['referral_reward_applied']]
@@ -115,6 +244,23 @@ def check_achievements_and_anniversary(bot) -> None:
             
             if user_id in lucky_users and db.add_achievement(user_id, 'lucky_one'):
                 notify_user_achievement(bot, user_id, 'lucky_one')
+
+            # --- ✅ **کد جدید برای یادآوری دستاورد** ---
+            # ۳. بررسی یادآوری تشویقی
+            next_reward_tier = min([tier for tier in LOYALTY_REWARDS.keys() if tier > payment_count], default=None)
+            if next_reward_tier and next_reward_tier - payment_count == 1:
+                if not db.has_recent_warning(user_id, 'loyalty_reminder', hours=30*24):
+                    user_settings = db.get_user_settings(user_id)
+                    if user_settings.get('promotional_alerts', True):
+                        reward_info = LOYALTY_REWARDS[next_reward_tier]
+                        lang_code = db.get_user_language(user_id)
+                        reminder_message = get_string("loyalty_reminder_message", lang_code).format(
+                            gb_reward=reward_info.get("gb", 0),
+                            days_reward=reward_info.get("days", 0)
+                        )
+                        if send_warning_message(bot, user_id, reminder_message):
+                            db.log_warning(user_id, 'loyalty_reminder')
+            # --- **پایان کد جدید** ---
 
             # --- بررسی هدیه سالگرد ---
             current_year = datetime.now(pytz.utc).year

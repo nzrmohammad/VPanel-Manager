@@ -24,7 +24,9 @@ scheduler = None
 
 logger = logging.getLogger(__name__)
 
-def register_admin_handlers(bot, scheduler):
+def register_admin_handlers(bot, scheduler_instance):
+    global scheduler
+    scheduler = scheduler_instance
 # -----------------------------------------------
     initialize_hiddify_handlers(bot, admin_conversations)
     initialize_marzban_handlers(bot, admin_conversations)
@@ -55,15 +57,28 @@ def register_admin_handlers(bot, scheduler):
 
     @bot.message_handler(commands=['test_weekly'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def run_test_weekly_report(message: types.Message):
+        """
+        (نسخه نهایی و اصلاح شده)
+        این تابع هم گزارش هفتگی کاربر و هم گزارش هفتگی ادمین را برای تست اجرا می‌کند.
+        """
         admin_id = message.from_user.id
         try:
             parts = message.text.split()
             target_user_id = int(parts[1]) if len(parts) > 1 else admin_id
+            
+            # بخش اول: تست گزارش هفتگی کاربر
             bot.send_message(admin_id, f"⏳ در حال اجرای تست گزارش هفتگی برای کاربر `{target_user_id}`...", parse_mode="Markdown")
             scheduler._weekly_report(target_user_id=target_user_id)
             bot.send_message(admin_id, f"✅ تست گزارش هفتگی برای کاربر `{target_user_id}` با موفقیت انجام و ارسال شد.")
+            
+            # بخش دوم: تست گزارش هفتگی ادمین
+            bot.send_message(admin_id, "⏳ در حال اجرای تست گزارش هفتگی ادمین (پرمصرف‌ترین‌ها)...", parse_mode="Markdown")
+            scheduler._send_weekly_admin_summary()
+            bot.send_message(admin_id, "✅ تست گزارش هفتگی ادمین با موفقیت انجام و ارسال شد.")
+
         except Exception as e:
             bot.send_message(admin_id, f"❌ خطا در اجرای تست: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+
 
     @bot.message_handler(commands=['test_warnings'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def run_test_warnings_check(message: types.Message):
@@ -101,6 +116,26 @@ def register_admin_handlers(bot, scheduler):
         run_single_test("بررسی هدیه تولد", scheduler._birthday_gifts_job)
         
         bot.edit_message_text("\n".join(test_report), chat_id=admin_id, message_id=msg.message_id, parse_mode="Markdown")
+
+    @bot.message_handler(commands=['test_event'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_event_notification(message: types.Message):
+        admin_id = message.from_user.id
+        try:
+            bot.send_message(admin_id, "⏳ در حال اجرای تست اطلاع‌رسانی رویداد فردا...")
+            scheduler._test_upcoming_event_notification()
+            bot.send_message(admin_id, "✅ تست با موفقیت انجام شد. اگر رویدادی برای فردا ثبت شده باشد، پیام آن ارسال شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
+
+    @bot.message_handler(commands=['test_digest'], func=lambda message: message.from_user.id in ADMIN_IDS)
+    def run_test_weekly_digest(message: types.Message):
+        admin_id = message.from_user.id
+        try:
+            bot.send_message(admin_id, "⏳ در حال اجرای تست گزارش مدیریتی هفتگی...")
+            scheduler._test_weekly_digest()
+            bot.send_message(admin_id, "✅ تست با موفقیت انجام و گزارش هفتگی برای شما ارسال شد.")
+        except Exception as e:
+            bot.send_message(admin_id, f"❌ خطا در اجرای تست: {escape_markdown(str(e))}", parse_mode="MarkdownV2")
 
     @bot.message_handler(commands=['addpoints'], func=lambda message: message.from_user.id in ADMIN_IDS)
     def add_points_command(message: types.Message):

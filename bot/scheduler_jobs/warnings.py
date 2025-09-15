@@ -42,7 +42,8 @@ def send_warning_message(bot, user_id: int, message_template: str, reply_markup:
 
 def check_for_warnings(bot, target_user_id: int = None) -> None:
     """
-    به صورت دوره‌ای تمام کاربران را برای شرایط مختلف بررسی کرده و اعلان ارسال می‌کند.
+    (نسخه نهایی و اصلاح شده)
+    به صورت دوره‌ای تمام کاربران را برای شرایط مختلف (شامل منقضی شدن) بررسی کرده و اعلان ارسال می‌کند.
     """
     logger.info("SCHEDULER (Warnings): Starting warnings check job.")
     try:
@@ -111,6 +112,20 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             db.log_warning(uuid_id_in_db, 'expiry')
                             db.create_notification(user_id_in_telegram, "هشدار انقضای اکانت", f"اکانت «{user_name}» شما تا {expire_days} روز دیگر منقضی می‌شود.", "warning")
                 
+                # --- ✅ **کد جدید برای اکانت‌های منقضی شده** ---
+                # 3.5. ارسال هشدار برای اکانت‌های منقضی شده
+                if user_settings.get('expiry_warnings') and expire_days is not None and expire_days <= 0:
+                    # برای جلوگیری از ارسال پیام تکراری، هر ۴۸ ساعت یکبار چک می‌کنیم
+                    if not db.has_recent_warning(uuid_id_in_db, 'expired', hours=48):
+                        msg_template = (f"❗️ *اکانت شما منقضی شده است*\n\n"
+                                        f"اعتبار اکانت *{{user_name}}* شما به پایان رسیده است\\.\n\n"
+                                        f"برای استفاده مجدد، لطفاً نسبت به تمدید آن اقدام نمایید\\.")
+                        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"))
+                        if send_warning_message(bot, user_id_in_telegram, msg_template, user_name=user_name, reply_markup=kb):
+                            db.log_warning(uuid_id_in_db, 'expired')
+                            db.create_notification(user_id_in_telegram, "اکانت منقضی شده", f"اعتبار اکانت «{user_name}» شما به پایان رسیده است.", "warning")
+                # --- **پایان کد جدید** ---
+
                 # 4. ارسال هشدارهای اتمام حجم
                 breakdown = info.get('breakdown', {})
                 
@@ -184,12 +199,12 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                         f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
                                         f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
                         for admin_id in ADMIN_IDS:
-                            if send_warning_message(bot, admin_id, alert_message): # Use the safe function
+                            if send_warning_message(bot, admin_id, alert_message):
                                 db.create_notification(
                                     admin_id,
                                     "مصرف غیرعادی روزانه",
                                     f"کاربر «{user_name}» امروز بیش از {DAILY_USAGE_ALERT_THRESHOLD_GB} GB مصرف داشته است (مصرف کل: {format_daily_usage(total_daily_usage)}).",
-                                    "broadcast" # دسته broadcast انتخاب شد تا در صندوق ورودی ادمین مهم به نظر برسد
+                                    "broadcast"
                                 )
                         db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
 
@@ -200,7 +215,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                     f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
                                     f"بیش از *۵* دستگاه \\({device_count} دستگاه\\) متصل کرده است\\. احتمال به اشتراک گذاری لینک وجود دارد\\.")
                     for admin_id in ADMIN_IDS:
-                        if send_warning_message(bot, admin_id, alert_message): # Use the safe function
+                        if send_warning_message(bot, admin_id, alert_message):
                             db.create_notification(
                                 admin_id,
                                 "تعداد دستگاه بالا",

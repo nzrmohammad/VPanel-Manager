@@ -542,8 +542,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         return "هیچ کاربری در پنل یافت نشد"
 
     # --- بخش ۱: محاسبات اولیه و جمع‌آوری داده‌ها ---
-    active_users = 0
-    total_daily_hiddify, total_daily_marzban = 0.0, 0.0
+    active_users, total_daily_hiddify, total_daily_marzban = 0, 0.0, 0.0
     active_today_users, expiring_soon_users, new_users_today, expired_recently_users = [], [], [], []
     
     now_utc = datetime.now(pytz.utc)
@@ -568,10 +567,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
         expire_days = user_info.get('expire')
         if expire_days is not None:
-            if 0 <= expire_days <= 3:
-                expiring_soon_users.append(user_info)
-            elif -2 <= expire_days < 0:
-                expired_recently_users.append(user_info)
+            if 0 <= expire_days <= 3: expiring_soon_users.append(user_info)
+            elif -2 <= expire_days < 0: expired_recently_users.append(user_info)
 
         created_at_info = db_users_map.get(user_info.get('uuid'))
         if created_at_info and created_at_info.get('created_at'):
@@ -580,8 +577,6 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 new_users_today.append(user_info)
 
     total_daily_all = total_daily_hiddify + total_daily_marzban
-    list_bullet = escape_markdown("- ")
-    
     payments_today_count = db_manager.get_total_payments_in_range(start_of_today_utc, now_utc)
     achievements_today = db_manager.get_daily_achievements()
 
@@ -599,14 +594,16 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
     # --- بخش ۳: افزودن لیست‌های جزئی ---
     if active_today_users:
-        report_lines.append("───────────────")
-        report_lines.append(f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*")
+        report_lines.extend(["───────────────", f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*"])
         active_today_users.sort(key=lambda u: u.get('name', ''))
         for user in active_today_users:
             user_name = escape_markdown(user.get('name', 'کاربر ناشناس'))
+            user_db_record = db_users_map.get(user.get('uuid'))
+            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
+            user_emoji = "👑" if is_vip else "👤" # ایموجی برای کاربر VIP و عادی
+
             daily_dict = user.get('daily_usage_dict', {})
             usage_parts = []
-            user_db_record = db_users_map.get(user.get('uuid'))
             hiddify_usage = daily_dict.get('hiddify', 0.0)
             if hiddify_usage > 0.001:
                 usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(hiddify_usage))}")
@@ -620,18 +617,19 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                     usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(marzban_usage))}")
             usage_str = escape_markdown(" | ").join(usage_parts)
             if usage_str:
-                report_lines.append(f"• {user_name} : {usage_str}")
+                report_lines.append(f"{user_emoji} {user_name} : {usage_str}")
     
     if new_users_today:
-        report_lines.append("───────────────")
-        report_lines.append(f"*{escape_markdown('⭐️ کاربران جدید (۲۴ ساعت اخیر):')}*")
+        report_lines.extend(["───────────────", f"*{escape_markdown('⭐️ کاربران جدید (۲۴ ساعت اخیر):')}*"])
         for user in new_users_today:
             name = escape_markdown(user['name'])
-            report_lines.append(f"• {name}")
+            user_db_record = db_users_map.get(user.get('uuid'))
+            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
+            user_emoji = "👑" if is_vip else "👤"
+            report_lines.append(f"{user_emoji} {name}")
 
     if achievements_today:
-        report_lines.append("───────────────")
-        report_lines.append(f"*{escape_markdown('🏆 دستاوردها و امتیازات امروز')}*")
+        report_lines.extend(["───────────────", f"*{escape_markdown('🏆 دستاوردها و امتیازات امروز')}*"])
         users_achievements = {}
         for ach in achievements_today:
             user_id = ach['user_id']
@@ -642,65 +640,69 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             name = escape_markdown(data['first_name'])
             points_today = sum(ACHIEVEMENTS.get(b, {}).get('points', 0) for b in data['badges'])
             badge_icons = ' '.join([ACHIEVEMENTS.get(b, {}).get('icon', '🎖️') for b in data['badges']])
-            report_lines.append(f"• {name} \\({badge_icons}\\) \\(\\+{points_today} امتیاز\\)")
+            
+            # پیدا کردن وضعیت VIP کاربر از طریق user_id
+            user_uuids = db_manager.uuids(user_id)
+            is_vip = user_uuids[0].get('is_vip', False) if user_uuids else False
+    user_emoji = "👑" if is_vip else "👤"
+
+    report_lines.append(f"{user_emoji} {name} {escape_markdown(f'({badge_icons}) (+{points_today} امتیاز)')}")
 
     if expiring_soon_users:
-        report_lines.append("───────────────")
-        report_lines.append(f"*{escape_markdown('⚠️ کاربرانی که تا ۳ روز آینده منقضی می شوند')}*")
+        report_lines.extend(["───────────────", f"*{escape_markdown('⚠️ کاربرانی که تا ۳ روز آینده منقضی می شوند')}*"])
         expiring_soon_users.sort(key=lambda u: u.get('expire', 99))
         for user in expiring_soon_users:
             name = escape_markdown(user['name'])
             days = user['expire']
-            report_lines.append(f"• {name} : {days} روز")
+            user_db_record = db_users_map.get(user.get('uuid'))
+            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
+            user_emoji = "👑" if is_vip else "👤"
+            report_lines.append(f"{user_emoji} {name} : {days} روز")
 
     if expired_recently_users:
-        report_lines.append("───────────────")
-        report_lines.append(f"*{escape_markdown('❌ کاربران منقضی (۴۸ ساعت اخیر)')}*")
+        report_lines.extend(["───────────────", f"*{escape_markdown('❌ کاربران منقضی (۴۸ ساعت اخیر)')}*"])
         expired_recently_users.sort(key=lambda u: u.get('name', ''))
         for user in expired_recently_users:
             name = escape_markdown(user['name'])
-            report_lines.append(f"• {name}")
+            user_db_record = db_users_map.get(user.get('uuid'))
+            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
+            user_emoji = "👑" if is_vip else "👤"
+            report_lines.append(f"{user_emoji} {name}")
 
     sent_warnings = db_manager.get_sent_warnings_since_midnight()
     if sent_warnings:
-        report_lines.append("───────────────")
-        report_lines.append(f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*")
-
+        report_lines.extend(["───────────────", f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*"])
         name_to_user_map = {u.get('name'): u for u in all_users_from_api}
-        
         for warning in sent_warnings:
             user_name = warning.get('name', 'N/A')
             warning_type = warning.get('warning_type')
-            
             warning_text = ""
             if warning_type in ["low_data_marzban", "volume_depleted_marzban"]:
                 user_record = name_to_user_map.get(user_name)
                 flags = []
-                if user_record and user_record.get('uuid'):
-                    db_rec = db_users_map.get(user_record['uuid'])
-                    if db_rec:
-                        if db_rec.get('has_access_fr'): flags.append("🇫🇷")
-                        if db_rec.get('has_access_tr'): flags.append("🇹🇷")
-                        if db_rec.get('has_access_us'): flags.append("🇺🇸")
-                
-                # ✅ **اصلاح اصلی سوم:** حالت پیش‌فرض حذف شد تا فقط پرچم‌های واقعی نمایش داده شوند
-                flag_str = "".join(flags) if flags else ""
+                if user_record and user_record.get('uuid') and (db_rec := db_users_map.get(user_record['uuid'])):
+                    if db_rec.get('has_access_fr'): flags.append("🇫🇷")
+                    if db_rec.get('has_access_tr'): flags.append("🇹🇷")
+                    if db_rec.get('has_access_us'): flags.append("🇺🇸")
+                flag_str = "".join(flags)
                 base_text = "کمبود حجم" if "low" in warning_type else "اتمام حجم"
                 warning_text = f"{base_text} {flag_str}"
             else:
                 warning_map = {
-                    "expiry": "انقضای سرویس", 
-                    "low_data_hiddify": "کمبود حجم 🇩🇪", 
-                    "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-                    "unusual_daily_usage": "مصرف غیرعادی", 
-                    "too_many_devices": "تعداد دستگاه بالا",
-                    "inactive_user_reminder": "یادآوری عدم فعالیت"
+                    "expiry": "انقضای سرویس", "low_data_hiddify": "کمبود حجم 🇩🇪", 
+                    "volume_depleted_hiddify": "اتمام حجم 🇩🇪", "unusual_daily_usage": "مصرف غیرعادی", 
+                    "too_many_devices": "تعداد دستگاه بالا", "inactive_user_reminder": "یادآوری عدم فعالیت"
                 }
                 warning_text = warning_map.get(warning_type, warning_type)
-
-            if warning_text.strip(): # فقط در صورتی که متنی برای نمایش وجود داشته باشد، آن را اضافه می‌کنیم
-                report_lines.append(f"• {escape_markdown(user_name)} : {escape_markdown(warning_text)}")
-            
+            if warning_text.strip():
+                # پیدا کردن وضعیت VIP کاربر از طریق نام کاربری
+                user_record = name_to_user_map.get(user_name)
+                is_vip = False
+                if user_record and user_record.get('uuid') and (db_rec := db_users_map.get(user_record['uuid'])):
+                    is_vip = db_rec.get('is_vip', False)
+                user_emoji = "👑" if is_vip else "👤"
+                
+                report_lines.append(f"{user_emoji} {escape_markdown(user_name)} : {escape_markdown(warning_text)}")
     return "\n".join(report_lines)
 
 
