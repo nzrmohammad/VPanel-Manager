@@ -187,15 +187,18 @@ def parse_volume_string(volume_str: str) -> int:
     return 0
 
 def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
-    """
-    رشته user-agent را برای شناسایی دقیق برنامه، سیستم‌عامل و نسخه تجزیه می‌کند.
-    این نسخه از یک رویکرد داده-محور برای خوانایی و توسعه‌پذیری بهتر استفاده می‌کند.
-    """
     if not user_agent or "TelegramBot" in user_agent:
         return None
 
-    # الگوهای شناسایی کلاینت‌ها به ترتیب اولویت
     CLIENT_PATTERNS = [
+        {
+            "name": "Happ",
+            "regex": re.compile(r'^(Happ)/([\d.]+)(?:/(\w+))?'),
+            "extractor": lambda m: {
+                "client": "Happ", "version": m.group(2),
+                "os": m.group(3).capitalize() if m.group(3) else "Unknown"
+            }
+        },
         {
             "name": "V2Box",
             "regex": re.compile(r"^(V2Box)\s+([\d.]+);(IOS)\s+([\d.]+)"),
@@ -235,25 +238,10 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             "name": "NapsternetV",
             "regex": re.compile(r'NapsternetV/([\d.]+)'),
             "extractor": lambda m: {
-                "client": "NapsternetV", 
-                "version": m.group(1), 
+                "client": "NapsternetV", "version": m.group(1),
                 "os": "Android" if 'android' in user_agent.lower() else "iOS" if 'ios' in user_agent.lower() else None
             }
         },
-        {
-            "name": "Happ",
-            "regex": re.compile(r'Happ/([\d.]+)'),
-            "extractor": lambda m: {
-                "client": "Happ",
-                "version": m.group(1),
-                "os": "Windows" if 'windows' in user_agent.lower() else
-                    "Android" if 'android' in user_agent.lower() else
-                    "iOS" if 'ios' in user_agent.lower() else
-                    "macOS" if 'darwin' in user_agent.lower() else
-                    "Linux" if 'linux' in user_agent.lower() else None
-            }
-        },
-        # --- مرورگرها (به عنوان آخرین گزینه‌ها) ---
         {
             "name": "Browser",
             "regex": re.compile(r"(Chrome|Firefox|Safari|OPR)/([\d.]+)"),
@@ -266,25 +254,26 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
         if match:
             result = pattern["extractor"](match)
             if result:
+                if result.get('client') == 'Unknown Apple Client':
+                    logger.info(f"DEBUG_USER_AGENT: An Apple client was not fully identified. Raw UA: '{user_agent}' -> Parsed: {result}")
                 return result
 
+    logger.info(f"DEBUG_USER_AGENT: No specific pattern matched. Raw UA: '{user_agent}'")
     generic_client = user_agent.split('/')[0].split(' ')[0]
     return {"client": generic_client, "os": "Unknown", "version": None}
 
 def _extract_apple_client_details(user_agent: str, darwin_match: re.Match) -> Dict[str, Optional[str]]:
     """تابع کمکی برای استخراج جزئیات از user-agent های پیچیده اپل."""
     client_name, client_version = "Unknown Apple Client", None
-    client_patterns = {
-        "Shadowrocket": r"Shadowrocket/([\d.]+)", "Stash": r"Stash/([\d.]+)",
-        "Quantumult X": r"Quantumult%20X/([\d.]+)", "Loon": r"Loon/([\d.]+)",
-        "V2Box": r"V2Box/([\d.]+)", "Streisand": r"Streisand/([\d.]+)",
-        "Fair VPN": r"Fair%20VPN/([\d.]+)"
-    }
-    for name, pattern in client_patterns.items():
-        match = re.search(pattern, user_agent)
-        if match:
-            client_name, client_version = name, match.group(1)
-            break
+    
+    known_clients = ["Shadowrocket", "Stash", "Quantumult%20X", "Loon", "V2Box", "Streisand", "Fair%20VPN", "Happ"]
+    for client in known_clients:
+        if user_agent.startswith(client.replace('%20', ' ')):
+            match = re.search(r"^{}/([\d.]+)".format(re.escape(client)), user_agent.replace('%20', ' '))
+            if match:
+                client_name = client.replace('%20', ' ')
+                client_version = match.group(1)
+                break
 
     os_version = None
     darwin_version = int(darwin_match.group(1).split('.')[0])
@@ -299,6 +288,7 @@ def _extract_apple_client_details(user_agent: str, darwin_match: re.Match) -> Di
 
     final_os_str = f"{os_name} {os_version}" if os_version else os_name
     return {"client": client_name, "os": final_os_str, "version": client_version}
+
 
 def _extract_browser_details(user_agent: str, browser_match: re.Match) -> Optional[Dict[str, Optional[str]]]:
     """تابع کمکی برای استخراج جزئیات از user-agent مرورگرها."""

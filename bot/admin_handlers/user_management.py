@@ -765,7 +765,12 @@ def handle_purge_user_convo(call, params):
 
 def _confirm_and_purge_user(message: types.Message):
     admin_id, text = message.from_user.id, message.text.strip()
-    bot.delete_message(admin_id, message.message_id)
+    
+    try:
+        bot.delete_message(admin_id, message.message_id)
+    except apihelper.ApiTelegramException as e:
+        if "message to delete not found" not in str(e):
+            logger.warning(f"Could not delete admin message {message.message_id}: {e}")
 
     if admin_id not in admin_conversations: return
 
