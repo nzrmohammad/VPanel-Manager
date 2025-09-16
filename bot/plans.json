@@ -9,6 +9,15 @@
         "price": 75000
     },
     {
+        "name": "Bronze Plus 🥉",
+        "type": "combined",
+        "total_volume": "۴۰ گیگابایت",
+        "volume_de": "۲۰ گیگابایت",
+        "volume_fr": "۲۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 95000
+    },
+    {
         "name": "Silver 🥈",
         "type": "combined",
         "total_volume": "۵۰ گیگابایت",
@@ -18,6 +27,15 @@
         "price": 120000
     },
     {
+        "name": "Silver Plus 🥈",
+        "type": "combined",
+        "total_volume": "۶۵ گیگابایت",
+        "volume_de": "۴۰ گیگابایت",
+        "volume_fr": "۲۵ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 150000
+    },
+    {
         "name": "Gold 🥇",
         "type": "combined",
         "total_volume": "۸۰ گیگابایت",
@@ -25,6 +43,15 @@
         "volume_fr": "۳۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 180000
+    },
+    {
+        "name": "Gold Plus 🥇",
+        "type": "combined",
+        "total_volume": "۱۰۰ گیگابایت",
+        "volume_de": "۶۵ گیگابایت",
+        "volume_fr": "۳۵ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 225000
     },
     {
         "name": "Platinum ✨",
@@ -119,6 +146,27 @@
         "price": 150000
     },
     {
+        "name": "FR Premium 🇫🇷",
+        "type": "france",
+        "volume_fr": "۱۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 300000
+    },
+    {
+        "name": "FR Ultimate 🇫🇷",
+        "type": "france",
+        "volume_fr": "۱۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 450000
+    },
+    {
+        "name": "FR Max 🇫🇷",
+        "type": "france",
+        "volume_fr": "۲۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 600000
+    },
+    {
         "name": "TR Economy 🇹🇷",
         "type": "turkey",
         "volume_tr": "۲۰ گیگابایت",
@@ -140,6 +188,27 @@
         "price": 165000
     },
     {
+        "name": "TR Premium 🇹🇷",
+        "type": "turkey",
+        "volume_tr": "۱۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 330000
+    },
+    {
+        "name": "TR Ultimate 🇹🇷",
+        "type": "turkey",
+        "volume_tr": "۱۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 495000
+    },
+    {
+        "name": "TR Max 🇹🇷",
+        "type": "turkey",
+        "volume_tr": "۲۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 660000
+    },
+    {
         "name": "US Economy 🇺🇸",
         "type": "usa",
         "volume_us": "۲۰ گیگابایت",
@@ -159,5 +228,26 @@
         "volume_us": "۵۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 170000
+    },
+    {
+        "name": "US Premium 🇺🇸",
+        "type": "usa",
+        "volume_us": "۱۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 340000
+    },
+    {
+        "name": "US Ultimate 🇺🇸",
+        "type": "usa",
+        "volume_us": "۱۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 510000
+    },
+    {
+        "name": "US Max 🇺🇸",
+        "type": "usa",
+        "volume_us": "۲۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 680000
     }
 ]
