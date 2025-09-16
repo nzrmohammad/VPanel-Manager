@@ -484,10 +484,7 @@ class Menu:
              types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}"),
              types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}")
         )
-        kb.add(
-            types.InlineKeyboardButton("📣 اهدای نشان یار رسانه‌ای", callback_data=f"admin:awd_b:mp:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🛠️ اهدای نشان همیار پشتیبانی", callback_data=f"admin:awd_b:sc:{identifier}{context_suffix}")
-        )
+        kb.add(types.InlineKeyboardButton("🎁 اهدای نشان", callback_data=f"admin:awd_b_menu:{identifier}{context_suffix}"))
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))
@@ -716,6 +713,42 @@ class Menu:
             types.InlineKeyboardButton("فرانسه 🇫🇷", callback_data="admin:marzban_stats")
         )
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
+        return kb
+    
+    def admin_award_badge_menu(self, identifier: str, context_suffix: str) -> types.InlineKeyboardMarkup:
+        """منوی اهدای دستی نشان‌ها توسط ادمین."""
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        panel_short = 'h' # Fallback panel
+        # A list of admin-awardable badges (short_code, name)
+        awardable_badges = [
+            ('s_coach', "🏊‍♀️ مربی شنا"), ('b_coach', "🏋️‍♂️ مربی بدن‌سازی"),
+            ('a_coach', "🧘‍♀️ مربی Aerial"), ('sc_champ', "🏊‍♂️ قهرمان شنا"),
+            ('mp', "📣 یار رسانه‌ای"), ('sc', "🛠️ همیار پشتیبانی")
+        ]
+        buttons = [
+            types.InlineKeyboardButton(name, callback_data=f"admin:awd_b:{short_code}:{identifier}{context_suffix}")
+            for short_code, name in awardable_badges
+        ]
+        for i in range(0, len(buttons), 2):
+            if i + 1 < len(buttons):
+                kb.add(buttons[i], buttons[i+1])
+            else:
+                kb.add(buttons[i])
+
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به کاربر", callback_data=f"admin:us:{panel_short}:{identifier}{context_suffix}"))
+        return kb
+
+    def request_badge_menu(self) -> types.InlineKeyboardMarkup:
+        """منوی درخواست نشان‌های ورزشی را ایجاد می‌کند."""
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            types.InlineKeyboardButton("💪 بدن‌سازی", callback_data="achievements:req:bodybuilder"),
+            types.InlineKeyboardButton("🏊‍♂️ شنا", callback_data="achievements:req:water_athlete")
+        )
+        kb.add(
+            types.InlineKeyboardButton("🤸‍♀️ اریال ", callback_data="achievements:req:aerialist")
+        )
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به دستاوردها", callback_data="achievements"))
         return kb
     
     def back_or_cancel(self, back_callback: str, cancel_callback: str) -> types.InlineKeyboardMarkup:

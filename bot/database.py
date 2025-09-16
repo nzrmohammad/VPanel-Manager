@@ -241,6 +241,16 @@ class DatabaseManager:
                     win_date DATE NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS achievement_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    badge_code TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending', -- pending, approved, rejected
+                    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_by INTEGER,
+                    reviewed_at TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
                 CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
@@ -310,15 +320,12 @@ class DatabaseManager:
                 if end_h >= start_h:
                     total_h_usage = end_h - start_h
 
-            # --- ✨ شروع اصلاحیه: محاسبه Marzban مشابه Hiddify ---
-            # ابتدا آخرین اسنپ‌شات قبل از شروع امروز را به عنوان نقطه شروع پیدا می‌کنیم
             marzban_start_row = c.execute(
                 "SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
             ).fetchone()
             start_m = marzban_start_row['marzban_usage_gb'] if marzban_start_row and marzban_start_row['marzban_usage_gb'] is not None else 0
 
-            # سپس آخرین اسنپ‌شات امروز را پیدا می‌کنیم
             marzban_end_row = c.execute(
                 "SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
@@ -327,7 +334,6 @@ class DatabaseManager:
             total_m_usage = 0.0
             if marzban_end_row and marzban_end_row['marzban_usage_gb'] is not None:
                 end_m = marzban_end_row['marzban_usage_gb']
-                # اگر نقطه شروعی از قبل نداشتیم، اولین اسنپ‌شات امروز را به عنوان شروع در نظر می‌گیریم
                 if start_m == 0:
                     first_snap_today_m = c.execute("SELECT marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1", (uuid_id, today_midnight_utc)).fetchone()
                     if first_snap_today_m and first_snap_today_m['marzban_usage_gb'] is not None:
@@ -335,7 +341,6 @@ class DatabaseManager:
 
                 if end_m >= start_m:
                     total_m_usage = end_m - start_m
-            # --- ✨ پایان اصلاحیه ---
 
             return {'hiddify': total_h_usage, 'marzban': total_m_usage}
 
@@ -2609,6 +2614,29 @@ class DatabaseManager:
             last_win_date = win_date
             
         return consecutive_wins
+
+    def add_achievement_request(self, user_id: int, badge_code: str) -> int:
+        """یک درخواست نشان جدید ثبت کرده و شناسه آن را برمی‌گرداند."""
+        with self.write_conn() as c:
+            cursor = c.execute(
+                "INSERT INTO achievement_requests (user_id, badge_code) VALUES (?, ?)",
+                (user_id, badge_code)
+            )
+            return cursor.lastrowid
+
+    def get_achievement_request(self, request_id: int) -> Optional[Dict[str, Any]]:
+        """اطلاعات یک درخواست نشان را با شناسه آن بازیابی می‌کند."""
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM achievement_requests WHERE id = ?", (request_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_achievement_request_status(self, request_id: int, status: str, admin_id: int):
+        """وضعیت یک درخواست نشان را به‌روزرسانی می‌کند."""
+        with self.write_conn() as c:
+            c.execute(
+                "UPDATE achievement_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
+                (status, admin_id, datetime.now(pytz.utc), request_id)
+            )
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

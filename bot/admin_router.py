@@ -268,7 +268,10 @@ ADMIN_CALLBACK_HANDLERS = {
     "del_devs_exec": user_management.handle_delete_devices_action,
     "us_rtr": user_management.handle_reset_transfer_cooldown,
     "us_mchg": wallet_admin_handler.handle_manual_charge_request,
+    "awd_b_menu": user_management.handle_award_badge_menu,
     "awd_b": user_management.handle_award_badge,
+    "ach_req_approve": user_management.handle_achievement_request_callback,
+    "ach_req_reject": user_management.handle_achievement_request_callback,
     
     # Reporting & Analytics
     "health_check": reporting.handle_health_check,

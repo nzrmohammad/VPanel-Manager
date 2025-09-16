@@ -667,11 +667,14 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             user_emoji = "👑" if is_vip else "👤"
             report_lines.append(f"{user_emoji} {name}")
 
-    sent_warnings = db_manager.get_sent_warnings_since_midnight()
-    if sent_warnings:
+    sent_warnings_raw = db_manager.get_sent_warnings_since_midnight()
+    user_warnings = [w for w in sent_warnings_raw if not w.get('warning_type', '').endswith('_admin_alert')]
+    admin_warnings = [w for w in sent_warnings_raw if w.get('warning_type', '').endswith('_admin_alert')]
+
+    if user_warnings:
         report_lines.extend(["───────────────", f"*{escape_markdown('🔔 هشدارهای ارسال شده به کاربر')}*"])
         
-        for warning in sent_warnings:
+        for warning in user_warnings:
             user_name = warning.get('name', 'N/A')
             user_uuid = warning.get('uuid')
             warning_type = warning.get('warning_type')
@@ -707,6 +710,13 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 user_emoji = "👑" if is_vip else "👤"
                 
                 report_lines.append(f"{user_emoji} {escape_markdown(user_name)} : {escape_markdown(warning_text)}")
+
+    if admin_warnings:
+                    report_lines.extend(["───────────────", f"*{escape_markdown('🔔 هشدارهای ارسال شده به ادمین')}*"])
+                    for warning in admin_warnings:
+                        user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
+                        report_lines.append(f"👑 {user_name} : مصرف غیرعادی")
+
     return "\n".join(report_lines)
 
 def fmt_top_consumers(users: list, page: int) -> str:

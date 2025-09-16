@@ -1211,3 +1211,108 @@ def handle_award_badge(call, params):
         bot.answer_callback_query(call.id, f"✅ نشان «{ACHIEVEMENTS.get(badge_code, {}).get('name', '')}» با موفقیت اهدا شد.", show_alert=True)
     else:
         bot.answer_callback_query(call.id, "ℹ️ این کاربر قبلاً این نشان را دریافت کرده است.", show_alert=True)
+
+
+def handle_award_badge_menu(call: types.CallbackQuery, params: list):
+    """منوی اهدای دستی نشان‌ها را نمایش می‌دهد."""
+    identifier = params[0]
+    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    prompt = "کدام نشان را می‌خواهید به این کاربر اهدا کنید؟"
+    kb = menu.admin_award_badge_menu(identifier, context_suffix)
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
+
+def handle_achievement_request_callback(call: types.CallbackQuery, params: list):
+    """پاسخ ادمین به درخواست نشان را پردازش می‌کند."""
+    action = call.data.split(':')[1]
+    decision = 'approve' if 'approve' in action else 'reject'
+    
+    if not params:
+        bot.answer_callback_query(call.id, "خطا: شناسه درخواست یافت نشد.", show_alert=True)
+        return
+        
+    request_id_str = params[0]
+    request_id = int(request_id_str)
+    admin_id = call.from_user.id
+
+    request_data = db.get_achievement_request(request_id)
+    if not request_data or request_data['status'] != 'pending':
+        bot.answer_callback_query(call.id, "این درخواست قبلاً پردازش شده است.", show_alert=True)
+        bot.edit_message_reply_markup(chat_id=admin_id, message_id=call.message.message_id, reply_markup=None)
+        return
+
+    user_id = request_data['user_id']
+    badge_code = request_data['badge_code']
+
+    all_users = db.get_all_bot_users()
+    user_info = next((user for user in all_users if user['user_id'] == user_id), None)
+
+    if not user_info:
+        bot.answer_callback_query(call.id, "خطا: کاربر درخواست دهنده یافت نشد.", show_alert=True)
+        return
+        
+    user_name = escape_markdown(user_info.get('first_name', str(user_id)))
+    badge_name = escape_markdown(ACHIEVEMENTS.get(badge_code, {}).get('name', badge_code))
+    
+    base_admin_message = (
+        f"🏅 *درخواست نشان جدید*\n\n"
+        f"کاربر *{user_name}* \\(`{user_id}`\\) درخواست دریافت نشان «*{badge_name}*» را دارد\\."
+    )
+
+    if decision == 'approve':
+        db.update_achievement_request_status(request_id, 'approved', admin_id)
+        if db.add_achievement(user_id, badge_code):
+            badge_info = ACHIEVEMENTS.get(badge_code, {})
+            
+            # --- پیام‌های خلاقانه و شخصی‌سازی شده ---
+            creative_messages = {
+                "swimming_champion": "🌊 بهت افتخار می‌کنیم قهرمان\\! سرعت و استقامتت در آب الهام‌بخش است\\. نشان «قهرمان شنا» به پاس تلاشت به تو اهدا شد\\.",
+                "bodybuilder": "💪 تلاش و انضباط تو در باشگاه ستودنی است\\! نشان «بدن‌ساز» به پروفایل افتخاراتت اضافه شد\\. به ساختن ادامه بده\\!",
+                "water_athlete": "🤽‍♂️ انرژی بی‌پایانت در آب، تحسین‌برانگیزه\\! نشان «ورزشکار آب‌ها» برای تو\\. همیشه پرتوان باشی\\!",
+                "aerialist": "🤸‍♀️ هنر و قدرت تو در آسمان، نفس‌گیر است\\! نشان «ورزشکار هوایی» به پاس استعدادت به تو تعلق گرفت\\."
+            }
+            default_message = "🎉 تبریک\\! درخواست شما برای نشان «*{badge_name}*» تایید شد\\."
+            
+            message_template = creative_messages.get(badge_code, default_message)
+            approval_message = (
+                f"{badge_info.get('icon', '🏅')} *{escape_markdown('یک دستاورد جدید!')}*\n\n"
+                f"{message_template.format(badge_name=escape_markdown(badge_info.get('name', '')))}\n\n"
+                f"*{badge_info.get('points', 0)} امتیاز* به حساب شما اضافه شد\\. به افتخارآفرینی ادامه بده\\!"
+            )
+            bot.send_message(user_id, approval_message, parse_mode="MarkdownV2")
+        
+        bot.edit_message_text(
+            text=base_admin_message + "\n\n✅ *توسط شما تایید شد*",
+            chat_id=admin_id, message_id=call.message.message_id,
+            reply_markup=None, parse_mode="MarkdownV2"
+        )
+        bot.answer_callback_query(call.id, "درخواست تایید شد.")
+    else: # reject
+        db.update_achievement_request_status(request_id, 'rejected', admin_id)
+        bot.edit_message_text(
+            text=base_admin_message + "\n\n❌ *توسط شما رد شد*",
+            chat_id=admin_id, message_id=call.message.message_id,
+            reply_markup=None, parse_mode="MarkdownV2"
+        )
+        bot.answer_callback_query(call.id, "درخواست رد شد.")
+        badge_name = ACHIEVEMENTS.get(badge_code, {}).get('name', 'درخواستی')
+        rejection_message = f"با سلام، درخواست شما برای نشان «{badge_name}» بررسی شد اما در حال حاضر مورد تایید قرار نگرفت. لطفاً در صورت تمایل، بعداً دوباره تلاش کنید یا با پشتیبانی در تماس باشید."
+        bot.send_message(user_id, rejection_message)
+
+def handle_award_badge(call: types.CallbackQuery, params: list):
+    """
+    Awards a specific badge to a user, initiated by an admin.
+    """
+    badge_short_code, identifier = params[0], params[1]
+    context = "search" if len(params) > 2 and params[2] == 'search' else None
+
+    badge_map = {
+        'mp': 'media_partner',
+        'sc': 'support_contributor',
+        'sc_champ': 'swimming_champion',
+        's_coach': 'swimming_coach',
+        'b_coach': 'bodybuilding_coach',
+        'a_coach': 'aerial_coach'
+    }
+    badge_code = badge_map.get(badge_short_code)

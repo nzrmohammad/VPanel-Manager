@@ -188,33 +188,175 @@ def get_birthday_step(message: types.Message, original_msg_id: int):
         _safe_edit(uid, original_msg_id, prompt, parse_mode="MarkdownV2")
         bot.register_next_step_handler_by_chat_id(uid, get_birthday_step, original_msg_id=original_msg_id)
 
-
 def show_achievements_page(call: types.CallbackQuery):
-    """صفحه دستاوردها و نشان‌های کاربر را نمایش می‌دهد."""
-    uid, msg_id = call.from_user.id, call.message.message_id
-    lang_code = db.get_user_language(uid)
+    """صفحه دستاوردها و نشان‌های کاربر را با دسته‌بندی کامل و دکمه راهنما نمایش می‌دهد."""
+    uid, msg_id, lang_code = call.from_user.id, call.message.message_id, call.from_user.language_code
+    user_achievements = db.get_user_achievements(uid)
     
-    user_badges = db.get_user_achievements(uid)
-    unlocked_lines = [
-        (f"{badge_data.get('icon', '🎖️')} *{escape_markdown(badge_data.get('name', code))}*\n"
-         f"{escape_markdown(badge_data.get('description', '...'))}")
-        for code in user_badges if (badge_data := ACHIEVEMENTS.get(code))
-    ]
+    # محاسبه امتیاز کل و سطح کاربر
+    total_points = sum(ACHIEVEMENTS.get(ach, {}).get('points', 0) for ach in user_achievements)
+    level_name = "تازه‌کار"
+    if total_points >= 1000:
+        level_name = "اسطوره"
+    elif total_points >= 500:
+        level_name = "افسانه"
+    elif total_points >= 250:
+        level_name = "حرفه‌ای"
+    elif total_points >= 100:
+        level_name = "باتجربه"
 
-    title = f"*{escape_markdown(get_string('achievements_page_title', lang_code))}*"
-    raw_intro = get_string("achievements_intro", lang_code)
-    escaped_intro = escape_markdown(raw_intro).replace('\\*امتیاز\\*', '*امتیاز*')
+    # --- ✨ شروع بخش دسته‌بندی هوشمند (با نام جدید) ---
+    achievements_by_cat = {}
+    category_map = {
+        # ورزشی
+        "bodybuilder": "🏅 نشان‌های ورزشی", "water_athlete": "🏅 نشان‌های ورزشی",
+        "aerialist": "🏅 نشان‌های ورزشی", "swimming_champion": "🏅 نشان‌های ورزشی",
+        "swimming_coach": "🏅 نشان‌های ورزشی", "bodybuilding_coach": "🏅 نشان‌های ورزشی",
+        "aerial_coach": "🏅 نشان‌های ورزشی",
+        # اجتماعی
+        "media_partner": "👥 نشان‌های اجتماعی", "support_contributor": "👥 نشان‌های اجتماعی",
+        "ambassador": "👥 نشان‌های اجتماعی",
+        # وفاداری
+        "veteran": "💖 نشان‌های وفاداری", "loyal_supporter": "💖 نشان‌های وفاداری",
+        # عملکرد
+        "pro_consumer": "🚀 نشان‌های عملکرد", "weekly_champion": "🚀 نشان‌های عملکرد",
+        "serial_champion": "🚀 نشان‌های عملکرد", "night_owl": "🚀 نشان‌های عملکرد",
+        "early_bird": "🚀 نشان‌های عملکرد",
+        # ویژه
+        "legend": "🌟 دستاوردهای ویژه", "vip_friend": "🌟 دستاوردهای ویژه",
+        "collector": "🌟 دستاوردهای ویژه", "lucky_one": "🌟 دستاوردهای ویژه"
+    }
+    
+    for ach_code in user_achievements:
+        category = category_map.get(ach_code, " متفرقه ن متفرقه")
+        if category not in achievements_by_cat:
+            achievements_by_cat[category] = []
+        achievements_by_cat[category].append(ach_code)
+    # --- پایان بخش دسته‌بندی ---
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
 
-    if not unlocked_lines:
-        final_text = f"{title}\n\n{escaped_intro}"
+    # ✨ عنوان دوزبانه
+    final_text = f"🏅 *{escape_markdown('دستاوردها (Achievements)')}*\n\n"
+    final_text += f"🏆 سطح شما: *{level_name}*\n"
+    final_text += f"⭐ امتیاز کل: *{total_points}*\n"
+    final_text += "───────────────\n\n"
+
+    if achievements_by_cat:
+        # مرتب‌سازی دسته‌بندی‌ها برای نمایش بهتر
+        sorted_categories = sorted(achievements_by_cat.keys())
+        for category in sorted_categories:
+            final_text += f"*{escape_markdown(category)}*:\n"
+            for ach_code in achievements_by_cat[category]:
+                ach_info = ACHIEVEMENTS.get(ach_code, {})
+                final_text += f"{ach_info.get('icon', '')} {escape_markdown(ach_info.get('name', ''))}\n"
+            final_text += "\n"
     else:
-        unlocked_section_title = get_string("achievements_unlocked_section", lang_code)
-        unlocked_section = f"*{escape_markdown(unlocked_section_title)}*\n" + "\n\n".join(unlocked_lines)
-        final_text = f"{title}\n\n{escaped_intro}\n\n{unlocked_section}"
-    
-    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
-    _safe_edit(uid, msg_id, final_text, reply_markup=kb)
+        final_text += "شما هنوز هیچ دستاوردی کسب نکرده‌اید. با فعالیت بیشتر و دعوت از دوستانتان می‌توانید نشان‌های ارزشمندی به دست آورید!"
 
+    # ✨ دکمه‌های جدید در دو ستون
+    kb.add(
+        types.InlineKeyboardButton("🏅 درخواست نشان ورزشی", callback_data="achievements:request_badge"),
+        types.InlineKeyboardButton("ℹ️ راهنما", callback_data="achievements:info")
+    )
+    # ✨ دکمه بازگشت فارسی
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    
+    _safe_edit(uid, msg_id, final_text, reply_markup=kb, parse_mode="MarkdownV2")
+
+
+def handle_achievements_info(call: types.CallbackQuery):
+    """صفحه راهنمای کامل نحوه کسب تمام دستاوردها را نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    # --- ✨ شروع بخش دسته‌بندی هوشمند ---
+    achievements_by_cat = {}
+    category_map = {
+        # ورزشی
+        "bodybuilder": "🏅 نشان‌های ورزشی", "water_athlete": "🏅 نشان‌های ورزشی",
+        "aerialist": "🏅 نشان‌های ورزشی", "swimming_champion": "🏅 نشان‌های ورزشی",
+        "swimming_coach": "🏅 نشان‌های ورزشی", "bodybuilding_coach": "🏅 نشان‌های ورزشی",
+        "aerial_coach": "🏅 نشان‌های ورزشی",
+        # اجتماعی
+        "media_partner": "👥 نشان‌های اجتماعی", "support_contributor": "👥 نشان‌های اجتماعی",
+        "ambassador": "👥 نشان‌های اجتماعی",
+        # وفاداری
+        "veteran": "💖 نشان‌های وفاداری", "loyal_supporter": "💖 نشان‌های وفاداری",
+        # عملکرد
+        "pro_consumer": "🚀 نشان‌های عملکرد", "weekly_champion": "🚀 نشان‌های عملکرد",
+        "serial_champion": "🚀 نشان‌های عملکرد", "night_owl": "🚀 نشان‌های عملکرد",
+        "early_bird": "🚀 نشان‌های عملکرد",
+        # ویژه
+        "legend": "🌟 دستاوردهای ویژه", "vip_friend": "🌟 دستاوردهای ویژه",
+        "collector": "🌟 دستاوردهای ویژه", "lucky_one": "🌟 دستاوردهای ویژه"
+    }
+    
+    all_achievements = ACHIEVEMENTS.keys()
+    for ach_code in all_achievements:
+        category = category_map.get(ach_code, " متفرقه ن متفرقه")
+        if category not in achievements_by_cat:
+            achievements_by_cat[category] = []
+        achievements_by_cat[category].append(ach_code)
+    # --- پایان بخش دسته‌بندی ---
+
+    info_text = f"*{escape_markdown('راهنمای کسب دستاوردها')}*\n\n"
+    info_text += "در این بخش می‌توانید با نحوه کسب هر نشان به طور کامل آشنا شوید:\n\n"
+    info_text += "───────────────\n"
+
+    sorted_categories = sorted(achievements_by_cat.keys())
+    for category in sorted_categories:
+        info_text += f"*{escape_markdown(category)}*:\n"
+        for ach_code in sorted(achievements_by_cat[category], key=lambda x: ACHIEVEMENTS[x]['points'], reverse=True):
+            ach_info = ACHIEVEMENTS.get(ach_code, {})
+            info_text += f"{ach_info.get('icon', '')} *{escape_markdown(ach_info.get('name', ''))}*:\n"
+            info_text += f"{escape_markdown(ach_info.get('description', ''))}\n\n"
+        info_text += "───────────────\n"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به دستاوردها", callback_data="achievements"))
+    
+    _safe_edit(uid, msg_id, info_text, reply_markup=kb, parse_mode="MarkdownV2")
+
+def handle_request_badge_menu(call: types.CallbackQuery):
+    """منوی درخواست نشان ورزشی را نمایش می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    prompt = escape_markdown("انتخاب کنید برای کدام رشته ورزشی می‌خواهید درخواست نشان دهید.\n\nپس از ارسال، درخواست شما توسط ادمین بررسی خواهد شد.")
+    _safe_edit(uid, msg_id, prompt, reply_markup=menu.request_badge_menu())
+
+def handle_badge_request_action(call: types.CallbackQuery, badge_code: str):
+    """درخواست نشان کاربر را ثبت کرده، پیام را ویرایش می‌کند و به ادمین اطلاع می‌دهد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    user_achievements = db.get_user_achievements(uid)
+
+    if badge_code in user_achievements:
+        bot.answer_callback_query(call.id, "شما قبلاً این نشان را دریافت کرده‌اید.", show_alert=True)
+        return
+
+    request_id = db.add_achievement_request(uid, badge_code)
+    
+    # ✨ اصلاح اصلی: escape کردن کاراکترهای ویژه در پیام تاییدیه
+    confirmation_text = escape_markdown("✅ درخواست شما با موفقیت ثبت شد و برای ادمین ارسال گردید.\n\nنتیجه بررسی به شما اطلاع داده خواهد شد.")
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به دستاوردها", callback_data="achievements"))
+    _safe_edit(uid, msg_id, confirmation_text, reply_markup=kb, parse_mode="MarkdownV2")
+
+    # اطلاع‌رسانی به ادمین
+    user_info = call.from_user
+    user_name = escape_markdown(user_info.first_name)
+    badge_name = escape_markdown(ACHIEVEMENTS.get(badge_code, {}).get('name', badge_code))
+    
+    admin_message = (
+        f"🏅 *درخواست نشان جدید*\n\n"
+        f"کاربر *{user_name}* \\(`{uid}`\\) درخواست دریافت نشان «*{badge_name}*» را دارد\\."
+    )
+    
+    admin_kb = types.InlineKeyboardMarkup(row_width=2)
+    admin_kb.add(
+        types.InlineKeyboardButton("✅ تایید", callback_data=f"admin:ach_req_approve:{request_id}"),
+        types.InlineKeyboardButton("❌ رد", callback_data=f"admin:ach_req_reject:{request_id}")
+    )
+    for admin_id in ADMIN_IDS:
+        bot.send_message(admin_id, admin_message, parse_mode="MarkdownV2", reply_markup=admin_kb)
 
 def handle_referral_callbacks(call: types.CallbackQuery):
     """اطلاعات مربوط به سیستم دعوت از دوستان را نمایش می‌دهد."""

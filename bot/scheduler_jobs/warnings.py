@@ -194,7 +194,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                 # 6. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
                 if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:
                     total_daily_usage = sum(db.get_usage_since_midnight_by_uuid(uuid_str).values())
-                    if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage', hours=24):
+                    if total_daily_usage >= DAILY_USAGE_ALERT_THRESHOLD_GB and not db.has_recent_warning(uuid_id_in_db, 'unusual_daily_usage_admin_alert', hours=24):
                         alert_message = (f"⚠️ *مصرف غیرعادی روزانه*\n\nکاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(uuid_str)}`\\) "
                                         f"امروز بیش از *{escape_markdown(str(DAILY_USAGE_ALERT_THRESHOLD_GB))} GB* مصرف داشته است\\.\n\n"
                                         f"\\- مجموع مصرف امروز: *{escape_markdown(format_daily_usage(total_daily_usage))}*")
@@ -206,7 +206,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                     f"کاربر «{user_name}» امروز بیش از {DAILY_USAGE_ALERT_THRESHOLD_GB} GB مصرف داشته است (مصرف کل: {format_daily_usage(total_daily_usage)}).",
                                     "broadcast"
                                 )
-                        db.log_warning(uuid_id_in_db, 'unusual_daily_usage')
+                        db.log_warning(uuid_id_in_db, 'unusual_daily_usage_admin_alert')
 
                 # 7. ارسال هشدار تعداد زیاد دستگاه‌ها به ادمین‌ها
                 device_count = db.count_user_agents(uuid_id_in_db)

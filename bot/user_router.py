@@ -123,12 +123,19 @@ def handle_user_callbacks(call: types.CallbackQuery):
         elif data == "birthday_gift": various.handle_birthday_gift_request(call)
         elif data == "coming_soon": various.handle_coming_soon(call)
         elif data == "request_service": various.handle_request_service(call)
-        elif data == "connection_doctor": various.handle_connection_doctor(call) # <-- اصلاح شد
+        elif data == "connection_doctor": various.handle_connection_doctor(call)
         elif data == "achievements": various.show_achievements_page(call)
-        elif data.startswith("shop:"): various.handle_shop_callbacks(call) # <-- اصلاح شد
+        elif data.startswith("shop:"): various.handle_shop_callbacks(call)
         elif data.startswith("referral:"): various.handle_referral_callbacks(call)
         elif data == "show_features_guide": various.show_features_guide(call)
         elif data == "back_to_start_menu": various.show_initial_menu(call.from_user.id, call.message.message_id)
+        elif data == "achievements": various.show_achievements_page(call)
+        elif data == "achievements:request_badge": various.handle_request_badge_menu(call)
+        elif data == "achievements:info": various.handle_achievements_info(call)
+        elif data.startswith("achievements:req:"):
+            badge_code = data.split(":")[2]
+            various.handle_badge_request_action(call, badge_code)
+        
         return
     
     if data.startswith("wallet:"):
