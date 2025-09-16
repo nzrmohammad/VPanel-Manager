@@ -261,31 +261,29 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
     elif plan_type == 'combined' and user_uuid_record.get('has_access_de') and (user_uuid_record.get('has_access_fr') or user_uuid_record.get('has_access_tr')):
         has_access = True
     
-    # --- تغییر اصلی برای رفع خطا در این بخش است ---
     access_text = ""
     if has_access:
         access_text = f"✅ *{escape_markdown('دسترسی به سرور:')}* {escape_markdown('شما به این سرور دسترسی دارید.')}"
     else:
         access_text = f"⚠️ *{escape_markdown('دسترسی به سرور:')}* {escape_markdown('شما به این سرور دسترسی ندارید. پس از خرید، برای فعال‌سازی با پشتیبانی تماس بگیرید.')}"
-    # ------------------------------------------
 
     limit_before = info_before.get('usage_limit_GB', 0)
     expire_before = info_before.get('expire', 0) if info_before.get('expire') is not None else 'نامحدود'
-    
+    escaped_expire_before = escape_markdown(str(expire_before))
     price = plan_to_buy.get('price', 0)
     
     confirm_text = (
         f"*{escape_markdown('🔍 پیش‌نمایش خرید')}*\n"
         f"`──────────────────`\n"
         f"*{escape_markdown('سرویس فعلی شما:')}*\n"
-        f"`•` {escape_markdown('📊 حجم کل:')} *{limit_before:g} GB*\n"
-        f"`•` {escape_markdown('📅 اعتبار:')} *{expire_before} روز*\n\n"
+        f"`•` {escape_markdown('📊 حجم کل:')} *{info_before.get('usage_limit_GB', 0):g} GB*\n"
+        f"`•` {escape_markdown('📅 اعتبار:')} *{escaped_expire_before} روز*\n\n" # <--- مشکل با این تغییر حل شد
         f"*{escape_markdown('پلن انتخابی:')}*\n"
         f"`•` {escape_markdown('🛍️ نام:')} *{escape_markdown(plan_name)}*\n"
         f"`•` {access_text}\n"
         f"`──────────────────`\n"
         f"❓ *{escape_markdown('تایید نهایی')}*\n"
-        f"{escape_markdown(f'مبلغ {price:,.0f} تومان از کیف پول شما کسر خواهد شد. آیا ادامه می‌دهید؟')}"
+        f"{escape_markdown(f'مبلغ {plan_to_buy.get("price", 0):,.0f} تومان از کیف پول شما کسر خواهد شد. آیا ادامه می‌دهید؟')}"
     )
 
     kb = types.InlineKeyboardMarkup(row_width=2)
