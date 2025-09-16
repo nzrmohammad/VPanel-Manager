@@ -193,9 +193,10 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
     CLIENT_PATTERNS = [
         {
             "name": "Happ",
-            "regex": re.compile(r'^(Happ)/([\d.]+)(?:/(\w+))?'),
+            "regex": re.compile(r"^(Happ)/([\d.]+)(?:/(\w+))?"),
             "extractor": lambda m: {
-                "client": "Happ", "version": m.group(2),
+                "client": "Happ",
+                "version": m.group(2),
                 "os": m.group(3).capitalize() if m.group(3) else "Unknown"
             }
         },
