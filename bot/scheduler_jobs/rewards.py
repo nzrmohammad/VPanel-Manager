@@ -10,7 +10,7 @@ from telebot import types
 
 from bot import combined_handler
 from bot.database import db
-from bot.utils import escape_markdown, load_json_file, load_service_plans, parse_volume_string
+from bot.utils import escape_markdown, load_json_file, load_service_plans, parse_volume_string, days_until_next_birthday
 from bot.config import (
     ADMIN_IDS, BIRTHDAY_GIFT_GB, BIRTHDAY_GIFT_DAYS,
     ACHIEVEMENTS, ENABLE_LUCKY_LOTTERY, LUCKY_LOTTERY_BADGE_REQUIREMENT,
@@ -167,7 +167,7 @@ def birthday_gifts_job(bot) -> None:
 
     for user in all_users_with_birthdays:
         user_id = user['user_id']
-        days_left = db.days_until_next_birthday(user['birthday'])
+        days_left = days_until_next_birthday(user['birthday'])
         
         # ۱. ارسال هدیه در روز تولد
         if days_left == 0:

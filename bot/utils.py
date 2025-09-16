@@ -292,6 +292,7 @@ def _extract_apple_client_details(user_agent: str, darwin_match: re.Match) -> Di
     os_version = darwin_to_os.get(darwin_version)
 
     os_name = "macOS" if "Mac" in user_agent else "iOS"
+    
     device_model_match = re.search(r'\((iPhone|iPad|Mac)[^;]*;', user_agent)
     if device_model_match:
         os_name = device_model_match.group(1).replace("iPhone", "iOS").replace("iPad", "iPadOS")

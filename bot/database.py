@@ -2578,7 +2578,6 @@ class DatabaseManager:
                 (user_id, today)
             )
 
-# ... (داخل کلاس DatabaseManager، یک متد جدید دیگر اضافه کنید)
     def count_consecutive_weekly_wins(self, user_id: int) -> int:
         """تعداد قهرمانی‌های هفتگی متوالی یک کاربر را محاسبه می‌کند."""
         with self._conn() as c:
