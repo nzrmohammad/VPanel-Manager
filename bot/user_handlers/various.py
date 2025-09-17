@@ -205,7 +205,7 @@ def show_achievements_page(call: types.CallbackQuery):
     elif total_points >= 100:
         level_name = "باتجربه"
 
-    # --- ✨ شروع بخش دسته‌بندی هوشمند (با نام جدید) ---
+    # --- بخش دسته‌بندی هوشمند (با نام جدید) ---
     achievements_by_cat = {}
     category_map = {
         # ورزشی
@@ -232,18 +232,15 @@ def show_achievements_page(call: types.CallbackQuery):
         if category not in achievements_by_cat:
             achievements_by_cat[category] = []
         achievements_by_cat[category].append(ach_code)
-    # --- پایان بخش دسته‌بندی ---
     
     kb = types.InlineKeyboardMarkup(row_width=2)
 
-    # ✨ عنوان دوزبانه
     final_text = f"🏅 *{escape_markdown('دستاوردها (Achievements)')}*\n\n"
     final_text += f"🏆 سطح شما: *{level_name}*\n"
     final_text += f"⭐ امتیاز کل: *{total_points}*\n"
     final_text += "───────────────\n\n"
 
     if achievements_by_cat:
-        # مرتب‌سازی دسته‌بندی‌ها برای نمایش بهتر
         sorted_categories = sorted(achievements_by_cat.keys())
         for category in sorted_categories:
             final_text += f"*{escape_markdown(category)}*:\n"
@@ -252,14 +249,13 @@ def show_achievements_page(call: types.CallbackQuery):
                 final_text += f"{ach_info.get('icon', '')} {escape_markdown(ach_info.get('name', ''))}\n"
             final_text += "\n"
     else:
-        final_text += "شما هنوز هیچ دستاوردی کسب نکرده‌اید. با فعالیت بیشتر و دعوت از دوستانتان می‌توانید نشان‌های ارزشمندی به دست آورید!"
+        no_achievements_text = "شما هنوز هیچ دستاوردی کسب نکرده‌اید. با فعالیت بیشتر و دعوت از دوستانتان می‌توانید نشان‌های ارزشمندی به دست آورید!"
+        final_text += escape_markdown(no_achievements_text)
 
-    # ✨ دکمه‌های جدید در دو ستون
     kb.add(
         types.InlineKeyboardButton("🏅 درخواست نشان ورزشی", callback_data="achievements:request_badge"),
         types.InlineKeyboardButton("ℹ️ راهنما", callback_data="achievements:info")
     )
-    # ✨ دکمه بازگشت فارسی
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
     
     _safe_edit(uid, msg_id, final_text, reply_markup=kb, parse_mode="MarkdownV2")
