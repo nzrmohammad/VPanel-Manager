@@ -663,8 +663,6 @@ def execute_gift_purchase(call: types.CallbackQuery):
             logger.warning(f"Could not send gift notification to recipient {recipient_id}: {e}")
 
     else:
-        # --- START OF FIX: Do not add anything automatically if user lacks access ---
-        # اگر کاربر دسترسی نداشت، هیچ تغییری در اکانت او ایجاد نمی‌شود. فقط اطلاع‌رسانی کن.
         import time
         tracking_code = f"GIFT-{recipient_id}-{int(time.time())}"
         support_link = f"https://t.me/{ADMIN_SUPPORT_CONTACT.replace('@', '')}"
@@ -687,9 +685,9 @@ def execute_gift_purchase(call: types.CallbackQuery):
             bot.send_message(recipient_id, recipient_message, parse_mode="MarkdownV2", reply_markup=kb_recipient)
         except Exception as e:
             logger.warning(f"Could not send 'activate gift' notification to recipient {recipient_id}: {e}")
-
+            
         admin_message = (
-            f"🔵 *نیاز به فعال‌سازی کامل هدیه*\n\n"
+            f"🔵 *{escape_markdown('نیاز به فعال‌سازی کامل هدیه')}*\n\n"
             f"کاربر *{sender_name}* \\(`{sender_id}`\\) پلن *{plan_name_escaped}* را برای کاربر *{recipient_name}* \\(`{recipient_id}`\\) هدیه خریده است\\.\n"
             f"کاربر مقصد به سرورهای این پلن دسترسی ندارد\\.\n\n"
             f"کد پیگیری: `{tracking_code}`\n\n"
