@@ -664,33 +664,38 @@ def handle_search_by_telegram_id_convo(call, params):
 
 
 def _find_user_by_telegram_id(message: types.Message):
+    """
+    کاربر را بر اساس شناسه تلگرام جستجو کرده و در صورت یافتن، اطلاعات او را نمایش می‌دهد.
+    (نسخه نهایی و اصلاح شده با مدیریت خطا)
+    """
     admin_id, text = message.from_user.id, message.text.strip()
-    bot.delete_message(admin_id, message.message_id)
 
-    if admin_id not in admin_conversations: return
+    try:
+        bot.delete_message(admin_id, message.message_id)
+    except apihelper.ApiTelegramException as e:
+        if "message to delete not found" in str(e):
+            logger.warning(f"Message {message.message_id} already deleted, proceeding with search.")
+        else:
+            raise e
 
-    # <<<<<<< FIX START >>>>>>>>>
-    # Don't pop the conversation yet, so we can check/set a flag.
-    convo = admin_conversations[admin_id]
-    msg_id = convo['msg_id']
+    if admin_id not in admin_conversations:
+        return
+
+    convo = admin_conversations.pop(admin_id, {})
+    msg_id = convo.get('msg_id')
 
     try:
         target_user_id = int(text)
-        # On success, now we pop the conversation.
-        admin_conversations.pop(admin_id, None)
-        
         _safe_edit(admin_id, msg_id, escape_markdown("⏳ در حال جستجو..."))
 
         user_uuids = db.uuids(target_user_id)
         if not user_uuids:
             kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
             _safe_edit(admin_id, msg_id, escape_markdown(f"❌ هیچ اکانتی برای کاربر با شناسه {target_user_id} یافت نشد."), reply_markup=kb)
-            # Put conversation back to allow another try
             admin_conversations[admin_id] = {'action_type': 'search_by_tid', 'msg_id': msg_id}
             bot.register_next_step_handler_by_chat_id(admin_id, _find_user_by_telegram_id)
             return
 
-        # (The rest of the success logic for finding one or multiple users remains the same)
         if len(user_uuids) == 1:
             uuid_str = user_uuids[0]['uuid']
             info = combined_handler.get_combined_user_info(uuid_str)
@@ -718,20 +723,13 @@ def _find_user_by_telegram_id(message: types.Message):
 
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
         prompt = f"چندین اکانت برای کاربر *{first_name}* یافت شد. لطفاً یکی را انتخاب کنید:"
-        _safe_edit(admin_id, msg_id, escape_markdown(prompt), reply_markup=kb)
-
+        _safe_edit(admin_id, msg_id, prompt, reply_markup=kb)
 
     except ValueError:
-        # Only edit the message to show the error if it hasn't been shown before.
-        if not convo.get('invalid_id_error_sent'):
-            kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به جستجو", callback_data="admin:search_menu"))
-            _safe_edit(admin_id, msg_id, escape_markdown("❌ شناسه وارد شده نامعتبر است. لطفاً یک عدد وارد کنید."), reply_markup=kb)
-            # Set the flag in the conversation to prevent re-editing.
-            admin_conversations[admin_id]['invalid_id_error_sent'] = True
-        
-        # Re-register the handler to wait for the next input.
+        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به جستجو", callback_data="admin:search_menu"))
+        _safe_edit(admin_id, msg_id, escape_markdown("❌ شناسه وارد شده نامعتبر است. لطفاً یک عدد وارد کنید."), reply_markup=kb)
+        admin_conversations[admin_id] = {'action_type': 'search_by_tid', 'msg_id': msg_id}
         bot.register_next_step_handler_by_chat_id(admin_id, _find_user_by_telegram_id)
-        return
 
 
 def handle_select_panel_for_edit(call, params):
