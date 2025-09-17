@@ -162,9 +162,9 @@
                         {% if panel_type == 'hiddify' %}
                             <span class="fi fi-de"></span>
                         {% elif panel_type == 'marzban' %}
-                            <span class="fi fi-fr"></span>
-                            <span class="fi fi-tr"></span>
-                            <span class="fi fi-us"></span>
+                            {% if user.has_access_fr %}<span class="fi fi-fr"></span>{% endif %}
+                            {% if user.has_access_tr %}<span class="fi fi-tr"></span>{% endif %}
+                            {% if user.has_access_us %}<span class="fi fi-us"></span>{% endif %}
                         {% endif %}
                     </span>
                 </div>
