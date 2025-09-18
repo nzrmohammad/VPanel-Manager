@@ -218,17 +218,31 @@ def send_weekly_admin_summary(bot) -> None:
 def send_daily_achievements_report(bot) -> None:
     """
     گزارش روزانه دستاوردهای کسب شده را برای ادمین‌ها ارسال می‌کند.
-    (نسخه اصلاح شده با مدیریت خطا در حلقه)
+    (نسخه اصلاح شده با لاگینگ دقیق برای دیباگ)
     """
-    logger.info("SCHEDULER: Sending daily achievements report.")
+    logger.info("SCHEDULER: Starting daily achievements report job.")
     try:
         daily_achievements = db.get_daily_achievements()
+        if not daily_achievements:
+            logger.info("SCHEDULER: No achievements today. Skipping report.")
+            return
+
         report_text = fmt_daily_achievements_report(daily_achievements)
+
+        if not report_text or "هیچ کاربری" in report_text:
+             logger.info("SCHEDULER: Formatted achievement report is empty. Skipping sending.")
+             return
 
         for admin_id in ADMIN_IDS:
             try:
+                logger.debug(f"Attempting to send daily achievements report to admin {admin_id}. Content length: {len(report_text)}.")
+                logger.debug(f"--- START REPORT CONTENT FOR ADMIN {admin_id} ---\n{report_text}\n--- END REPORT CONTENT ---")
                 bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
+                logger.info(f"Successfully sent daily achievements report to admin {admin_id}.")
+
             except Exception as e:
-                logger.error(f"Failed to send daily achievements report to {admin_id}: {e}")
+                logger.error(f"Failed to send daily achievements report to admin {admin_id}: {e}", exc_info=True)
+                logger.error(f"====== PROBLEMATIC REPORT TEXT START ======\n{report_text}\n====== PROBLEMATIC REPORT TEXT END ======")
+
     except Exception as e:
-        logger.error(f"Failed to generate daily achievements report: {e}", exc_info=True)
+        logger.error(f"Failed to generate or process daily achievements report: {e}", exc_info=True)
