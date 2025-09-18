@@ -41,20 +41,6 @@ def comprehensive_report_page():
     except Exception as e:
         logger.error(f"Failed to generate comprehensive report: {e}", exc_info=True)
         return render_template('admin_error.html', error_message="خطا در تولید گزارش جامع.", is_admin=True)
-    
-@admin_bp.route('/payments')
-@admin_required
-def payment_list_page():
-    from .services import get_all_payments_for_admin  # Import moved inside
-    try:
-        all_payments = get_all_payments_for_admin()
-        return render_template('admin_payment_list.html',
-                               payments=all_payments,
-                               is_admin=True
-                               )
-    except Exception as e:
-        logger.error(f"Error in payment_list_page: {e}", exc_info=True)
-        return "<h1>خطا در بارگذاری صفحه پرداخت‌ها</h1>", 500
 
 @admin_bp.route('/analytics')
 @admin_required
