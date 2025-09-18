@@ -278,7 +278,7 @@ def _extract_apple_client_details(user_agent: str, darwin_match: re.Match) -> Di
 
     os_version = None
     darwin_version = int(darwin_match.group(1).split('.')[0])
-    darwin_to_os = { 24: "18", 23: "17", 22: "16", 21: "15", 20: "14", 19: "13" }
+    darwin_to_os = { 25: "26", 24: "18", 23: "17", 22: "16", 21: "15", 20: "14", 19: "13" }
     os_version = darwin_to_os.get(darwin_version)
 
     os_name = "macOS" if "Mac" in user_agent else "iOS"
