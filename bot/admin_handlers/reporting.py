@@ -5,8 +5,9 @@ import jdatetime
 from telebot import types
 from .. import combined_handler
 from ..database import db
-from ..utils import to_shamsi
+from ..utils import to_shamsi, _safe_edit, escape_markdown, to_shamsi, escape_markdown, load_service_plans, parse_volume_string
 from ..menu import menu
+from ..config import PAGE_SIZE, WELCOME_MESSAGE_DELAY_HOURS
 from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_bot_users_list, fmt_birthdays_list,
@@ -15,10 +16,8 @@ from ..admin_formatters import (
     fmt_financial_report, fmt_monthly_transactions_report
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
-from ..utils import _safe_edit, escape_markdown, load_service_plans, parse_volume_string
 from ..hiddify_api_handler import HiddifyAPIHandler
 from ..marzban_api_handler import MarzbanAPIHandler
-from ..config import WELCOME_MESSAGE_DELAY_HOURS
 from webapp.services import get_schedule_info_service
 
 logger = logging.getLogger(__name__)
@@ -607,11 +606,12 @@ def handle_financial_report(call, params):
         _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در محاسبه گزارش رخ داد."))
 
 def handle_financial_details(call, params):
-    """لیست تراکنش‌های یک ماه خاص را با صفحه‌بندی نمایش می‌دهد."""
+    """لیست تراکنش‌های یک ماه خاص را با صفحه‌بندی و قابلیت حذف نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
-    month_str, page_str = params[0], params[1]
+    month_str, page_str, *delete_mode_param = params
     year, month = map(int, month_str.split('-'))
     page = int(page_str)
+    delete_mode = bool(int(delete_mode_param[0])) if delete_mode_param else False
 
     _safe_edit(uid, msg_id, escape_markdown("⏳ در حال دریافت جزئیات تراکنش‌ها..."))
 
@@ -619,11 +619,61 @@ def handle_financial_details(call, params):
         transactions = db.get_transactions_for_month(year, month)
         text = fmt_monthly_transactions_report(transactions, year, month, page)
 
-        base_cb = f"admin:financial_details:{month_str}"
-        back_cb = "admin:financial_report"
-        kb = menu.create_pagination_menu(base_cb, page, len(transactions), back_cb)
+        # ساخت دکمه‌های صفحه‌بندی
+        base_cb_normal = f"admin:financial_details:{month_str}"
+        kb = menu.create_pagination_menu(base_callback=base_cb_normal,
+                                 current_page=page,
+                                 total_items=len(transactions),
+                                 back_callback="admin:financial_report",
+                                 context="0")
+        if delete_mode:
+            # اگر در حالت حذف هستیم، برای هر تراکنش یک دکمه حذف قرار بده
+            paginated_transactions = transactions[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+            for trans in paginated_transactions:
+                trans_id = trans['id']
+                date_shamsi = to_shamsi(trans['transaction_date'], include_time=False)
+                amount = trans['amount']
+                kb.add(types.InlineKeyboardButton(f"❌ حذف تراکنش {amount:,.0f} تومانی ({date_shamsi})",
+                                                callback_data=f"admin:confirm_delete_trans:{trans_id}:{month_str}:{page}"))
+            kb.add(types.InlineKeyboardButton("🔙 خروج از حالت حذف", callback_data=f"{base_cb_normal}:0:0"))
+        else:
+            # در حالت عادی، دکمه ورود به حالت حذف را نمایش بده
+            kb.add(types.InlineKeyboardButton("🗑️ حذف یک تراکنش", callback_data=f"{base_cb_normal}:0:1"))
 
         _safe_edit(uid, msg_id, text, reply_markup=kb)
     except Exception as e:
         logger.error(f"Error handling financial details for {month_str}: {e}", exc_info=True)
         _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در دریافت جزئیات رخ داد."))
+
+def handle_confirm_delete_transaction(call, params):
+    """از ادمین برای حذف یک تراکنش تاییدیه می‌گیرد."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    trans_id, month_str, page = params
+
+    text = "⚠️ *آیا از حذف این تراکنش مطمئن هستید؟*\nاین عملیات غیرقابل بازگشت است\\."
+
+    kb = types.InlineKeyboardMarkup()
+    yes_button = types.InlineKeyboardButton(" بله، حذف کن", callback_data=f"admin:do_delete_trans:{trans_id}:{month_str}:{page}")
+    no_button = types.InlineKeyboardButton(" خیر، بازگرد", callback_data=f"admin:financial_details:{month_str}:{page}:1")
+    kb.add(yes_button, no_button)
+
+    _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+def handle_do_delete_transaction(call, params):
+    """تراکنش را حذف کرده و لیست را رفرش می‌کند (بدون نیاز به تابع _answer)."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    trans_id, month_str, page = params
+    
+    try:
+        if db.delete_transaction(int(trans_id)):
+            _safe_edit(uid, msg_id, escape_markdown("✅ تراکنش با موفقیت حذف شد. در حال بازخوانی..."))
+        else:
+            _safe_edit(uid, msg_id, escape_markdown("❌ تراکنش یافت نشد. در حال بازخوانی..."))
+    except Exception as e:
+        logger.error(f"Error deleting transaction {trans_id}: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در هنگام حذف رخ داد. در حال بازخوانی..."))
+        
+    import time
+    time.sleep(1.5) 
+    
+    handle_financial_details(call, params=[month_str, page, '1'])

@@ -2613,56 +2613,49 @@ class DatabaseManager:
             cursor = c.execute("DELETE FROM monthly_costs WHERE id = ?", (cost_id,))
             return cursor.rowcount > 0
 
-    def get_monthly_financials(self) -> Dict[str, Dict[str, float]]:
-        """
-        (نسخه نهایی و پایدار)
-        درآمدها و هزینه‌ها را بر اساس ماه میلادی محاسبه می‌کند.
-        """
-        financials = {}
-        
-        # ۱. محاسبه درآمد ماهانه با کوئری مستقیم SQLite
-        revenue_query = """
-            SELECT
-                strftime('%Y-%m', transaction_date) as month,
-                SUM(amount) as total_revenue
-            FROM wallet_transactions
-            WHERE (type = 'deposit' OR type = 'addon_purchase' OR type = 'purchase' OR type = 'gift_purchase')
-            GROUP BY month
-        """
+    def get_monthly_financials(self):
+        """(نسخه نهایی و صحیح) خلاصه مالی ماهانه را با استفاده از جدول monthly_costs محاسبه می‌کند."""
         with self._conn() as c:
-            try:
-                revenue_rows = c.execute(revenue_query).fetchall()
-                for row in revenue_rows:
-                    if row['month']:
-                        financials[row['month']] = {'revenue': row['total_revenue'], 'cost': 0}
-            except sqlite3.OperationalError as e:
-                logger.error(f"Error fetching monthly revenue: {e}", exc_info=True)
+            # 1. محاسبه درآمد ماهانه از تراکنش‌ها
+            revenue_query = """
+                SELECT strftime('%Y-%m', transaction_date) as month, SUM(amount) as total_revenue
+                FROM wallet_transactions WHERE type IN ('purchase', 'addon_purchase', 'gift_purchase')
+                GROUP BY month
+            """
+            revenues = {r['month']: abs(r['total_revenue']) for r in c.execute(revenue_query).fetchall()}
 
+            # 2. محاسبه هزینه‌های ماهانه از جدول صحیح monthly_costs
+            costs_query = """
+                SELECT
+                    (year || '-' || printf('%02d', month)) as month,
+                    SUM(cost) as total_cost
+                FROM monthly_costs
+                GROUP BY month
+            """
+            costs = {r['month']: r['total_cost'] for r in c.execute(costs_query).fetchall()}
 
-        # ۲. خواندن هزینه‌های ماهانه
-        cost_query = """
-            SELECT
-                printf('%d-%02d', year, month) as month,
-                SUM(cost) as total_cost
-            FROM monthly_costs
-            GROUP BY month
-        """
-        with self._conn() as c:
-            try:
-                cost_rows = c.execute(cost_query).fetchall()
-                for row in cost_rows:
-                    if row['month']:
-                        if row['month'] not in financials:
-                            financials[row['month']] = {'revenue': 0, 'cost': 0}
-                        financials[row['month']]['cost'] = row['total_cost']
-            except sqlite3.OperationalError as e:
-                logger.error(f"Error fetching monthly costs: {e}", exc_info=True)
+            # 3. ترکیب داده‌ها
+            all_months = sorted(list(set(revenues.keys()) | set(costs.keys())), reverse=True)
+            monthly_breakdown = []
+            total_revenue, total_cost = 0, 0
 
-        # ۳. محاسبه سود
-        for month, data in financials.items():
-            data['profit'] = data.get('revenue', 0) - data.get('cost', 0)
+            for month in all_months:
+                revenue = revenues.get(month, 0)
+                cost = costs.get(month, 0)
+                monthly_breakdown.append({'month': month, 'revenue': revenue, 'cost': cost, 'profit': revenue - cost})
+                total_revenue += revenue
+                total_cost += cost
             
-        return financials
+            # 4. واکشی تمام رکوردهای هزینه از جدول صحیح
+            all_records = self.get_all_monthly_costs()
+
+            return {
+                'total_revenue': total_revenue,
+                'total_cost': total_cost,
+                'total_profit': total_revenue - total_cost,
+                'monthly_breakdown': monthly_breakdown,
+                'all_records': all_records
+            }
 
     def get_transactions_for_month(self, year: int, month: int) -> List[Dict[str, Any]]:
         """تمام تراکنش‌های درآمدی یک ماه و سال مشخص را به همراه نام کاربر برمی‌گرداند."""
@@ -2671,6 +2664,7 @@ class DatabaseManager:
         
         query = """
             SELECT
+                wt.id,
                 wt.amount,
                 wt.description,
                 wt.transaction_date,
@@ -2683,6 +2677,20 @@ class DatabaseManager:
         """
         with self._conn() as c:
             rows = c.execute(query, (start_date, end_date)).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_transaction(self, transaction_id: int) -> bool:
+        """یک تراکنش خاص را بر اساس ID آن حذف می‌کند."""
+        query = "DELETE FROM wallet_transactions WHERE id = ?"
+        with self._conn() as c:
+            cursor = c.execute(query, (transaction_id,))
+            return cursor.rowcount > 0
+
+    def get_all_transactions_for_report(self) -> list:
+        """تمام تراکنش‌های مالی را برای گزارش‌گیری جامع برمی‌گرداند."""
+        query = "SELECT amount, type, transaction_date FROM wallet_transactions ORDER BY transaction_date"
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
     def get_user_access_rights(self, user_id: int) -> dict:

@@ -56,18 +56,56 @@ def analytics_page():
         logger.error(f"Error in analytics_page: {e}", exc_info=True)
         return "<h1>خطا در بارگذاری صفحه تحلیل</h1>", 500
 
-@admin_bp.route('/financials')
+@admin_bp.route('/financials', methods=['GET', 'POST'])
 @admin_required
 def financial_report_page():
-    from .services import get_financial_report_data
+    from bot.utils import to_shamsi
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            description = request.form.get('description')
+            amount_str = request.form.get('amount')
+            year = request.form.get('year', type=int)
+            month = request.form.get('month', type=int)
+
+            if description and amount_str and year and month:
+                try:
+                    amount = float(amount_str)
+                    db.manage_monthly_cost('add', year=year, month=month, cost=amount, description=description)
+                    flash("رکورد هزینه با موفقیت ثبت شد.", "success")
+                except ValueError:
+                    flash("مقادیر وارد شده معتبر نیست.", "error")
+            else:
+                flash("لطفاً تمام فیلدها را پر کنید.", "warning")
+
+        elif action == 'delete':
+            record_id = request.form.get('record_id')
+            if record_id:
+                db.manage_monthly_cost('delete', record_id=int(record_id))
+                flash("رکورد با موفقیت حذف شد.", "success")
+        
+        return redirect(url_for('admin.financial_report_page'))
+
     try:
-        data = get_financial_report_data()
-        # ماه جاری را برای پیش‌فرض فیلد تاریخ به قالب ارسال می‌کنیم
-        current_month_str = datetime.now().strftime('%Y-%m')
-        return render_template('admin_financials.html', **data, is_admin=True, current_month_str=current_month_str)
+        summary_data = db.get_monthly_financials()
+        
+        # افزودن تاریخ شمسی برای نمایش
+        for record in summary_data.get('all_records', []):
+            # چون فقط سال و ماه داریم، یک تاریخ موقت برای تبدیل می‌سازیم
+            temp_date = datetime(record['year'], record['month'], 1)
+            record['shamsi_date'] = to_shamsi(temp_date, month_only=True)
+
+        # ارسال سال و ماه فعلی برای فرم
+        current_year = datetime.now().year
+        current_month = datetime.now().month
+
+        return render_template('admin_financials.html', summary=summary_data, is_admin=True, 
+                               current_year=current_year, current_month=current_month)
     except Exception as e:
         logger.error(f"Error in financial_report_page: {e}", exc_info=True)
-        flash("خطا در بارگذاری گزارش مالی.", "error")
+        flash(f"خطای داخلی در بارگذاری صفحه گزارش مالی: {e}", "error")
         return redirect(url_for('admin.admin_dashboard'))
 
 @admin_bp.route('/financials/add_cost', methods=['POST'])

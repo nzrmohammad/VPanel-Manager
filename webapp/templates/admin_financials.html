@@ -50,7 +50,6 @@
     .ltr-number { direction: ltr; display: inline-block; }
     .table-header-flex { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 
-    /* --- START: استایل نهایی و اصلاح شده برای Tooltip --- */
     .tooltip-container {
         position: relative;
         display: inline-block;
@@ -91,7 +90,6 @@
         visibility: visible;
         opacity: 1;
     }
-    /* --- END: استایل نهایی --- */
 
     @media (max-width: 991px) { .financial-grid { grid-template-columns: 1fr; } }
 </style>
@@ -106,12 +104,12 @@
             <div class="info-card">
                 <div class="kpi-grid">
                     <div class="kpi-card">
-                        <div class="value profit">{{ "{:,.0f}".format(summary.total_revenue) }}</div>
-                        <div class="label">درآمد کل (تومان)</div>
-                    </div>
-                    <div class="kpi-card">
                         <div class="value loss">{{ "{:,.0f}".format(summary.total_cost) }}</div>
                         <div class="label">هزینه کل (تومان)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="value profit">{{ "{:,.0f}".format(summary.total_revenue) }}</div>
+                        <div class="label">درآمد کل (تومان)</div>
                     </div>
                     <div class="kpi-card">
                         <div class="value {% if summary.total_profit >= 0 %}profit{% else %}loss{% endif %}">
@@ -135,7 +133,8 @@
                             </tr>
                         </thead>
                         <tbody>
-                        {% for item in financials %}
+                        {# ✨ **FIX 1**: Changed `financials` to `summary.monthly_breakdown` #}
+                        {% for item in summary.monthly_breakdown %}
                             <tr style="cursor: pointer;" onclick="window.location='{{ url_for('admin.financial_details_page', year=item.month.split('-')[0], month=item.month.split('-')[1]) }}';">
                                 <td><b>{{ item.month }}</b></td>
                                 <td class="profit"><span class="ltr-number">{{ "{:,.0f}".format(item.revenue) }}</span></td>
@@ -156,19 +155,22 @@
         <div class="sidebar-column">
             <div class="info-card">
                 <div class="table-header" style="padding: 0 0 1rem 0;"><h4><i class="ri-add-box-line"></i> افزودن هزینه جدید</h4></div>
-                <form action="{{ url_for('admin.add_cost_route') }}" method="POST">
+                {# ✨ **FIX 2**: Corrected form action and added hidden action field #}
+                <form action="{{ url_for('admin.financial_report_page') }}" method="POST">
+                    <input type="hidden" name="action" value="add">
+                    {# ✨ **FIX 4**: Added missing CSRF token for security #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">
-                        <label for="month">ماه هزینه (میلادی)</label>
-                        <input type="month" id="month" name="month" class="form-control" required value="{{ current_month_str }}">
+                        <label for="month_input">ماه هزینه (میلادی)</label>
+                        <input type="month" id="month_input" name="month" class="form-control" required value="{{ current_month_str }}">
                     </div>
                     <div class="form-group">
-                        <label for="cost">مبلغ هزینه (تومان)</label>
-                        <input type="number" id="cost" name="cost" class="form-control" required placeholder="مثال: 500000">
+                        <label for="cost_input">مبلغ هزینه (تومان)</label>
+                        <input type="number" id="cost_input" name="cost" class="form-control" required placeholder="مثال: 500000">
                     </div>
                     <div class="form-group">
-                        <label for="description">توضیحات</label>
-                        <input type="text" id="description" name="description" class="form-control" placeholder="مثال: هزینه سرور آلمان" required>
+                        <label for="description_input">توضیحات</label>
+                        <input type="text" id="description_input" name="description" class="form-control" placeholder="مثال: هزینه سرور آلمان" required>
                     </div>
                     <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">ثبت هزینه</button>
                 </form>
@@ -185,20 +187,24 @@
                     <table class="data-table">
                         <thead><tr><th>توضیحات</th><th>مبلغ</th><th></th></tr></thead>
                         <tbody>
-                            {% for cost in costs %}
-                                <tr>
-                                    <td>{{ cost.description }}<br><small>{{ cost.year }}-{{ "%02d"|format(cost.month) }}</small></td>
-                                    <td><span class="ltr-number">{{ "{:,.0f}".format(cost.cost) }}</span></td>
-                                    <td>
-                                        <form action="{{ url_for('admin.delete_cost_route', cost_id=cost.id) }}" method="POST" onsubmit="return confirm('آیا از حذف این هزینه مطمئن هستید؟');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="action-btn delete-btn" title="حذف"><i class="ri-delete-bin-line"></i></button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            {% else %}
-                                <tr><td colspan="3" style="text-align: center;">هزینه‌ای ثبت نشده.</td></tr>
-                            {% endfor %}
+                        {# ✨ **FIX 1**: Changed `costs` to `summary.all_records` and updated variable names #}
+                        {% for record in summary.all_records %}
+                            <tr>
+                                <td>{{ record.description }}<br><small>{{ record.year }}-{{ "%02d"|format(record.month) }}</small></td>
+                                <td><span class="ltr-number">{{ "{:,.0f}".format(record.cost) }}</span></td>
+                                <td>
+                                    {# ✨ **FIX 2**: Corrected form action and added hidden action field #}
+                                    <form action="{{ url_for('admin.financial_report_page') }}" method="POST" onsubmit="return confirm('آیا از حذف این هزینه مطمئن هستید؟');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="record_id" value="{{ record.id }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="action-btn delete-btn" title="حذف"><i class="ri-delete-bin-line"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="3" style="text-align: center;">هزینه‌ای ثبت نشده.</td></tr>
+                        {% endfor %}
                         </tbody>
                     </table>
                 </div>

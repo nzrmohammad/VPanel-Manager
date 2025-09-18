@@ -360,28 +360,33 @@ def generate_comprehensive_report_data():
     }
 
 def get_financial_report_data():
-    """داده‌های مورد نیاز برای صفحه گزارش مالی را جمع‌آوری و پردازش می‌کند."""
-    
-    financials_raw = db.get_monthly_financials()
-    all_costs_raw = db.get_all_monthly_costs()
+    """
+    (نسخه نهایی) گزارش مالی را با استفاده از منبع داده پنل وب (`financial_records`) محاسبه می‌کند
+    تا هزینه‌ها و سود واقعی را نمایش دهد.
+    """
+    # از تابع موجود در دیتابیس که پنل وب هم استفاده می‌کند، داده‌ها را می‌خوانیم
+    summary_data = db.get_monthly_financials()
 
-    financials_processed = []
-    for month_str, data in sorted(financials_raw.items(), reverse=True):
-        financials_processed.append({
-            "month": month_str,
-            **data
-        })
-        
+    # تبدیل داده‌ها به فرمت مورد نیاز برای نمایش در ربات
     summary = {
-        "total_revenue": sum(item['revenue'] for item in financials_processed),
-        "total_cost": sum(item['cost'] for item in financials_processed),
-        "total_profit": sum(item['profit'] for item in financials_processed)
+        'total_revenue': summary_data.get('total_revenue', 0),
+        'total_cost': summary_data.get('total_cost', 0),
+        'total_profit': summary_data.get('total_profit', 0)
     }
-    
+
+    formatted_financials = []
+    # کلید صحیح 'monthly_breakdown' است
+    for month_data in summary_data.get('monthly_breakdown', []):
+        formatted_financials.append({
+            'month': month_data['month'],
+            'revenue': month_data['revenue'],
+            'cost': month_data['cost'],
+            'profit': month_data['profit']
+        })
+
     return {
-        "financials": financials_processed,
-        "costs": all_costs_raw,
-        "summary": summary
+        'summary': summary,
+        'financials': formatted_financials
     }
 
 def get_all_payments_for_admin():
