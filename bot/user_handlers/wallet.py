@@ -349,7 +349,7 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
     _safe_edit(uid, call.message.message_id, confirm_text, reply_markup=kb)
 
 def execute_purchase(call: types.CallbackQuery, plan_name: str):
-    """(نسخه نهایی) خرید را نهایی کرده و روزها را فقط به پنل مربوط به پلن اضافه می‌کند."""
+    """(نسخه نهایی) خرید را نهایی کرده و آن را به عنوان یک اعلان در پنل وب کاربر نیز ثبت می‌کند."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
 
@@ -361,6 +361,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
 
     plans = load_service_plans()
     plan_to_buy = next((p for p in plans if p.get('name') == plan_name), None)
+
     if not plan_to_buy:
         _safe_edit(uid, call.message.message_id, escape_markdown("خطا: پلن مورد نظر یافت نشد."))
         return
@@ -391,7 +392,6 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
     if plan_type == 'combined':
         if add_days > 0:
             combined_handler.modify_user_on_all_panels(user_main_uuid, add_days=add_days)
-        
         add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
         add_gb_fr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
         if add_gb_de > 0: combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_de, target_panel_type='hiddify')
@@ -400,13 +400,20 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
         target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
         volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
         volume_key = volume_key_map.get(plan_type)
-        add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0')) if volume_key else 0
-        
-        if add_gb > 0 or add_days > 0:
-            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel)
+        if volume_key:
+            add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
+            if add_gb > 0 or add_days > 0:
+                combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel)
     
     info_after = combined_handler.get_combined_user_info(user_main_uuid)
     
+    try:
+        notification_title = "خرید سرویس"
+        notification_message = f"خرید پلن «{plan_name}» با موفقیت انجام شد. مبلغ {price:,.0f} تومان از کیف پول شما کسر گردید."
+        db.create_notification(uid, notification_title, notification_message, category='gift')
+    except Exception as e:
+        logger.error(f"Failed to create purchase notification for user {uid}: {e}")
+
     try:
         user_db_info_after = db.user(uid)
         new_balance = user_db_info_after.get('wallet_balance', 0.0) if user_db_info_after else 0.0
@@ -427,7 +434,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
     summary_text = fmt_purchase_summary(info_before, info_after, plan_to_buy, lang_code, user_access=user_main_uuid_record)
     header_line1 = "✅ خرید شما با موفقیت انجام شد\\!"
     header_line2 = f"پلن *{escape_markdown(plan_name)}* برای شما فعال گردید\\."
-    final_message = f"{header_line1}\n{header_line2}\n{summary_text}"
+    final_message = f"{header_line1}\n{header_line2}\n\n{summary_text}"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به کیف پول", callback_data="wallet:main"))
     _safe_edit(uid, call.message.message_id, final_message, reply_markup=kb)

@@ -2482,16 +2482,16 @@ class DatabaseManager:
             return row[0] if row and row[0] else 0.0
 
     def get_user_purchase_stats(self, user_id: int) -> dict:
-        """آمار خریدهای یک کاربر (تعداد کل خریدها و تعداد هدایا) را برمی‌گرداند."""
+        """(نسخه نهایی) آمار خریدهای یک کاربر (تعداد کل خریدها و تعداد هدایا) را به درستی محاسبه می‌کند."""
         with self._conn() as c:
             total_purchases_row = c.execute(
-                "SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ? AND type = 'purchase'",
+                "SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ? AND type IN ('purchase', 'gift_purchase')",
                 (user_id,)
             ).fetchone()
             total_purchases = total_purchases_row[0] if total_purchases_row else 0
 
             gift_purchases_row = c.execute(
-                "SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ? AND type = 'purchase' AND description LIKE 'gift_purchase:%'",
+                "SELECT COUNT(id) FROM wallet_transactions WHERE user_id = ? AND type = 'gift_purchase'",
                 (user_id,)
             ).fetchone()
             gift_purchases = gift_purchases_row[0] if gift_purchases_row else 0

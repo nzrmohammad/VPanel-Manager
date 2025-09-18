@@ -48,15 +48,17 @@
         margin-top: 0.25rem;
     }
 
-    /* --- START: کد اصلاح شده برای وسط‌چین کردن آمار --- */
-    .stat-item {
-        text-align: center; /* این خط همه چیز را در کارت آمار وسط‌چین می‌کند */
+    /* <<<<<<<<<<<<<<<<<<<< START OF FINAL FIX >>>>>>>>>>>>>>>>>>>> */
+    /* این کد مشکل علامت منفی را بدون به هم ریختن چیدمان حل می‌کند */
+    .stat-item .value {
+        direction: ltr;
+        display: inline-block; /* این خط باعث می‌شود عدد در وسط باقی بماند */
     }
     .transaction-amount { 
-        direction: ltr; /* این خط + و - را در سمت چپ عدد قرار می‌دهد */
-        text-align: left; 
+        direction: ltr; /* این خط علامت منفی را به سمت چپ عدد منتقل می‌کند */
+        text-align: right; /* این خط عدد را در ستون خود به سمت راست می‌چسباند */
     }
-    /* --- END: کد اصلاح شده --- */
+    /* <<<<<<<<<<<<<<<<<<<< END OF FINAL FIX >>>>>>>>>>>>>>>>>>>> */
 
     .transaction-list { list-style: none; padding: 0; }
     .transaction-item {
@@ -75,7 +77,10 @@
     .icon-refund, .icon-transfer { color: var(--warning-color); }
     .transaction-info .description { font-weight: 600; font-size: 0.95rem; }
     .transaction-info .date { font-size: 0.8rem; color: var(--text-secondary); }
-    /* .transaction-amount { font-weight: bold; font-size: 1.1rem; text-align: left; } - این خط با کد اصلاح شده جایگزین شد */
+    .transaction-amount {
+        font-weight: bold;
+        font-size: 1.1rem;
+    }
     .pagination {
         display: flex;
         justify-content: center;
@@ -138,29 +143,27 @@
         <ul class="transaction-list">
             {% for t in transactions %}
                 {% set icon_class = 'ri-arrow-up-circle-line icon-deposit' if t.type == 'deposit' else 'ri-arrow-down-circle-line icon-purchase' if t.type == 'purchase' else 'ri-swap-line icon-transfer' if 'transfer' in t.type else 'ri-refresh-line icon-refund' %}
-                {% set amount_color = 'var(--success-color)' if t.type in ['deposit', 'wallet_transfer_receiver'] else 'var(--danger-color)' if t.type in ['purchase', 'wallet_transfer_sender'] else 'var(--text-color)' %}
-                {% set amount_sign = '+' if t.type in ['deposit', 'wallet_transfer_receiver'] else '-' %}
+                {% set amount_color = 'var(--success-color)' if t.type in ['deposit', 'transfer_in'] else 'var(--danger-color)' if t.type in ['purchase', 'transfer_out'] else 'var(--text-color)' %}
+                {% set amount_sign = '+' if t.type in ['deposit', 'transfer_in'] else '-' %}
                 
                 <li class="transaction-item">
                     <i class="{{ icon_class }} transaction-icon"></i>
                     <div class="transaction-info">
-                        {# --- START OF FINAL CHANGE --- #}
                         <div class="description">
-                            {% if t.type == 'purchase' and t.description and ('plan_purchase:' in t.description or 'خرید سرویس:' in t.description) %}
+                            {% if t.type == 'purchase' and t.description and ('خرید پلن:' in t.description) %}
                                 خرید سرویس: {{ t.description.split(':')[1] | safe }}
-                            {% elif t.type == 'purchase' and t.description and 'خرید هدیه:' in t.description %}
+                            {% elif t.type == 'gift_purchase' and t.description and 'خرید هدیه برای کاربر' in t.description %}
                                 {{ t.description | safe }}
                             {% elif t.type == 'deposit' %}
-                                افزایش موجودی توسط ادمین
-                            {% elif t.type == 'wallet_transfer_sender' and t.description and 'wallet_transfer_sender:' in t.description %}
-                                انتقال وجه به: {{ t.description.split(':')[1] | safe }}
-                            {% elif t.type == 'wallet_transfer_receiver' and t.description and 'wallet_transfer_receiver:' in t.description %}
-                                دریافت وجه از: {{ t.description.split(':')[1] | safe }}
+                                افزایش موجودی
+                            {% elif t.type == 'transfer_out' and t.description and 'انتقال به کاربر' in t.description %}
+                                انتقال وجه به: {{ t.description.split(' ')[-1] | safe }}
+                            {% elif t.type == 'transfer_in' and t.description and 'دریافت از کاربر' in t.description %}
+                                دریافت وجه از: {{ t.description.split(' ')[-1] | safe }}
                             {% else %}
                                 {{ (t.description or t.type|replace('_', ' ')|capitalize) | safe }}
                             {% endif %}
                         </div>
-                        {# --- END OF FINAL CHANGE --- #}
                         <div class="date">{{ t.shamsi_date }}</div>
                     </div>
                     <div class="transaction-amount" style="color: {{ amount_color }};">

@@ -20,8 +20,40 @@ from bot.language import get_string
 from .warnings import send_warning_message
 from ..admin_formatters import fmt_achievement_leaderboard, fmt_lottery_participants_list
 
-
 logger = logging.getLogger(__name__)
+
+# 1. تابع کمکی هوشمند برای اعمال هر نوع پاداش
+def _apply_reward_intelligently(user_telegram_id: int, user_uuid: str, add_gb: float, add_days: int):
+    """
+    پاداش (حجم و روز) را به صورت هوشمند بین پنل‌های کاربر تقسیم و اعمال می‌کند.
+    """
+    try:
+        # گرفتن دسترسی‌های کاربر برای تقسیم هوشمند پاداش
+        user_uuid_records = db.uuids(user_telegram_id)
+        user_access = next((r for r in user_uuid_records if r['uuid'] == user_uuid), None)
+        if not user_access:
+            logger.warning(f"Could not find access record for user {user_telegram_id} with uuid {user_uuid}")
+            return False
+
+        has_hiddify = user_access.get('has_access_de', False)
+        has_marzban = user_access.get('has_access_fr', False) or user_access.get('has_access_tr', False) or user_access.get('has_access_us', False)
+
+        if has_hiddify and has_marzban:
+            # اگر به هر دو دسترسی داشت، حجم نصف می‌شود ولی روز به هر دو اضافه می‌شود
+            half_gb = add_gb / 2
+            combined_handler.modify_user_on_all_panels(user_uuid, add_gb=half_gb, target_panel_type='hiddify')
+            combined_handler.modify_user_on_all_panels(user_uuid, add_gb=half_gb, target_panel_type='marzban')
+            if add_days > 0:
+                combined_handler.modify_user_on_all_panels(user_uuid, add_days=add_days)
+        else:
+            # اگر فقط به یکی دسترسی داشت، تمام پاداش به همان یک پنل اضافه می‌شود
+            if add_gb > 0 or add_days > 0:
+                combined_handler.modify_user_on_all_panels(user_uuid, add_gb=add_gb, add_days=add_days)
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error in _apply_reward_intelligently for user {user_telegram_id}: {e}", exc_info=True)
+        return False
 
 def send_weekly_admin_digest(bot) -> None:
     """
@@ -133,7 +165,7 @@ def notify_admin_of_upcoming_event(bot) -> None:
         logger.error(f"Error notifying admin of upcoming events: {e}", exc_info=True)
 
 def notify_user_achievement(bot, user_id: int, badge_code: str):
-    """به کاربر برای دریافت یک نشان جدید تبریک می‌گوید و امتیاز اضافه می‌کند."""
+    """(نسخه نهایی) کاربر را از دستاورد جدید با فرمت خوانا مطلع می‌کند."""
     badge = ACHIEVEMENTS.get(badge_code)
     if not badge: return
 
@@ -155,13 +187,9 @@ def notify_user_achievement(bot, user_id: int, badge_code: str):
 
 
 def birthday_gifts_job(bot) -> None:
-    """
-    (نسخه نهایی و اصلاح شده)
-    هدایای تولد را اعمال کرده و ۱۵ روز قبل از تولد نیز به کاربر یادآوری می‌کند.
-    """
+    """هدایای تولد را به صورت هوشمند اعمال کرده و ۱۵ روز قبل از تولد نیز به کاربر یادآوری می‌کند."""
     all_users_with_birthdays = list(db.get_users_with_birthdays())
-    if not all_users_with_birthdays:
-        return
+    if not all_users_with_birthdays: return
         
     current_year = jdatetime.datetime.now(pytz.timezone("Asia/Tehran")).year
 
@@ -169,124 +197,102 @@ def birthday_gifts_job(bot) -> None:
         user_id = user['user_id']
         days_left = days_until_next_birthday(user['birthday'])
         
-        # ۱. ارسال هدیه در روز تولد
         if days_left == 0:
-            with db._conn() as c:
-                already_given = c.execute(
-                    "SELECT 1 FROM birthday_gift_log WHERE user_id = ? AND gift_year = ?",
-                    (user_id, current_year)
-                ).fetchone()
-
-            if already_given:
-                logger.info(f"Skipping birthday gift for user {user_id}, already given in year {current_year}.")
-                continue
+            already_given = db.check_if_gift_given(user_id, 'birthday', current_year)
+            if already_given: continue
 
             user_uuids = db.uuids(user_id)
             if user_uuids:
                 first_uuid = user_uuids[0]['uuid']
-                if combined_handler.modify_user_on_all_panels(first_uuid, add_gb=BIRTHDAY_GIFT_GB, add_days=BIRTHDAY_GIFT_DAYS):
+                
+                # استفاده از تابع هوشمند برای اهدای هدیه تولد
+                if _apply_reward_intelligently(user_id, first_uuid, BIRTHDAY_GIFT_GB, BIRTHDAY_GIFT_DAYS):
                     user_settings = db.get_user_settings(user_id)
                     if user_settings.get('promotional_alerts', True):
                         gift_message = (f"🎉 *تولدت مبارک\\!* 🎉\n\n"
                                         f"امیدواریم سالی پر از شادی و موفقیت پیش رو داشته باشی\\.\n"
                                         f"ما به همین مناسبت، هدیه‌ای برای شما فعال کردیم:\n\n"
-                                        f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم و `{BIRTHDAY_GIFT_DAYS}` روز به تمام اکانت‌های شما **به صورت خودکار اضافه شد\\!**\n\n"
-                                        f"می‌توانی با مراجعه به بخش مدیریت اکانت، جزئیات جدید را مشاهده کنی\\.")
+                                        f"🎁 `{BIRTHDAY_GIFT_GB} GB` حجم اضافی\n"
+                                        f"📅 `{BIRTHDAY_GIFT_DAYS}` روز اعتبار اضافی\n\n"
+                                        f"این هدیه به صورت خودکار به اکانت شما اضافه شد\\!\\.")
                         if send_warning_message(bot, user_id, gift_message):
-                            with db._conn() as c:
-                                c.execute("INSERT INTO birthday_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
+                            db.log_gift_given(user_id, 'birthday', current_year)
         
-        # ۲. ارسال پیام پیشواز تولد
         elif days_left == 15:
-            if not db.has_recent_warning(user_id, 'pre_birthday_reminder', hours=360*24): # تقریبا یک سال
+            if not db.has_recent_warning(user_id, 'pre_birthday_reminder', hours=360*24):
                  user_settings = db.get_user_settings(user_id)
                  if user_settings.get('promotional_alerts', True):
                     user_name = user.get('first_name', 'کاربر عزیز')
-                    pre_birthday_message = get_string("pre_birthday_message", db.get_user_language(user_id)).format(name=user_name)
+                    pre_birthday_message = get_string("pre_birthday_message", db.get_user_language(user_id)).format(name=escape_markdown(user_name))
                     if send_warning_message(bot, user_id, pre_birthday_message):
                         db.log_warning(user_id, 'pre_birthday_reminder')
 
 
 def check_achievements_and_anniversary(bot) -> None:
     """
-    (نسخه نهایی و اصلاح شده)
-    شرایط دریافت دستاوردها، هدیه سالگرد و یادآوری‌های تشویقی را بررسی می‌کند.
+    (نسخه نهایی) شرایط دریافت دستاوردها و هدیه سالگرد را بررسی کرده و پاداش را به صورت هوشمند اعمال می‌کند.
     """
-    logger.info("SCHEDULER: Starting daily achievements and anniversary check job.")
     all_user_ids = list(db.get_all_user_ids())
-
-    lucky_users = random.sample(all_user_ids, k=min(3, len(all_user_ids)))
-
+    logger.info(f"SCHEDULER: Checking achievements and anniversaries for {len(all_user_ids)} users.")
+    
     for user_id in all_user_ids:
         try:
             user_uuids = db.uuids(user_id)
-            if not user_uuids: continue
+            if not user_uuids:
+                continue
 
             first_uuid_record = user_uuids[0]
             uuid_id = first_uuid_record['id']
             first_uuid_creation_date = first_uuid_record['created_at']
             if first_uuid_creation_date.tzinfo is None:
                 first_uuid_creation_date = pytz.utc.localize(first_uuid_creation_date)
-
+            
             days_since_creation = (datetime.now(pytz.utc) - first_uuid_creation_date).days
             payment_count = len(db.get_user_payment_history(uuid_id))
+            referral_count = db.get_user_referral_count(user_id)
             
             # --- بررسی دستاوردها ---
             if days_since_creation >= 365 and db.add_achievement(user_id, 'veteran'):
                 notify_user_achievement(bot, user_id, 'veteran')
-
-            if payment_count > 5 and db.add_achievement(user_id, 'loyal_supporter'):
+            
+            if payment_count >= 5 and db.add_achievement(user_id, 'loyal_supporter'):
                 notify_user_achievement(bot, user_id, 'loyal_supporter')
 
-            successful_referrals = [u for u in db.get_referred_users(user_id) if u['referral_reward_applied']]
-            if len(successful_referrals) >= AMBASSADOR_BADGE_THRESHOLD and db.add_achievement(user_id, 'ambassador'):
+            if referral_count >= AMBASSADOR_BADGE_THRESHOLD and db.add_achievement(user_id, 'ambassador'):
                 notify_user_achievement(bot, user_id, 'ambassador')
             
-            if user_id in lucky_users and db.add_achievement(user_id, 'lucky_one'):
-                notify_user_achievement(bot, user_id, 'lucky_one')
-
-            # ۳. بررسی یادآوری تشویقی
-            next_reward_tier = min([tier for tier in LOYALTY_REWARDS.keys() if tier > payment_count], default=None)
-            if next_reward_tier and next_reward_tier - payment_count == 1:
-                if not db.has_recent_warning(user_id, 'loyalty_reminder', hours=30*24):
-                    user_settings = db.get_user_settings(user_id)
-                    if user_settings.get('promotional_alerts', True):
-                        reward_info = LOYALTY_REWARDS[next_reward_tier]
-                        lang_code = db.get_user_language(user_id)
-                        reminder_message = get_string("loyalty_reminder_message", lang_code).format(
-                            gb_reward=reward_info.get("gb", 0),
-                            days_reward=reward_info.get("days", 0)
-                        )
-                        if send_warning_message(bot, user_id, reminder_message):
-                            db.log_warning(user_id, 'loyalty_reminder')
-
-            user_badges = db.get_user_achievements(user_id)
-            if 'collector' not in user_badges and len(user_badges) >= 10:
-                if db.add_achievement(user_id, 'collector'):
-                    notify_user_achievement(bot, user_id, 'collector')
+            user_info = combined_handler.get_combined_user_info(first_uuid_record['uuid'])
+            if user_info and user_info.get('total_usage_GB', 0) >= 1000 and db.add_achievement(user_id, 'data_whale'):
+                notify_user_achievement(bot, user_id, 'data_whale')
 
             # --- بررسی هدیه سالگرد ---
             current_year = datetime.now(pytz.utc).year
-            if days_since_creation >= 365:
-                with db._conn() as c:
-                    already_given = c.execute(
-                        "SELECT 1 FROM anniversary_gift_log WHERE user_id = ? AND gift_year = ?",
-                        (user_id, current_year)
-                    ).fetchone()
-
+            if days_since_creation > 0 and days_since_creation % 365 == 0:
+                anniversary_year = days_since_creation // 365
+                gift_name = f'anniversary_{anniversary_year}'
+                
+                already_given = db.check_if_gift_given(user_id, gift_name, current_year)
                 if not already_given:
                     anniversary_gift_gb, anniversary_gift_days = 20, 10
-                    if combined_handler.modify_user_on_all_panels(first_uuid_record['uuid'], add_gb=anniversary_gift_gb, add_days=anniversary_gift_days):
+                    
+                    if _apply_reward_intelligently(user_id, first_uuid_record['uuid'], anniversary_gift_gb, anniversary_gift_days):
                         lang_code = db.get_user_language(user_id)
                         title = get_string("anniversary_gift_title", lang_code)
-                        body = get_string("anniversary_gift_body", lang_code).format(gift_gb=anniversary_gift_gb, gift_days=anniversary_gift_days)
+                        body = get_string("anniversary_gift_body", lang_code).format(
+                            year=anniversary_year,
+                            gift_gb=anniversary_gift_gb,
+                            gift_days=anniversary_gift_days
+                        )
                         message = f"*{escape_markdown(title)}*\n\n{escape_markdown(body)}"
                         send_warning_message(bot, user_id, message)
-                        with db._conn() as c:
-                            c.execute("INSERT INTO anniversary_gift_log (user_id, gift_year) VALUES (?, ?)", (user_id, current_year))
-
+                        db.log_gift_given(user_id, gift_name, current_year)
+                        
         except Exception as e:
-            logger.error(f"Error checking achievements/anniversary for user_id {user_id}: {e}")
+            logger.error(f"Error checking achievements/anniversary for user_id {user_id}: {e}", exc_info=True)
+        
+        time.sleep(0.1)
+    
+    logger.info("Finished checking achievements and anniversaries.")
 
 
 def check_for_special_occasions(bot):
@@ -295,7 +301,6 @@ def check_for_special_occasions(bot):
         events = load_json_file('events.json')
         today_jalali = jdatetime.datetime.now(pytz.timezone("Asia/Tehran"))
         today_str = today_jalali.strftime('%m-%d')
-
         for event in events:
             if event.get('date') == today_str:
                 logger.info(f"Today is {event['name']}. Preparing to send gifts.")
@@ -305,7 +310,7 @@ def check_for_special_occasions(bot):
 
 def _distribute_special_occasion_gifts(bot, event_details: dict):
     """(نسخه نهایی) هدیه رویدادها را به صورت هوشمند بین پنل‌های کاربران فعال تقسیم و اعمال می‌کند."""
-    all_active_uuids_records = list(db.all_active_uuids()) # تمام رکوردهای فعال را می‌خوانیم
+    all_active_uuids_records = list(db.all_active_uuids())
     if not all_active_uuids_records:
         logger.info(f"No active users to send {event_details['name']} gift to.")
         return
@@ -324,34 +329,13 @@ def _distribute_special_occasion_gifts(bot, event_details: dict):
             user_uuid = user_row['uuid']
             user_id = user_row['user_id']
             
-            # 1. گرفتن دسترسی‌های کاربر از رکوردی که از قبل داریم
-            user_access = db.uuid_by_id(user_id, user_row['id'])
-            if not user_access:
-                logger.warning(f"Could not find access record for user {user_id} with uuid {user_uuid}")
-                continue
-
-            has_hiddify = user_access.get('has_access_de', False)
-            has_marzban = user_access.get('has_access_fr', False) or user_access.get('has_access_tr', False) or user_access.get('has_access_us', False)
-
-            # 2. اعمال هوشمند پاداش رویداد
-            if has_hiddify and has_marzban:
-                # اگر به هر دو دسترسی داشت، حجم نصف می‌شود ولی روز به هر دو اضافه می‌شود
-                half_gb = gift_gb / 2
-                combined_handler.modify_user_on_all_panels(user_uuid, add_gb=half_gb, target_panel_type='hiddify')
-                combined_handler.modify_user_on_all_panels(user_uuid, add_gb=half_gb, target_panel_type='marzban')
-                if gift_days > 0:
-                    combined_handler.modify_user_on_all_panels(user_uuid, add_days=gift_days)
-            else:
-                # اگر فقط به یکی دسترسی داشت، تمام پاداش به همان یک پنل اضافه می‌شود
-                if gift_gb > 0 or gift_days > 0:
-                    combined_handler.modify_user_on_all_panels(user_uuid, add_gb=gift_gb, add_days=gift_days)
-
-            user_settings = db.get_user_settings(user_id)
-            if user_settings.get('promotional_alerts', True):
-                send_warning_message(bot, user_id, escape_markdown(message_template))
-            
-            successful_gifts += 1
-            time.sleep(0.2)
+            # استفاده از تابع هوشمند برای اهدای هدیه رویدادها
+            if _apply_reward_intelligently(user_id, user_uuid, gift_gb, gift_days):
+                user_settings = db.get_user_settings(user_id)
+                if user_settings.get('promotional_alerts', True):
+                    send_warning_message(bot, user_id, escape_markdown(message_template))
+                successful_gifts += 1
+                time.sleep(0.2)
         except Exception as e:
             logger.error(f"Failed to give {event_details['name']} gift to user {user_row['user_id']}: {e}")
     
