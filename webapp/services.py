@@ -866,3 +866,14 @@ def get_server_status():
         statuses.append({'name': 'سرور فرانسه 🇫🇷', 'status': 'آفلاین', 'class': 'offline'})
         
     return statuses
+
+def get_monthly_transaction_details(year: int, month: int):
+    """سرویسی برای دریافت و آماده‌سازی جزئیات تراکنش‌های ماهانه برای پنل وب."""
+    transactions = db.get_transactions_for_month(year, month)
+    for t in transactions:
+        t['shamsi_date'] = to_shamsi(t['transaction_date'], include_time=True)
+        t['first_name'] = escape(t.get('first_name', 'کاربر'))
+        t['description'] = escape(t.get('description', ''))
+    
+    shamsi_month_str = to_shamsi(datetime(year, month, 1), month_only=True)
+    return transactions, shamsi_month_str

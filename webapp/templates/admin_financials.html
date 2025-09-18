@@ -135,18 +135,18 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for item in financials %}
-                                <tr>
-                                    <td><b>{{ item.month }}</b></td>
-                                    <td class="profit"><span class="ltr-number">{{ "{:,.0f}".format(item.revenue) }}</span></td>
-                                    <td class="loss"><span class="ltr-number">{{ "{:,.0f}".format(item.cost) }}</span></td>
-                                    <td class="{% if item.profit >= 0 %}profit{% else %}loss{% endif %}">
-                                        <b><span class="ltr-number">{{ "{:,.0f}".format(item.profit) }}</span></b>
-                                    </td>
-                                </tr>
-                            {% else %}
-                                <tr><td colspan="4" style="text-align: center; padding: 1.5rem;">داده‌ای برای نمایش وجود ندارد.</td></tr>
-                            {% endfor %}
+                        {% for item in financials %}
+                            <tr style="cursor: pointer;" onclick="window.location='{{ url_for('admin.financial_details_page', year=item.month.split('-')[0], month=item.month.split('-')[1]) }}';">
+                                <td><b>{{ item.month }}</b></td>
+                                <td class="profit"><span class="ltr-number">{{ "{:,.0f}".format(item.revenue) }}</span></td>
+                                <td class="loss"><span class="ltr-number">{{ "{:,.0f}".format(item.cost) }}</span></td>
+                                <td class="{% if item.profit >= 0 %}profit{% else %}loss{% endif %}">
+                                    <b><span class="ltr-number">{{ "{:,.0f}".format(item.profit) }}</span></b>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" style="text-align: center; padding: 1.5rem;">داده‌ای برای نمایش وجود ندارد.</td></tr>
+                        {% endfor %}
                         </tbody>
                     </table>
                 </div>

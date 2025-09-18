@@ -62,7 +62,7 @@ def to_shamsi(dt: Optional[Union[datetime, date, str]], include_time: bool = Fal
         dt_shamsi = jdatetime.datetime.fromgregorian(datetime=local_dt)
         
         if month_only:
-            return f"{dt_shamsi.j_month_name()} {dt_shamsi.year}"
+            return f"{jdatetime.date.j_months_fa[dt_shamsi.month - 1]} {dt_shamsi.year}"
         
         if include_time:
             return dt_shamsi.strftime("%Y/%m/%d %H:%M:%S")

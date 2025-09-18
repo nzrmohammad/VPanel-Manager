@@ -1122,22 +1122,89 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     return "\n".join(lines)
 
 def fmt_financial_report(financial_data: dict) -> str:
-    """گزارش مالی ماهانه را برای نمایش در تلگرام فرمت‌بندی می‌کند."""
-    lines = ["💸 *گزارش مالی ماهانه*"]
+    """گزارش مالی ماهانه را برای نمایش در تلگرام با فرمت بهبود یافته و دقیق فرمت‌بندی می‌کند."""
+    lines = ["📊 *گزارش مالی ماهانه*"]
     
     summary = financial_data.get('summary', {})
+    total_revenue = summary.get('total_revenue', 0)
+    total_cost = summary.get('total_cost', 0)
+    total_profit = summary.get('total_profit', 0)
+    
+    profit_emoji = "✅" if total_profit >= 0 else "🔻"
+
+    def format_negative_number(num):
+        if num < 0:
+            return escape_markdown(f"{abs(num):,.0f}-")
+        return escape_markdown(f"{num:,.0f}")
+
     lines.extend([
         "`──────────────────`",
-        f"💰 *درآمد کل:* `{summary.get('total_revenue', 0):,.0f}` تومان",
-        f" खर्च *هزینه کل:* `{summary.get('total_cost', 0):,.0f}` تومان",
-        f" سود *سود کل:* `{summary.get('total_profit', 0):,.0f}` تومان"
+        f"💰 *درآمد کل :* {total_revenue:,.0f} تومان",
+        f"💳 *هزینه کل :* {total_cost:,.0f} تومان",
+        f"{profit_emoji} *سود / زیان کل :* {format_negative_number(total_profit)} تومان"
     ])
     
     financials = financial_data.get('financials', [])
     if financials:
         lines.append("`──────────────────`")
-        for item in financials[:6]: # نمایش ۶ ماه اخیر
-            profit_str = f"`{item['profit']:,.0f}`"
-            lines.append(f"🗓️ *{escape_markdown(item['shamsi_month'])}:* {profit_str} تومان")
+        lines.append("*عملکرد ۶ ماه اخیر:*")
+        for item in financials[:6]:
+            month_str = item['month']
+            profit = item.get('profit', 0)
+            profit_str = format_negative_number(profit) # استفاده از تابع جدید
+            month_shamsi = to_shamsi(datetime.strptime(month_str, '%Y-%m'), month_only=True)
             
+            lines.append(f"🗓️ *{escape_markdown(month_shamsi)}:* {profit_str} تومان")
+            
+    return "\n".join(lines)
+
+def fmt_monthly_transactions_report(transactions: list, year: int, month: int, page: int) -> str:
+    """لیست تراکنش‌های یک ماه را با فرمت فشرده، آیکون‌محور و به همراه راهنمای آیکون‌ها برای ادمین فرمت‌بندی می‌کند."""
+    shamsi_date_str = to_shamsi(datetime(year, month, 1), month_only=True)
+    title = f"💳 *جزئیات تراکنش‌های {escape_markdown(shamsi_date_str)}*"
+
+    if not transactions:
+        return f"{title}\n\nهیچ تراکنشی در این ماه ثبت نشده است."
+
+    header_text = f"{title}"
+    total_items = len(transactions)
+    total_pages = (total_items + PAGE_SIZE - 1) // PAGE_SIZE
+    is_last_page = (page + 1) == total_pages
+
+    if total_items > PAGE_SIZE:
+        pagination_text = f"\\(صفحه {page + 1} از {total_pages} \\| کل: {total_items}\\)"
+        header_text += f"\n{pagination_text}"
+
+    lines = [header_text, "`──────────────────`"]
+    paginated_transactions = transactions[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
+    for trans in paginated_transactions:
+        name = escape_markdown(trans.get('first_name', 'کاربر'))
+        user_id = trans.get('user_id', 'N/A')
+        amount = trans.get('amount', 0)
+        desc_raw = trans.get('description', '')
+        date_str = escape_markdown(to_shamsi(trans.get('transaction_date'), include_time=False))
+        
+        icon = "❔"
+        if 'خرید پلن:' in desc_raw:
+            icon = "🛒"
+        elif 'شارژ دستی توسط مدیریت' in desc_raw:
+            icon = "🛠️"
+        elif 'شارژ توسط مدیریت' in desc_raw:
+            icon = "✅"
+        elif 'خرید هدیه برای کاربر' in desc_raw:
+            icon = "🎁"
+        
+        sign = "\\+" if amount > 0 else ""
+        amount_str = escape_markdown(f"{amount:,.0f}")
+        final_amount_str = f"{sign}{amount_str}" if amount > 0 else amount_str
+        
+        lines.append(f"{icon} *{name}* \\(`{user_id}`\\): *{final_amount_str}* \\({date_str}\\)")
+
+    if is_last_page:
+        lines.append("`──────────────────`")
+        lines.append("*راهنمای آیکون‌ها*")
+        lines.append("🛒 خرید پلن   ✅ تایید رسید")
+        lines.append("🎁 خرید هدیه   🛠️ شارژ دستی")
+
     return "\n".join(lines)

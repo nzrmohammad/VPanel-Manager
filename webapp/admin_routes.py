@@ -392,3 +392,18 @@ def toggle_template_random_api(template_id):
     except Exception as e:
         logger.error(f"API Failed to toggle template random pool status {template_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'message': 'خطا در تغییر وضعیت.'}), 500
+    
+@admin_bp.route('/financials/details/<int:year>/<int:month>')
+@admin_required
+def financial_details_page(year, month):
+    from .services import get_monthly_transaction_details
+    try:
+        transactions, shamsi_month_str = get_monthly_transaction_details(year, month)
+        return render_template('admin_financial_details.html',
+                               transactions=transactions,
+                               shamsi_month=shamsi_month_str,
+                               is_admin=True)
+    except Exception as e:
+        logger.error(f"Error loading financial details page for {year}-{month}: {e}", exc_info=True)
+        flash("خطا در بارگذاری جزئیات تراکنش‌ها.", "error")
+        return redirect(url_for('admin.financial_report_page'))

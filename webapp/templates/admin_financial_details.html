@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}جزئیات تراکنش‌های {{ shamsi_month }}{% endblock %}
+
+{% block page_content %}
+    {% set page_title='جزئیات تراکنش‌ها' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="info-card data-table-container">
+        <div class="table-header">
+            <h3><i class="ri-history-line"></i> تراکنش‌های ماه: {{ shamsi_month }}</h3>
+            <a href="{{ url_for('admin.financial_report_page') }}" class="btn btn-secondary">بازگشت</a>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>کاربر</th>
+                        <th>توضیحات</th>
+                        <th>مبلغ (تومان)</th>
+                        <th>تاریخ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transactions %}
+                        <tr>
+                            <td>{{ t.first_name }} (<code>{{ t.user_id }}</code>)</td>
+                            <td>{{ t.description }}</td>
+                            <td class="profit" style="direction: ltr; text-align: right;">{{ "{:,.0f}".format(t.amount) }}</td>
+                            <td>{{ t.shamsi_date }}</td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="4" style="text-align: center; padding: 1.5rem;">تراکنشی برای نمایش در این ماه وجود ندارد.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

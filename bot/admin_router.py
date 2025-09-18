@@ -278,6 +278,7 @@ ADMIN_CALLBACK_HANDLERS = {
     "marzban_stats": reporting.handle_marzban_system_stats,
     "list": reporting.handle_paginated_list,
     "financial_report": reporting.handle_financial_report,
+    "financial_details": reporting.handle_financial_details, # <-- این خط را اضافه کنید
     "list_devices": reporting.handle_connected_devices_list,
     "report_by_plan_select": reporting.handle_report_by_plan_selection,
     "list_by_plan": reporting.handle_list_users_by_plan,

@@ -2664,6 +2664,27 @@ class DatabaseManager:
             
         return financials
 
+    def get_transactions_for_month(self, year: int, month: int) -> List[Dict[str, Any]]:
+        """تمام تراکنش‌های درآمدی یک ماه و سال مشخص را به همراه نام کاربر برمی‌گرداند."""
+        start_date = datetime(year, month, 1)
+        end_date = (start_date + timedelta(days=32)).replace(day=1)
+        
+        query = """
+            SELECT
+                wt.amount,
+                wt.description,
+                wt.transaction_date,
+                u.user_id,
+                u.first_name
+            FROM wallet_transactions wt
+            JOIN users u ON wt.user_id = u.user_id
+            WHERE wt.transaction_date >= ? AND wt.transaction_date < ? AND wt.type IN ('deposit', 'purchase', 'gift_purchase', 'addon_purchase')
+            ORDER BY wt.transaction_date DESC
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (start_date, end_date)).fetchall()
+            return [dict(r) for r in rows]
+
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
         access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
