@@ -1210,7 +1210,6 @@ def handle_award_badge(call, params):
     else:
         bot.answer_callback_query(call.id, "ℹ️ این کاربر قبلاً این نشان را دریافت کرده است.", show_alert=True)
 
-
 def handle_award_badge_menu(call: types.CallbackQuery, params: list):
     """منوی اهدای دستی نشان‌ها را نمایش می‌دهد."""
     identifier = params[0]
@@ -1297,20 +1296,3 @@ def handle_achievement_request_callback(call: types.CallbackQuery, params: list)
         badge_name = ACHIEVEMENTS.get(badge_code, {}).get('name', 'درخواستی')
         rejection_message = f"با سلام، درخواست شما برای نشان «{badge_name}» بررسی شد اما در حال حاضر مورد تایید قرار نگرفت. لطفاً در صورت تمایل، بعداً دوباره تلاش کنید یا با پشتیبانی در تماس باشید."
         bot.send_message(user_id, rejection_message)
-
-def handle_award_badge(call: types.CallbackQuery, params: list):
-    """
-    Awards a specific badge to a user, initiated by an admin.
-    """
-    badge_short_code, identifier = params[0], params[1]
-    context = "search" if len(params) > 2 and params[2] == 'search' else None
-
-    badge_map = {
-        'mp': 'media_partner',
-        'sc': 'support_contributor',
-        'sc_champ': 'swimming_champion',
-        's_coach': 'swimming_coach',
-        'b_coach': 'bodybuilding_coach',
-        'a_coach': 'aerial_coach'
-    }
-    badge_code = badge_map.get(badge_short_code)
