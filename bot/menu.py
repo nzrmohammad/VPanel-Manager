@@ -530,7 +530,8 @@ class Menu:
             types.InlineKeyboardButton("🎂 تولد کاربران", callback_data="admin:list:birthdays:0"))
         kb.add(types.InlineKeyboardButton("🏆 رتبه‌بندی امتیازها", callback_data="admin:list:leaderboard:0"),
                 types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
-        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"))
+        kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"),
+               types.InlineKeyboardButton("💸 گزارش مالی", callback_data="admin:financial_report")) # <-- دکمه جدید
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 

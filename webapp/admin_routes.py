@@ -5,8 +5,7 @@ from bot.config import ADMIN_SECRET_KEY
 from bot.database import db
 from bot.utils import set_template_server_type_service, reset_all_templates
 from bot.config import ADMIN_SUPPORT_CONTACT,BIRTHDAY_GIFT_GB,BIRTHDAY_GIFT_DAYS,WARNING_USAGE_THRESHOLD,WARNING_DAYS_BEFORE_EXPIRY,DAILY_USAGE_ALERT_THRESHOLD_GB,NOTIFY_ADMIN_ON_USAGE
-
-# Note: The main 'from .services import ...' block is removed from here.
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -70,6 +69,48 @@ def analytics_page():
     except Exception as e:
         logger.error(f"Error in analytics_page: {e}", exc_info=True)
         return "<h1>خطا در بارگذاری صفحه تحلیل</h1>", 500
+
+@admin_bp.route('/financials')
+@admin_required
+def financial_report_page():
+    from .services import get_financial_report_data
+    try:
+        data = get_financial_report_data()
+        # ماه جاری را برای پیش‌فرض فیلد تاریخ به قالب ارسال می‌کنیم
+        current_month_str = datetime.now().strftime('%Y-%m')
+        return render_template('admin_financials.html', **data, is_admin=True, current_month_str=current_month_str)
+    except Exception as e:
+        logger.error(f"Error in financial_report_page: {e}", exc_info=True)
+        flash("خطا در بارگذاری گزارش مالی.", "error")
+        return redirect(url_for('admin.admin_dashboard'))
+
+@admin_bp.route('/financials/add_cost', methods=['POST'])
+@admin_required
+def add_cost_route():
+    try:
+        month_str = request.form.get('month') # e.g., "2024-09"
+        cost = float(request.form.get('cost'))
+        description = request.form.get('description')
+        
+        year, month = map(int, month_str.split('-'))
+        
+        if db.add_monthly_cost(year, month, cost, description):
+            flash("هزینه با موفقیت ثبت شد.", "success")
+        else:
+            flash("خطا: هزینه‌ای با این مشخصات از قبل وجود دارد.", "error")
+    except Exception as e:
+        logger.error(f"Error adding cost: {e}", exc_info=True)
+        flash("خطا در ثبت هزینه.", "error")
+    return redirect(url_for('admin.financial_report_page'))
+
+@admin_bp.route('/financials/delete_cost/<int:cost_id>', methods=['POST'])
+@admin_required
+def delete_cost_route(cost_id):
+    if db.delete_monthly_cost(cost_id):
+        flash("هزینه با موفقیت حذف شد.", "success")
+    else:
+        flash("خطا در حذف هزینه.", "error")
+    return redirect(url_for('admin.financial_report_page'))
 
 # --- بخش مدیریت کاربران ---
 @admin_bp.route('/users')

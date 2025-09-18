@@ -1120,3 +1120,24 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
             lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
 
     return "\n".join(lines)
+
+def fmt_financial_report(financial_data: dict) -> str:
+    """گزارش مالی ماهانه را برای نمایش در تلگرام فرمت‌بندی می‌کند."""
+    lines = ["💸 *گزارش مالی ماهانه*"]
+    
+    summary = financial_data.get('summary', {})
+    lines.extend([
+        "`──────────────────`",
+        f"💰 *درآمد کل:* `{summary.get('total_revenue', 0):,.0f}` تومان",
+        f" खर्च *هزینه کل:* `{summary.get('total_cost', 0):,.0f}` تومان",
+        f" سود *سود کل:* `{summary.get('total_profit', 0):,.0f}` تومان"
+    ])
+    
+    financials = financial_data.get('financials', [])
+    if financials:
+        lines.append("`──────────────────`")
+        for item in financials[:6]: # نمایش ۶ ماه اخیر
+            profit_str = f"`{item['profit']:,.0f}`"
+            lines.append(f"🗓️ *{escape_markdown(item['shamsi_month'])}:* {profit_str} تومان")
+            
+    return "\n".join(lines)

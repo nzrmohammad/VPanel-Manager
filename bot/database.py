@@ -248,6 +248,15 @@ class DatabaseManager:
                     reviewed_at TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS monthly_costs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    year INTEGER NOT NULL,
+                    month INTEGER NOT NULL,
+                    cost REAL NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(year, month, description)
+                );
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_uuid ON user_uuids(uuid);
                 CREATE INDEX IF NOT EXISTS idx_user_uuids_user_id ON user_uuids(user_id);
                 CREATE INDEX IF NOT EXISTS idx_snapshots_taken_at ON usage_snapshots(taken_at);
@@ -2569,6 +2578,91 @@ class DatabaseManager:
                 "UPDATE achievement_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
                 (status, admin_id, datetime.now(pytz.utc), request_id)
             )
+
+    def add_monthly_cost(self, year: int, month: int, cost: float, description: str) -> bool:
+        """Adds a new monthly cost entry."""
+        with self.write_conn() as c:
+            try:
+                c.execute(
+                    "INSERT INTO monthly_costs (year, month, cost, description) VALUES (?, ?, ?, ?)",
+                    (year, month, cost, description)
+                )
+                return True
+            except sqlite3.IntegrityError:
+                logger.warning(f"Cost entry for {year}-{month} with description '{description}' already exists.")
+                return False
+
+    def get_all_monthly_costs(self) -> List[Dict[str, Any]]:
+        """Retrieves all monthly cost entries."""
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM monthly_costs ORDER BY year DESC, month DESC").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_costs_for_month(self, year: int, month: int) -> List[Dict[str, Any]]:
+        """هزینه‌های ثبت شده برای یک ماه و سال مشخص را برمی‌گرداند."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT description, cost FROM monthly_costs WHERE year = ? AND month = ?",
+                (year, month)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_monthly_cost(self, cost_id: int) -> bool:
+        """Deletes a monthly cost entry by its ID."""
+        with self.write_conn() as c:
+            cursor = c.execute("DELETE FROM monthly_costs WHERE id = ?", (cost_id,))
+            return cursor.rowcount > 0
+
+    def get_monthly_financials(self) -> Dict[str, Dict[str, float]]:
+        """
+        (نسخه نهایی و پایدار)
+        درآمدها و هزینه‌ها را بر اساس ماه میلادی محاسبه می‌کند.
+        """
+        financials = {}
+        
+        # ۱. محاسبه درآمد ماهانه با کوئری مستقیم SQLite
+        revenue_query = """
+            SELECT
+                strftime('%Y-%m', transaction_date) as month,
+                SUM(amount) as total_revenue
+            FROM wallet_transactions
+            WHERE (type = 'deposit' OR type = 'addon_purchase' OR type = 'purchase' OR type = 'gift_purchase')
+            GROUP BY month
+        """
+        with self._conn() as c:
+            try:
+                revenue_rows = c.execute(revenue_query).fetchall()
+                for row in revenue_rows:
+                    if row['month']:
+                        financials[row['month']] = {'revenue': row['total_revenue'], 'cost': 0}
+            except sqlite3.OperationalError as e:
+                logger.error(f"Error fetching monthly revenue: {e}", exc_info=True)
+
+
+        # ۲. خواندن هزینه‌های ماهانه
+        cost_query = """
+            SELECT
+                printf('%d-%02d', year, month) as month,
+                SUM(cost) as total_cost
+            FROM monthly_costs
+            GROUP BY month
+        """
+        with self._conn() as c:
+            try:
+                cost_rows = c.execute(cost_query).fetchall()
+                for row in cost_rows:
+                    if row['month']:
+                        if row['month'] not in financials:
+                            financials[row['month']] = {'revenue': 0, 'cost': 0}
+                        financials[row['month']]['cost'] = row['total_cost']
+            except sqlite3.OperationalError as e:
+                logger.error(f"Error fetching monthly costs: {e}", exc_info=True)
+
+        # ۳. محاسبه سود
+        for month, data in financials.items():
+            data['profit'] = data.get('revenue', 0) - data.get('cost', 0)
+            
+        return financials
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

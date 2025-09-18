@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}گزارش مالی{% endblock %}
+
+{% block extra_css %}
+<style>
+    .financial-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+        align-items: flex-start;
+    }
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .kpi-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 1rem;
+        text-align: center;
+    }
+    .kpi-card .value { font-size: 1.8rem; font-weight: 700; }
+    .kpi-card .label { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .profit { color: var(--success-color); }
+    .loss { color: var(--danger-color); }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    .form-control {
+        width: 100%;
+        padding: 0.8rem 1rem;
+        border: 1px solid var(--border-color);
+        background-color: var(--input-bg, var(--bg-color));
+        color: var(--text-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+        box-sizing: border-box; 
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+    }
+    
+    .ltr-number { direction: ltr; display: inline-block; }
+    .table-header-flex { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+
+    /* --- START: استایل نهایی و اصلاح شده برای Tooltip --- */
+    .tooltip-container {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+    }
+    .tooltip-container .tooltip-text {
+        visibility: hidden;
+        width: 240px;
+        background-color: var(--sidebar-bg);
+        color: var(--sidebar-text);
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 10;
+        top: 125%;
+        left: 50%;
+        margin-left: -120px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 0.85rem;
+        font-weight: normal;
+        white-space: normal;
+        line-height: 1.6;
+        pointer-events: none;
+    }
+    .tooltip-container .tooltip-text::after {
+        content: "";
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: transparent transparent var(--sidebar-bg) transparent;
+    }
+    .tooltip-container:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
+    /* --- END: استایل نهایی --- */
+
+    @media (max-width: 991px) { .financial-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block page_content %}
+    {% set page_title='گزارش مالی' %}
+    {% include 'partials/_header.html' %}
+
+    <div class="financial-grid">
+        <div class="main-column">
+            <div class="info-card">
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="value profit">{{ "{:,.0f}".format(summary.total_revenue) }}</div>
+                        <div class="label">درآمد کل (تومان)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="value loss">{{ "{:,.0f}".format(summary.total_cost) }}</div>
+                        <div class="label">هزینه کل (تومان)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="value {% if summary.total_profit >= 0 %}profit{% else %}loss{% endif %}">
+                            <span class="ltr-number">{{ "{:,.0f}".format(summary.total_profit) }}</span>
+                        </div>
+                        <div class="label">سود کل (تومان)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card data-table-container" style="margin-top: 1.5rem;">
+                <div class="table-header"><h3>تاریخچه مالی ماهانه</h3></div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ماه (میلادی)</th>
+                                <th>درآمد (تومان)</th>
+                                <th>هزینه (تومان)</th>
+                                <th>سود / زیان (تومان)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in financials %}
+                                <tr>
+                                    <td><b>{{ item.month }}</b></td>
+                                    <td class="profit"><span class="ltr-number">{{ "{:,.0f}".format(item.revenue) }}</span></td>
+                                    <td class="loss"><span class="ltr-number">{{ "{:,.0f}".format(item.cost) }}</span></td>
+                                    <td class="{% if item.profit >= 0 %}profit{% else %}loss{% endif %}">
+                                        <b><span class="ltr-number">{{ "{:,.0f}".format(item.profit) }}</span></b>
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr><td colspan="4" style="text-align: center; padding: 1.5rem;">داده‌ای برای نمایش وجود ندارد.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-column">
+            <div class="info-card">
+                <div class="table-header" style="padding: 0 0 1rem 0;"><h4><i class="ri-add-box-line"></i> افزودن هزینه جدید</h4></div>
+                <form action="{{ url_for('admin.add_cost_route') }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="month">ماه هزینه (میلادی)</label>
+                        <input type="month" id="month" name="month" class="form-control" required value="{{ current_month_str }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="cost">مبلغ هزینه (تومان)</label>
+                        <input type="number" id="cost" name="cost" class="form-control" required placeholder="مثال: 500000">
+                    </div>
+                    <div class="form-group">
+                        <label for="description">توضیحات</label>
+                        <input type="text" id="description" name="description" class="form-control" placeholder="مثال: هزینه سرور آلمان" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">ثبت هزینه</button>
+                </form>
+            </div>
+            <div class="info-card data-table-container" style="margin-top: 1.5rem;">
+                <div class="table-header table-header-flex">
+                    <h3>لیست هزینه‌ها</h3>
+                    <div class="tooltip-container">
+                        <i class="ri-information-line"></i>
+                        <span class="tooltip-text">هزینه‌های هر ماه به صورت خودکار از روی ماه قبل تمدید می‌شوند. برای حذف یک هزینه از ماه‌های آینده، آن را در ماه جاری حذف کنید.</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead><tr><th>توضیحات</th><th>مبلغ</th><th></th></tr></thead>
+                        <tbody>
+                            {% for cost in costs %}
+                                <tr>
+                                    <td>{{ cost.description }}<br><small>{{ cost.year }}-{{ "%02d"|format(cost.month) }}</small></td>
+                                    <td><span class="ltr-number">{{ "{:,.0f}".format(cost.cost) }}</span></td>
+                                    <td>
+                                        <form action="{{ url_for('admin.delete_cost_route', cost_id=cost.id) }}" method="POST" onsubmit="return confirm('آیا از حذف این هزینه مطمئن هستید؟');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="action-btn delete-btn" title="حذف"><i class="ri-delete-bin-line"></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr><td colspan="3" style="text-align: center;">هزینه‌ای ثبت نشده.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

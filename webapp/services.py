@@ -11,7 +11,6 @@ from bot.config import DAILY_REPORT_TIME, USAGE_WARNING_CHECK_HOURS
 from html import unescape
 from html import escape as html_escape
 
-
 logger = logging.getLogger(__name__)
 
 try:
@@ -360,6 +359,30 @@ def generate_comprehensive_report_data():
         "today_shamsi": to_shamsi(datetime.now(), include_time=False)
     }
 
+def get_financial_report_data():
+    """داده‌های مورد نیاز برای صفحه گزارش مالی را جمع‌آوری و پردازش می‌کند."""
+    
+    financials_raw = db.get_monthly_financials()
+    all_costs_raw = db.get_all_monthly_costs()
+
+    financials_processed = []
+    for month_str, data in sorted(financials_raw.items(), reverse=True):
+        financials_processed.append({
+            "month": month_str,
+            **data
+        })
+        
+    summary = {
+        "total_revenue": sum(item['revenue'] for item in financials_processed),
+        "total_cost": sum(item['cost'] for item in financials_processed),
+        "total_profit": sum(item['profit'] for item in financials_processed)
+    }
+    
+    return {
+        "financials": financials_processed,
+        "costs": all_costs_raw,
+        "summary": summary
+    }
 
 def get_all_payments_for_admin():
     try:

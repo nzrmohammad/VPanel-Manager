@@ -10,7 +10,8 @@ from ..admin_formatters import (
     fmt_users_list, fmt_panel_users_list, fmt_online_users_list,
     fmt_bot_users_list, fmt_birthdays_list,
     fmt_marzban_system_stats,
-    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks, fmt_leaderboard_list, fmt_user_balances_list
+    fmt_payments_report_list, fmt_admin_quick_dashboard, fmt_hiddify_panel_info, fmt_connected_devices_list, fmt_users_by_plan_list, fmt_scheduled_tasks, fmt_leaderboard_list, fmt_user_balances_list,
+    fmt_financial_report
 )
 from ..user_formatters import fmt_user_report, fmt_user_weekly_report
 from ..utils import _safe_edit, escape_markdown, load_service_plans, parse_volume_string
@@ -576,3 +577,25 @@ def handle_connected_devices_list(call, params):
     )
     
     _safe_edit(uid, msg_id, text, reply_markup=kb)
+
+def handle_financial_report(call, params):
+    """گزارش مالی را تولید و برای ادمین ارسال می‌کند."""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    from webapp.services import get_financial_report_data
+
+    _safe_edit(uid, msg_id, escape_markdown("⏳ در حال محاسبه گزارش مالی..."))
+    
+    try:
+        financial_data = get_financial_report_data()
+        text = fmt_financial_report(financial_data)
+        
+        kb = types.InlineKeyboardMarkup()
+        # می‌توانید لینک مستقیم به پنل وب را هم اضافه کنید
+        # kb.add(types.InlineKeyboardButton("مشاهده کامل در وب", url="..."))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به گزارش‌ها", callback_data="admin:reports_menu"))
+        
+        _safe_edit(uid, msg_id, text, reply_markup=kb)
+        
+    except Exception as e:
+        logger.error(f"Error generating financial report for bot: {e}", exc_info=True)
+        _safe_edit(uid, msg_id, escape_markdown("❌ خطایی در محاسبه گزارش رخ داد."))
