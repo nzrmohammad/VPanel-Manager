@@ -303,11 +303,10 @@ def check_for_special_occasions(bot):
     except Exception as e:
         logger.error(f"Error checking for special occasions: {e}", exc_info=True)
 
-
 def _distribute_special_occasion_gifts(bot, event_details: dict):
-    """هدیه تعریف شده را به تمام کاربران فعال اعمال می‌کند."""
-    all_active_uuids = list(db.all_active_uuids())
-    if not all_active_uuids:
+    """(نسخه نهایی) هدیه رویدادها را به صورت هوشمند بین پنل‌های کاربران فعال تقسیم و اعمال می‌کند."""
+    all_active_uuids_records = list(db.all_active_uuids()) # تمام رکوردهای فعال را می‌خوانیم
+    if not all_active_uuids_records:
         logger.info(f"No active users to send {event_details['name']} gift to.")
         return
 
@@ -320,19 +319,39 @@ def _distribute_special_occasion_gifts(bot, event_details: dict):
         return
 
     successful_gifts = 0
-    for user_row in all_active_uuids:
+    for user_row in all_active_uuids_records:
         try:
-            success = combined_handler.modify_user_on_all_panels(
-                identifier=user_row['uuid'],
-                add_gb=gift_gb,
-                add_days=gift_days
-            )
-            if success:
-                user_settings = db.get_user_settings(user_row['user_id'])
-                if user_settings.get('promotional_alerts', True):
-                    send_warning_message(bot, user_row['user_id'], escape_markdown(message_template))
-                successful_gifts += 1
-                time.sleep(0.2)
+            user_uuid = user_row['uuid']
+            user_id = user_row['user_id']
+            
+            # 1. گرفتن دسترسی‌های کاربر از رکوردی که از قبل داریم
+            user_access = db.uuid_by_id(user_id, user_row['id'])
+            if not user_access:
+                logger.warning(f"Could not find access record for user {user_id} with uuid {user_uuid}")
+                continue
+
+            has_hiddify = user_access.get('has_access_de', False)
+            has_marzban = user_access.get('has_access_fr', False) or user_access.get('has_access_tr', False) or user_access.get('has_access_us', False)
+
+            # 2. اعمال هوشمند پاداش رویداد
+            if has_hiddify and has_marzban:
+                # اگر به هر دو دسترسی داشت، حجم نصف می‌شود ولی روز به هر دو اضافه می‌شود
+                half_gb = gift_gb / 2
+                combined_handler.modify_user_on_all_panels(user_uuid, add_gb=half_gb, target_panel_type='hiddify')
+                combined_handler.modify_user_on_all_panels(user_uuid, add_gb=half_gb, target_panel_type='marzban')
+                if gift_days > 0:
+                    combined_handler.modify_user_on_all_panels(user_uuid, add_days=gift_days)
+            else:
+                # اگر فقط به یکی دسترسی داشت، تمام پاداش به همان یک پنل اضافه می‌شود
+                if gift_gb > 0 or gift_days > 0:
+                    combined_handler.modify_user_on_all_panels(user_uuid, add_gb=gift_gb, add_days=gift_days)
+
+            user_settings = db.get_user_settings(user_id)
+            if user_settings.get('promotional_alerts', True):
+                send_warning_message(bot, user_id, escape_markdown(message_template))
+            
+            successful_gifts += 1
+            time.sleep(0.2)
         except Exception as e:
             logger.error(f"Failed to give {event_details['name']} gift to user {user_row['user_id']}: {e}")
     

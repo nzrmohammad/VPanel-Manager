@@ -13,6 +13,7 @@ from .utils import (
     parse_user_agent
 )
 
+
 logger = logging.getLogger(__name__)
 
 def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
@@ -769,36 +770,54 @@ def fmt_user_account_page(user_id: int, lang_code: str) -> str:
     
     return "\n".join(lines)
 
+def fmt_purchase_summary(info_before: dict, info_after: dict, plan: dict, lang_code: str, user_access: dict = None) -> str:
+    """
+    (نسخه نهایی) خلاصه خرید را برای کاربر با نمایش وضعیت قبل و بعد از خرید، فرمت‌بندی می‌کند.
+    """
+    if not user_access:
+        user_access = {}
 
-def fmt_purchase_summary(info_before: dict, info_after: dict, plan_to_buy: dict, lang_code: str) -> str:
-    """یک خلاصه متنی مدرن برای نمایش وضعیت سرویس قبل و بعد از خرید ایجاد می‌کند."""
+    days_unit = get_string('days_unit', lang_code)
 
-    limit_before = info_before.get('usage_limit_GB', 0)
-    expire_before = info_before.get('expire', 0) if info_before.get('expire') is not None else '∞'
-    limit_after = info_after.get('usage_limit_GB', 0)
-    expire_after = info_after.get('expire', 0) if info_after.get('expire') is not None else '∞'
+    lines = [
+        escape_markdown(get_string('purchase_summary_header', lang_code)),
+        "`" + '─' * 26 + "`",
+    ]
 
-    from .utils import parse_volume_string
-    days_added = parse_volume_string(plan_to_buy.get('duration', '0'))
-    
-    gb_added = 0
-    plan_type = plan_to_buy.get('type')
-    if plan_type == 'combined':
-        gb_added = parse_volume_string(plan_to_buy.get('total_volume', '0'))
-    else:
-        volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
-        gb_added = parse_volume_string(plan_to_buy.get(volume_key, '0'))
+    marzban_flags = []
+    if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
+    if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
+    if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
+    dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else ""
 
-    
-    header_text = escape_markdown("سرویس شما با موفقیت شارژ شد.\n")
-    details_header = escape_markdown("\nجزئیات تغییرات:")
-    separator = "`──────────────────`"
-    
-    gb_added_text = escape_markdown(f"+{gb_added:g} GB")
-    volume_line = f"📊 {limit_before:g} GB ➡️ {limit_after:g} GB \\({gb_added_text}\\)"
-    
-    days_added_text = escape_markdown(f"+{days_added} day")
-    days_line = f"📅 {expire_before} ➡️ {expire_after} \\({days_added_text}\\)"
+    def sort_key(panel_item_tuple):
+        panel_details = panel_item_tuple[1]
+        return panel_details.get('type') != 'hiddify'
 
-    lines = [header_text, details_header, separator, volume_line, days_line]
-    return "\n".join(lines)
+    lines.append(f"*{escape_markdown(get_string('purchase_summary_before_status', lang_code))}*")
+    sorted_before = sorted(info_before.get('breakdown', {}).items(), key=sort_key)
+    for panel_name, panel_details in sorted_before:
+        panel_type = panel_details.get('type')
+        if (panel_type == 'hiddify' and user_access.get('has_access_de')) or \
+           (panel_type == 'marzban' and dynamic_marzban_flags):
+            p_data = panel_details.get('data', {})
+            limit = p_data.get('usage_limit_GB', 0)
+            expire_raw = p_data.get('expire')
+            expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+            flag = "🇩🇪" if panel_type == 'hiddify' else dynamic_marzban_flags
+            lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} {escape_markdown(days_unit)}*")
+
+    lines.append(f"\n*{escape_markdown(get_string('purchase_summary_after_status', lang_code))}*")
+    sorted_after = sorted(info_after.get('breakdown', {}).items(), key=sort_key)
+    for panel_name, panel_details in sorted_after:
+        panel_type = panel_details.get('type')
+        if (panel_type == 'hiddify' and user_access.get('has_access_de')) or \
+           (panel_type == 'marzban' and dynamic_marzban_flags):
+            p_data = panel_details.get('data', {})
+            limit = p_data.get('usage_limit_GB', 0)
+            expire_raw = p_data.get('expire')
+            expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+            flag = "🇩🇪" if panel_type == 'hiddify' else dynamic_marzban_flags
+            lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} {escape_markdown(days_unit)}*")
+            
+    return '\n'.join(lines)

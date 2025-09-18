@@ -145,20 +145,22 @@ def handle_manual_charge_execution(call: types.CallbackQuery, params: list):
     identifier = convo.get('identifier')
 
     if not all([msg_id, target_user_id, amount, identifier]):
-        _safe_edit(admin_id, msg_id, "❌ اطلاعات ناقص است. عملیات لغو شد.", reply_markup=menu.admin_panel())
+        _safe_edit(admin_id, msg_id, escape_markdown("❌ اطلاعات ناقص است. عملیات لغو شد."), reply_markup=menu.admin_panel())
         return
         
-    # در توضیحات تراکنش، از یک متن عمومی‌تر استفاده می‌کنیم
     if db.update_wallet_balance(target_user_id, amount, 'deposit', "شارژ دستی توسط مدیریت"):
-        success_msg = f"✅ کیف پول کاربر با موفقیت به مبلغ *{amount:,.0f} تومان* شارژ شد."
+        
+        success_msg = f"✅ کیف پول کاربر با موفقیت به مبلغ *{amount:,.0f} تومان* شارژ شد\\."
         _safe_edit(admin_id, msg_id, success_msg, reply_markup=menu.admin_panel())
         
         try:
-            bot.send_message(target_user_id, f"✅ حساب شما به مبلغ *{amount:,.0f} تومان* توسط مدیریت شارژ شد.", parse_mode="MarkdownV2")
+            user_notification = f"✅ حساب شما به مبلغ *{amount:,.0f} تومان* توسط مدیریت شارژ شد\\."
+            bot.send_message(target_user_id, user_notification, parse_mode="MarkdownV2")
         except Exception as e:
             logger.warning(f"Could not send manual charge notification to user {target_user_id}: {e}")
+
     else:
-        _safe_edit(admin_id, msg_id, "❌ خطا در به‌روزرسانی موجودی کاربر در دیتابیس.", reply_markup=menu.admin_panel())
+        _safe_edit(admin_id, msg_id, escape_markdown("❌ خطا در به‌روزرسانی موجودی کاربر در دیتابیس."), reply_markup=menu.admin_panel())
 
 def handle_manual_charge_cancel(call: types.CallbackQuery, params: list):
     """(نسخه اصلاح شده) عملیات شارژ دستی را لغو کرده و به صفحه کاربر بازمی‌گردد."""

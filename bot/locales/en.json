@@ -240,5 +240,10 @@
   "transaction_history": "Transaction History",
   "pre_birthday_message": "🎂 *The countdown to a special day has begun\\!* 🎂\n\nHello {name}\\!\n\nThere are only *15 days* left until your birthday, and we are already counting down the moments to give you the fantastic gift we've prepared\\.\n\nStay tuned for your birthday\\! ✨",
   "loyalty_reminder_message": "🏆 *Just one step away from your loyalty reward\\!* 🏆\n\nYou are about to receive your next loyalty gift\\! With just *one more renewal*, you will receive a gift of *{gb_reward} GB* of data and *{days_reward} days* of extra credit\\.\n\nThank you for your continued support\\!",
-  "low_balance_for_renewal_warning": "⚠️ *Low Balance Warning for Auto-Renewal*\n\nYour service subscription is about to expire, but your wallet balance is not sufficient for automatic renewal\\.\n\nYou need to top up your account with at least *{needed_amount} Toman* to renew\\."
+  "low_balance_for_renewal_warning": "⚠️ *Low Balance Warning for Auto-Renewal*\n\nYour service subscription is about to expire, but your wallet balance is not sufficient for automatic renewal\\.\n\nYou need to top up your account with at least *{needed_amount} Toman* to renew\\.",
+  "purchase_summary_header": "Your service was successfully recharged.",
+  "purchase_summary_before_status": "Status Before Purchase",
+  "purchase_summary_after_status": "Status After Purchase",
+  "days_unit": "days",
+  "purchase_in_progress": "⏳ Processing your purchase... Please wait."
 }

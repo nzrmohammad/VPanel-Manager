@@ -693,7 +693,9 @@ def _find_user_by_telegram_id(message: types.Message):
                 kb.add(types.InlineKeyboardButton(button_text, callback_data=f"admin:us:{panel_short}:{row['uuid']}:search"))
 
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به منوی جستجو", callback_data="admin:search_menu"))
-        prompt = f"چندین اکانت برای کاربر *{first_name}* یافت شد. لطفاً یکی را انتخاب کنید:"
+        
+        prompt_template = f"چندین اکانت برای کاربر *{first_name}* یافت شد. لطفاً یکی را انتخاب کنید:"
+        prompt = escape_markdown(prompt_template).replace(f'*{first_name}*', f'*{first_name}*') # برای حفظ استایل بولد
         _safe_edit(admin_id, msg_id, prompt, reply_markup=kb)
 
     except ValueError:

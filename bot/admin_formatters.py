@@ -1062,40 +1062,61 @@ def fmt_user_balances_list(users: list, page: int) -> str:
     
     return "\n".join(lines)
 
-
-def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: float, info_before: dict, info_after: dict, payment_count: int, is_vip: bool) -> str:
+def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: float, info_before: dict, info_after: dict, payment_count: int, is_vip: bool, user_access: dict) -> str:
     """
-    (نسخه نهایی) پیام اطلاع‌رسانی خرید با کیف پول را با تمام جزئیات برای ادمین فرمت‌بندی می‌کند.
+    (نسخه نهایی) پیام اطلاع‌رسانی خرید را با نمایش وضعیت قبل و بعد از خرید، فرمت‌بندی می‌کند.
     """
     user_name = escape_markdown(user_info.first_name)
     user_id = user_info.id
     plan_name = escape_markdown(plan.get('name', 'ناشناس'))
     price = plan.get('price', 0)
-
-    # اطلاعات قبل از خرید
-    limit_before = info_before.get('usage_limit_GB', 0)
-    expire_before_raw = info_before.get('expire')
-    expire_before = expire_before_raw if expire_before_raw is not None and expire_before_raw >= 0 else 0
-
-    # اطلاعات بعد از خرید
-    limit_after = info_after.get('usage_limit_GB', 0)
-    expire_after_raw = info_after.get('expire')
-    expire_after = expire_after_raw if expire_after_raw is not None and expire_after_raw >= 0 else 0
     
-    vip_status = "✅ (VIP)" if is_vip else "─"
-
     lines = [
-        f"🛒 *خرید جدید از کیف پول*",
-        f"`──────────────────`",
+        "🛒 *خرید جدید از کیف پول*",
+        "`──────────────────`",
         f"👤 *کاربر:* {user_name} \\(`{user_id}`\\)",
-        f"👑 *وضعیت VIP:* {vip_status}",
         f"🛍️ *پلن:* {plan_name}",
         f"💰 *هزینه:* `{price:,.0f}` تومان",
-        f"💳 *موجودی باقیمانده:* `{new_balance:,.0f}` تومان",
-        f"📈 *تعداد کل تمدیدها:* {payment_count}",
-        f"`──────────────────`",
-        f"📊 *خلاصه وضعیت سرویس:*",
-        f"`قبل:` {int(limit_before)} GB \\| {int(expire_before)} روز",
-        f"`بعد:` *{int(limit_after)} GB* \\| *{int(expire_after)} روز*",
+        f"💳 *موجودی:* `{new_balance:,.0f}` تومان",
+        f"📈 *تمدید شماره:* {payment_count}",
+        "`──────────────────`",
     ]
+    
+    marzban_flags = []
+    if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
+    if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
+    if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
+    dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else ""
+
+    def sort_key(panel_item_tuple):
+        panel_details = panel_item_tuple[1]
+        return panel_details.get('type') != 'hiddify'
+
+    lines.append(f"📊 *وضعیت قبل از خرید*")
+    sorted_before = sorted(info_before.get('breakdown', {}).items(), key=sort_key)
+    for panel_name, panel_details in sorted_before:
+        panel_type = panel_details.get('type')
+        if (panel_type == 'hiddify' and user_access.get('has_access_de')) or \
+           (panel_type == 'marzban' and dynamic_marzban_flags):
+            p_data = panel_details.get('data', {})
+            limit = p_data.get('usage_limit_GB', 0)
+            expire_raw = p_data.get('expire')
+            expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+            flag = "🇩🇪" if panel_type == 'hiddify' else dynamic_marzban_flags
+            lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+
+    lines.append(f"\n📊 *وضعیت پس از خرید*")
+
+    sorted_after = sorted(info_after.get('breakdown', {}).items(), key=sort_key)
+    for panel_name, panel_details in sorted_after:
+        panel_type = panel_details.get('type')
+        if (panel_type == 'hiddify' and user_access.get('has_access_de')) or \
+           (panel_type == 'marzban' and dynamic_marzban_flags):
+            p_data = panel_details.get('data', {})
+            limit = p_data.get('usage_limit_GB', 0)
+            expire_raw = p_data.get('expire')
+            expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+            flag = "🇩🇪" if panel_type == 'hiddify' else dynamic_marzban_flags
+            lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+
     return "\n".join(lines)
