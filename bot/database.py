@@ -291,7 +291,7 @@ class DatabaseManager:
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
         """
-        (نسخه اصلاح‌شده و پایدار) مصرف روزانه را با مدیریت ریست شدن حجم محاسبه می‌کند.
+        (نسخه نهایی و کاملاً پایدار) مصرف روزانه را با مدیریت ریست شدن حجم محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
@@ -309,8 +309,14 @@ class DatabaseManager:
                 (uuid_id, today_midnight_utc)
             ).fetchone()
 
-            last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else (snapshots_today[0]['hiddify_usage_gb'] if snapshots_today else 0.0)
-            last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else (snapshots_today[0]['marzban_usage_gb'] if snapshots_today else 0.0)
+            if last_snap_before:
+                last_h = last_snap_before['hiddify_usage_gb'] or 0.0
+                last_m = last_snap_before['marzban_usage_gb'] or 0.0
+            elif snapshots_today:
+                last_h = snapshots_today[0]['hiddify_usage_gb'] or 0.0
+                last_m = snapshots_today[0]['marzban_usage_gb'] or 0.0
+            else:
+                return {'hiddify': 0.0, 'marzban': 0.0}
 
             total_h_usage = 0.0
             total_m_usage = 0.0
