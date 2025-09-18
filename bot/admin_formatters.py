@@ -1061,3 +1061,41 @@ def fmt_user_balances_list(users: list, page: int) -> str:
         lines.append(f"`{i}.` *{name}* \\(`{user['user_id']}`\\): `{balance:,.0f}` تومان")
     
     return "\n".join(lines)
+
+
+def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: float, info_before: dict, info_after: dict, payment_count: int, is_vip: bool) -> str:
+    """
+    (نسخه نهایی) پیام اطلاع‌رسانی خرید با کیف پول را با تمام جزئیات برای ادمین فرمت‌بندی می‌کند.
+    """
+    user_name = escape_markdown(user_info.first_name)
+    user_id = user_info.id
+    plan_name = escape_markdown(plan.get('name', 'ناشناس'))
+    price = plan.get('price', 0)
+
+    # اطلاعات قبل از خرید
+    limit_before = info_before.get('usage_limit_GB', 0)
+    expire_before_raw = info_before.get('expire')
+    expire_before = expire_before_raw if expire_before_raw is not None and expire_before_raw >= 0 else 0
+
+    # اطلاعات بعد از خرید
+    limit_after = info_after.get('usage_limit_GB', 0)
+    expire_after_raw = info_after.get('expire')
+    expire_after = expire_after_raw if expire_after_raw is not None and expire_after_raw >= 0 else 0
+    
+    vip_status = "✅ (VIP)" if is_vip else "─"
+
+    lines = [
+        f"🛒 *خرید جدید از کیف پول*",
+        f"`──────────────────`",
+        f"👤 *کاربر:* {user_name} \\(`{user_id}`\\)",
+        f"👑 *وضعیت VIP:* {vip_status}",
+        f"🛍️ *پلن:* {plan_name}",
+        f"💰 *هزینه:* `{price:,.0f}` تومان",
+        f"💳 *موجودی باقیمانده:* `{new_balance:,.0f}` تومان",
+        f"📈 *تعداد کل تمدیدها:* {payment_count}",
+        f"`──────────────────`",
+        f"📊 *خلاصه وضعیت سرویس:*",
+        f"`قبل:` {int(limit_before)} GB \\| {int(expire_before)} روز",
+        f"`بعد:` *{int(limit_after)} GB* \\| *{int(expire_after)} روز*",
+    ]
+    return "\n".join(lines)

@@ -4,8 +4,9 @@ from ..database import db
 from ..menu import menu
 from ..utils import escape_markdown, _safe_edit, load_service_plans, to_shamsi, parse_volume_string
 from ..user_formatters import fmt_purchase_summary
+from ..admin_formatters import fmt_admin_purchase_notification
 from ..language import get_string
-from ..config import ADMIN_IDS, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT
+from ..config import LOYALTY_REWARDS, REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS, ACHIEVEMENTS, ADMIN_IDS, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT
 from .. import combined_handler
 from telebot.apihelper import ApiTelegramException
 from html import escape
@@ -294,7 +295,7 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
     _safe_edit(uid, call.message.message_id, confirm_text, reply_markup=kb)
 
 def execute_purchase(call: types.CallbackQuery, plan_name: str):
-    """خرید را نهایی کرده، حجم و روز را به درستی اعمال کرده و سناریوی دسترسی کاربر را مدیریت می‌کند."""
+    """(نسخه نهایی) خرید را نهایی کرده، رکورد پرداخت و پاداش‌ها را ثبت و به ادمین اطلاع می‌دهد."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
     plans = load_service_plans()
@@ -310,80 +311,74 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
         bot.answer_callback_query(call.id, "خطا: شما هیچ اکانت فعالی برای اعمال پلن ندارید.", show_alert=True)
         return
 
-    user_main_uuid = user_uuids[0]['uuid']
-    info_before = combined_handler.get_combined_user_info(user_main_uuid)
-    user_uuid_record = db.get_user_uuid_record(user_main_uuid)
-    plan_type = plan_to_buy.get('type')
+    user_main_uuid_record = user_uuids[0]
+    user_main_uuid = user_main_uuid_record['uuid']
+    uuid_id = user_main_uuid_record['id']
+    is_vip = user_main_uuid_record.get('is_vip', False)
 
-    has_access = False
-    if plan_type == 'germany' and user_uuid_record.get('has_access_de'):
-        has_access = True
-    elif plan_type in ['france', 'turkey'] and (user_uuid_record.get('has_access_fr') or user_uuid_record.get('has_access_tr')):
-        has_access = True
-    elif plan_type == 'combined' and user_uuid_record.get('has_access_de') and (user_uuid_record.get('has_access_fr') or user_uuid_record.get('has_access_tr')):
-        has_access = True
+    info_before = combined_handler.get_combined_user_info(user_main_uuid)
 
     if not db.update_wallet_balance(uid, -price, 'purchase', f"خرید پلن: {plan_name}"):
         bot.answer_callback_query(call.id, "خطا: موجودی کیف پول شما کافی نبود.", show_alert=True)
         return
+    
+    db.add_payment_record(uuid_id)
+    payment_count = len(db.get_user_payment_history(uuid_id))
 
-    if has_access:
-        add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
-        
-        # --- منطق جدید و اصلاح شده برای رفع باگ اعتبار ---
-        # مرحله ۱: روزها را به تمام پنل‌های کاربر اضافه کن
-        if add_days > 0:
-            combined_handler.modify_user_on_all_panels(user_main_uuid, add_days=add_days)
+    if payment_count == 1:
+        _check_and_apply_referral_reward(uid)
+    _check_and_apply_loyalty_reward(uid, uuid_id, user_main_uuid, call.from_user.first_name)
+    
+    add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
+    plan_type = plan_to_buy.get('type')
+    
+    if add_days > 0:
+        combined_handler.modify_user_on_all_panels(user_main_uuid, add_days=add_days)
 
-        # مرحله ۲: حجم را فقط به پنل(های) مربوطه اضافه کن
-        if plan_type == 'combined':
-            add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
-            add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
-            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_de, target_panel_type='hiddify')
-            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr_tr, target_panel_type='marzban')
-        else:
-            target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
-            volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
-            add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
-            combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, target_panel_type=target_panel)
-        # -----------------------------------------------
-
-        info_after = combined_handler.get_combined_user_info(user_main_uuid)
-        summary_text = fmt_purchase_summary(info_before, info_after, plan_to_buy, lang_code)
-        
-        success_header = f"✅ خرید شما با موفقیت انجام شد\\! پلن *{escape_markdown(plan_name)}* برای شما فعال گردید\\."
-        final_message = f"{success_header}\n{summary_text}"
-        
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به کیف پول", callback_data="wallet:main"))
-        _safe_edit(uid, call.message.message_id, final_message, reply_markup=kb)
-
+    if plan_type == 'combined':
+        add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
+        add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
+        combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_de, target_panel_type='hiddify')
+        combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr_tr, target_panel_type='marzban')
     else:
-        import time
-        tracking_code = f"ACT-{uid}-{int(time.time())}"
+        target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
+        volume_key = 'volume_de' if plan_type == 'germany' else 'volume_fr' if plan_type == 'france' else 'volume_tr'
+        add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
+        combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, target_panel_type=target_panel)
+    
+    info_after = combined_handler.get_combined_user_info(user_main_uuid)
+    
+    try:
+        user_db_info_after = db.user(uid)
+        new_balance = user_db_info_after.get('wallet_balance', 0.0) if user_db_info_after else 0.0
         
-        user_message = (
-            f"⚠️ *{escape_markdown('نیاز به فعال‌سازی دستی')}*\n\n"
-            f"{escape_markdown(f'خرید پلن «{plan_name}» برای شما ثبت شد، اما شما به سرورهای این پلن دسترسی ندارید.')}\n\n"
-            f"{escape_markdown('لطفاً کد پیگیری زیر را برای پشتیبانی ارسال کنید تا دسترسی شما را فعال کنند:')}\n\n"
-            f"`{tracking_code}`"
+        admin_notification_text = fmt_admin_purchase_notification(
+            user_info=call.from_user,
+            plan=plan_to_buy,
+            new_balance=new_balance,
+            info_before=info_before,
+            info_after=info_after,
+            payment_count=payment_count,
+            is_vip=is_vip
         )
-        support_link = f"https://t.me/{ADMIN_SUPPORT_CONTACT.replace('@', '')}"
-        kb_user = types.InlineKeyboardMarkup()
-        kb_user.add(types.InlineKeyboardButton("💬 ارسال کد به پشتیبانی", url=support_link))
-        _safe_edit(uid, call.message.message_id, user_message, reply_markup=kb_user)
-
-        admin_message = (
-            f"🔵 *{escape_markdown('نیاز به فعال‌سازی دسترسی')}*\n\n"
-            f"کاربر `{uid}` پلن *{escape_markdown(plan_name)}* را خریداری کرده اما به سرور مربوطه دسترسی ندارد.\n"
-            f"*کد پیگیری:* `{tracking_code}`\n\n"
-            f"لطفاً پس از ارتباط کاربر، دسترسی لازم را در پنل وب ادمین برای او فعال کرده و سپس حجم و روز پلن را به صورت دستی برایش اعمال کنید."
+        
+        panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info_after.get('breakdown', {}).values()) else 'm'
+        kb_admin = types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton("👤 مدیریت کاربر", callback_data=f"admin:us:{panel_short}:{user_main_uuid}:search")
         )
+        
         for admin_id in ADMIN_IDS:
-            try:
-                bot.send_message(admin_id, admin_message, parse_mode="MarkdownV2")
-            except Exception as e:
-                logger.error(f"Failed to send 'Access Needed' notification to admin {admin_id}: {e}")
+            bot.send_message(admin_id, admin_notification_text, parse_mode="MarkdownV2", reply_markup=kb_admin)
+    except Exception as e:
+        logger.error(f"Failed to send purchase notification to admins for user {uid}: {e}")
+
+
+    summary_text = fmt_purchase_summary(info_before, info_after, plan_to_buy, lang_code)
+    success_header = f"✅ خرید شما با موفقیت انجام شد\\! پلن *{escape_markdown(plan_name)}* برای شما فعال گردید\\."
+    final_message = f"{success_header}\n{summary_text}"
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به کیف پول", callback_data="wallet:main"))
+    _safe_edit(uid, call.message.message_id, final_message, reply_markup=kb)
 
 
 def show_wallet_settings(call: types.CallbackQuery):
@@ -695,3 +690,68 @@ def execute_gift_purchase(call: types.CallbackQuery):
         )
         for admin_id in ADMIN_IDS:
             _notify_user(admin_id, admin_message)
+
+def _check_and_apply_loyalty_reward(user_telegram_id: int, uuid_id: int, user_uuid: str, user_name: str):
+    """
+    وضعیت وفاداری کاربر را بررسی کرده و در صورت واجد شرایط بودن، پاداش را اعمال می‌کند.
+    """
+    if not LOYALTY_REWARDS:
+        return
+
+    try:
+        # تعداد کل پرداخت‌های ثبت‌شده برای این اکانت را می‌شماریم
+        payment_count = len(db.get_user_payment_history(uuid_id))
+        
+        # بررسی می‌کنیم آیا شماره تمدید فعلی، در لیست پاداش‌های ما وجود دارد یا نه
+        reward = LOYALTY_REWARDS.get(payment_count)
+
+        if reward:
+            add_gb = reward.get("gb", 0)
+            add_days = reward.get("days", 0)
+
+            # اعمال تغییرات (افزودن حجم و روز) به تمام پنل‌های کاربر
+            if combined_handler.modify_user_on_all_panels(user_uuid, add_gb=add_gb, add_days=add_days):
+                # ساخت پیام تبریک برای ارسال به کاربر
+                notification_text = (
+                    f"🎉 *هدیه وفاداری* 🎉\n\n"
+                    f"از همراهی صمیمانه شما سپاسگزاریم\\! به مناسبت *{payment_count}* امین تمدید سرویس، هدیه زیر برای شما فعال شد:\n\n"
+                    f"🎁 `{add_gb} GB` حجم و `{add_days}` روز اعتبار اضافی\n\n"
+                    f"این هدیه به صورت خودکار به اکانت شما اضافه شد\\. امیدواریم از آن لذت ببرید\\."
+                )
+                _notify_user(user_telegram_id, notification_text)
+                logger.info(f"Applied loyalty reward to user_id {user_telegram_id} for {payment_count} payments.")
+
+    except Exception as e:
+        logger.error(f"Error checking/applying loyalty reward for user_id {user_telegram_id}: {e}", exc_info=True)
+
+
+def _check_and_apply_referral_reward(user_telegram_id: int):
+    """بررسی و اعمال پاداش معرفی پس از اولین پرداخت."""
+    try:
+        referrer_info = db.get_referrer_info(user_telegram_id)
+        # پاداش فقط در صورتی اعمال می‌شود که کاربر معرف داشته باشد و قبلاً پاداش نگرفته باشد
+        if referrer_info and not referrer_info.get('referral_reward_applied'):
+            referrer_id = referrer_info['referred_by_user_id']
+
+            # پیدا کردن UUID های هر دو کاربر
+            new_user_uuid = db.uuids(user_telegram_id)[0]['uuid']
+            referrer_uuid = db.uuids(referrer_id)[0]['uuid']
+
+            # اعمال پاداش به هر دو
+            combined_handler.modify_user_on_all_panels(new_user_uuid, add_gb=REFERRAL_REWARD_GB, add_days=REFERRAL_REWARD_DAYS)
+            combined_handler.modify_user_on_all_panels(referrer_uuid, add_gb=REFERRAL_REWARD_GB, add_days=REFERRAL_REWARD_DAYS)
+
+            # ثبت اعمال پاداش در دیتابیس
+            db.mark_referral_reward_as_applied(user_telegram_id)
+
+            # ارسال پیام تبریک
+            new_user_name = escape_markdown(db.user(user_telegram_id).get('first_name', ''))
+            referrer_name = escape_markdown(db.user(referrer_id).get('first_name', ''))
+
+            _notify_user(user_telegram_id, f"🎁 هدیه اولین خرید شما ({REFERRAL_REWARD_GB}GB) به دلیل معرفی توسط *{referrer_name}* فعال شد\\!")
+            _notify_user(referrer_id, f"🎉 تبریک\\! کاربر *{new_user_name}* اولین خرید خود را انجام داد و هدیه معرفی ({REFERRAL_REWARD_GB}GB) برای شما فعال شد\\.")
+
+            logger.info(f"Referral reward applied for user {user_telegram_id} and referrer {referrer_id}.")
+
+    except Exception as e:
+        logger.error(f"Error applying referral reward for user {user_telegram_id}: {e}", exc_info=True)

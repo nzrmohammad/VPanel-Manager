@@ -7,7 +7,8 @@ from .. import combined_handler
 from ..admin_formatters import fmt_admin_user_summary, fmt_user_payment_history
 from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans
 
-from ..config import LOYALTY_REWARDS, REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS, ACHIEVEMENTS
+from ..user_handlers.wallet import _check_and_apply_loyalty_reward, _check_and_apply_referral_reward
+from ..config import ACHIEVEMENTS
 from ..scheduler_jobs.rewards import notify_user_achievement
 
 logger = logging.getLogger(__name__)
@@ -24,12 +25,8 @@ def handle_show_user_summary(call, params):
     CORRECTED: Parses parameters correctly to fetch user info using the full identifier.
     The identifier is now correctly retrieved from params[1].
     """
-    # <<<<<<< START OF FIX: Correctly parse params from the callback >>>>>>>>>
-    # The callback is formatted as "admin:us:{panel_short}:{identifier}:{context}"
-    # So, params[0] is panel_short, params[1] is the identifier.
     identifier = params[1] 
     back_target = params[2] if len(params) > 2 else 'management_menu'
-    # <<<<<<< END OF FIX >>>>>>>>>
     
     info = combined_handler.get_combined_user_info(identifier)
     if not info:
@@ -43,7 +40,6 @@ def handle_show_user_summary(call, params):
         if user_telegram_id:
             db_user = db.user(user_telegram_id)
 
-    # This function now generates the new desired format
     text = fmt_admin_user_summary(info, db_user)
     
     back_callback = f"admin:{back_target}" if back_target in ['search_menu', 'management_menu'] else "admin:search_menu"
@@ -59,7 +55,6 @@ def handle_edit_user_menu(call, params):
     منوی اصلی ویرایش کاربر را با گزینه‌های "افزودن حجم" و "افزودن روز" نمایش می‌دهد.
     """
     identifier = params[0]
-    # تشخیص اینکه آیا از منوی جستجو آمده‌ایم یا نه
     context = "search" if len(params) > 1 and params[1] == 'search' else None
     context_suffix = f":{context}" if context else ""
 
@@ -72,7 +67,6 @@ def handle_edit_user_menu(call, params):
     on_hiddify = any(p.get('type') == 'hiddify' for p in breakdown.values())
     on_marzban = any(p.get('type') == 'marzban' for p in breakdown.values())
 
-    # اگر کاربر فقط در یک نوع پنل حضور داشت، مستقیماً به مرحله پرسیدن مقدار می‌رویم
     single_panel_type = None
     if on_hiddify and not on_marzban:
         single_panel_type = 'hiddify'
@@ -82,12 +76,10 @@ def handle_edit_user_menu(call, params):
     prompt = "🔧 لطفاً نوع ویرایش را انتخاب کنید:"
     kb = types.InlineKeyboardMarkup(row_width=2)
     
-    # اگر کاربر در هر دو پنل بود، ابتدا از او می‌پرسیم که ویرایش برای کدام پنل است
     if single_panel_type:
         btn_add_gb = types.InlineKeyboardButton("➕ افزودن حجم", callback_data=f"admin:ae:agb:{single_panel_type}:{identifier}{context_suffix}")
         btn_add_days = types.InlineKeyboardButton("➕ افزودن روز", callback_data=f"admin:ae:ady:{single_panel_type}:{identifier}{context_suffix}")
     else:
-        # callback 'ep' (edit panel) برای نمایش منوی انتخاب پنل است
         btn_add_gb = types.InlineKeyboardButton("➕ افزودن حجم", callback_data=f"admin:ep:agb:{identifier}{context_suffix}")
         btn_add_days = types.InlineKeyboardButton("➕ افزودن روز", callback_data=f"admin:ep:ady:{identifier}{context_suffix}")
 
@@ -139,7 +131,6 @@ def handle_ask_edit_value(call, params):
     uid, msg_id = call.from_user.id, call.message.message_id
     back_cb = f"admin:edt:{identifier}{ (':' + context) if context else '' }"
     
-    # اطلاعات لازم برای مرحله بعد در حافظه موقت ذخیره می‌شود
     admin_conversations[uid] = {
         'edit_type': edit_type, 
         'panel_type': panel_type, 
@@ -162,7 +153,7 @@ def apply_user_edit(msg: types.Message):
     convo = admin_conversations.pop(uid, {})
     identifier = convo.get('identifier')
     edit_type = convo.get('edit_type')
-    panel_type = convo.get('panel_type') # نام پنل (hiddify یا marzban)
+    panel_type = convo.get('panel_type')
     msg_id = convo.get('msg_id')
     context = convo.get('context')
 
@@ -173,14 +164,12 @@ def apply_user_edit(msg: types.Message):
         add_gb = value if edit_type == "agb" else 0
         add_days = int(value) if edit_type == "ady" else 0
         
-        # این تابع به صورت هوشمند عمل کرده و فقط پنل مشخص شده را ویرایش می‌کند
         success = combined_handler.modify_user_on_all_panels(
             identifier=identifier, add_gb=add_gb, add_days=add_days, target_panel_type=panel_type
         )
 
         if success:
             new_info = combined_handler.get_combined_user_info(identifier)
-            # (بخش ارسال نوتیفیکیشن به کاربر و نمایش اطلاعات جدید)
             text_to_show = fmt_admin_user_summary(new_info) + "\n\n*✅ کاربر با موفقیت ویرایش شد\\.*"
             back_callback = "admin:search_menu" if context == "search" else None
             kb = menu.admin_user_interactive_management(identifier, new_info['is_active'], panel_type, back_callback=back_callback)
@@ -210,7 +199,6 @@ def handle_toggle_status(call, params):
     on_hiddify = any(p.get('type') == 'hiddify' for p in breakdown.values())
     on_marzban = any(p.get('type') == 'marzban' for p in breakdown.values())
 
-    # If user is only on one type of panel, toggle it directly
     if on_hiddify and not on_marzban:
         action_params = ['hiddify', identifier]
         if context: action_params.append(context)
@@ -222,9 +210,7 @@ def handle_toggle_status(call, params):
         handle_toggle_status_action(call, action_params)
         return
     
-    # If user is on both, show a selection menu
     prompt = "⚙️ *وضعیت کدام پنل تغییر کند؟*"
-    # We can reuse the reset_usage_selection_menu for this purpose
     kb = menu.admin_reset_usage_selection_menu(identifier, base_callback="tglA", context=context)
     _safe_edit(call.from_user.id, call.message.message_id, prompt, reply_markup=kb)
 
@@ -243,14 +229,12 @@ def handle_toggle_status_action(call, params):
 
     success = True
     
-    # Get all active panels to find the correct handler
     active_panels = {p['name']: p for p in db.get_active_panels()}
 
     for panel_name, panel_details in info.get('breakdown', {}).items():
         panel_type = panel_details.get('type')
         panel_data = panel_details.get('data', {})
         
-        # Check if this panel should be toggled
         if panel_type == panel_to_toggle or panel_to_toggle == 'both':
             panel_config = active_panels.get(panel_name)
             if not panel_config: continue
@@ -272,7 +256,6 @@ def handle_toggle_status_action(call, params):
     
     if success:
         bot.answer_callback_query(call.id, "✅ وضعیت با موفقیت تغییر کرد.")
-        # Refresh and display updated user info
         new_info = combined_handler.get_combined_user_info(identifier)
         if new_info:
             back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
@@ -439,16 +422,13 @@ def _handle_global_search_response(message: types.Message):
             prompt = f"❌ کاربری با مشخصات `{escape_markdown(query)}` یافت نشد\\."
             kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت به جستجو", callback_data="admin:search_menu"))
             _safe_edit(uid, original_msg_id, prompt, reply_markup=kb)
-            # Re-register for another search attempt
             admin_conversations[uid] = {'msg_id': original_msg_id}
             bot.register_next_step_handler_by_chat_id(uid, _handle_global_search_response)
             return
 
         if len(results) == 1:
-            # If only one user is found, show summary directly
             user = results[0]
             identifier = user.get('uuid') or user.get('name')
-            # (The logic for showing a single user remains the same)
             db_user = None
             if user.get('uuid'):
                 user_telegram_id = db.get_user_id_by_uuid(user['uuid'])
@@ -459,7 +439,6 @@ def _handle_global_search_response(message: types.Message):
             kb = menu.admin_user_interactive_management(identifier, user.get('is_active', False), panel_type, back_callback="admin:search_menu")
             _safe_edit(uid, original_msg_id, text, reply_markup=kb)
         else:
-            # If multiple users are found, show a selection list
             kb = types.InlineKeyboardMarkup(row_width=1)
             prompt = "چندین کاربر یافت شد. لطفاً یکی را انتخاب کنید:"
             
@@ -468,7 +447,6 @@ def _handle_global_search_response(message: types.Message):
                 status_emoji = "✅" if user.get('is_active') else "❌"
                 button_text = f"{status_emoji} {user.get('name', 'کاربر ناشناس')}"
                 
-                # We need a panel hint for the callback, 'h' or 'm'
                 panel_short = 'h' if any(p.get('type') == 'hiddify' for p in user.get('breakdown', {}).values()) else 'm'
                 
                 callback_data = f"admin:us:{panel_short}:{identifier_for_callback}:search"
@@ -480,8 +458,6 @@ def _handle_global_search_response(message: types.Message):
     except Exception as e:
         logger.error(f"Global search failed for query '{query}': {e}", exc_info=True)
         _safe_edit(uid, original_msg_id, "❌ خطایی در هنگام جستجو رخ داد.", reply_markup=menu.admin_search_menu())
-
-
 
 def handle_log_payment(call, params):
     identifier = params[0]
@@ -544,16 +520,11 @@ def handle_payment_history(call, params):
         bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
         return
 
-    # --- بخش اصلی اصلاح شده ---
-    # از یک تابع جامع‌تر برای گرفتن اطلاعات پرداخت استفاده می‌کنیم
     all_payments = db.get_all_payments_with_user_info()
-    # لیست پرداخت‌ها را فقط برای UUID کاربر مورد نظر فیلتر می‌کنیم
     user_payments = [p for p in all_payments if p.get('uuid') == info['uuid']]
     
     user_name_raw = info.get('name', 'کاربر ناشناس')
-    # لیست فیلتر شده را به تابع قالب‌بندی ارسال می‌کنیم
     text = fmt_user_payment_history(user_payments, user_name_raw, page)
-    # --- پایان بخش اصلاح شده ---
 
     panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
     base_cb = f"admin:phist:{identifier}"
@@ -834,7 +805,6 @@ def handle_delete_devices_confirm(call, params):
 
 def handle_delete_devices_action(call, params):
     """Deletes all recorded devices for a user and confirms."""
-    # پارامترها به درستی خوانده می‌شوند
     identifier = params[0]
     context = "search" if len(params) > 1 and params[1] == 'search' else None
     uid, msg_id = call.from_user.id, call.message.message_id
@@ -850,89 +820,14 @@ def handle_delete_devices_action(call, params):
         return
 
     deleted_count = db.delete_user_agents_by_uuid_id(uuid_id_in_db)
-    
     bot.answer_callback_query(call.id, f"✅ {deleted_count} دستگاه با موفقیت حذف شد.", show_alert=True)
-    
-    # --- ✨ شروع اصلاح اصلی ---
-    # در این بخش، پارامترهای مورد نیاز برای بازگشت صحیح به صفحه کاربر را بازسازی می‌کنیم
-    
-    # 1. نوع پنل کاربر را برای ساخت دکمه‌ها تشخیص می‌دهیم
     panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
     
-    # 2. لیست پارامترهای جدید را مطابق با فرمت تابع `handle_show_user_summary` می‌سازیم
     new_params_for_summary = [panel_short, identifier]
     if context:
         new_params_for_summary.append(context)
         
-    # 3. صفحه اطلاعات کاربر را با پارامترهای صحیح دوباره فراخوانی و به‌روزرسانی می‌کنیم
     handle_show_user_summary(call, new_params_for_summary)
-    # --- ✨ پایان اصلاح اصلی ---
-
-def _check_and_apply_loyalty_reward(user_telegram_id: int, uuid_id: int, user_uuid: str, user_name: str):
-    """
-    وضعیت وفاداری کاربر را بررسی کرده و در صورت واجد شرایط بودن، پاداش را اعمال می‌کند.
-    """
-    if not LOYALTY_REWARDS:
-        return
-
-    try:
-        # تعداد کل پرداخت‌های ثبت‌شده برای این اکانت را می‌شماریم
-        payment_count = len(db.get_user_payment_history(uuid_id))
-        
-        # بررسی می‌کنیم آیا شماره تمدید فعلی، در لیست پاداش‌های ما وجود دارد یا نه
-        reward = LOYALTY_REWARDS.get(payment_count)
-
-        if reward:
-            add_gb = reward.get("gb", 0)
-            add_days = reward.get("days", 0)
-
-            # اعمال تغییرات (افزودن حجم و روز) به تمام پنل‌های کاربر
-            if combined_handler.modify_user_on_all_panels(user_uuid, add_gb=add_gb, add_days=add_days):
-                # ساخت پیام تبریک برای ارسال به کاربر
-                notification_text = (
-                    f"🎉 *هدیه وفاداری* 🎉\n\n"
-                    f"از همراهی صمیمانه شما سپاسگزاریم\\! به مناسبت *{payment_count}* امین تمدید سرویس، هدیه زیر برای شما فعال شد:\n\n"
-                    f"🎁 `{add_gb} GB` حجم و `{add_days}` روز اعتبار اضافی\n\n"
-                    f"این هدیه به صورت خودکار به اکانت شما اضافه شد\\. امیدواریم از آن لذت ببرید\\."
-                )
-                _notify_user(user_telegram_id, notification_text)
-                logger.info(f"Applied loyalty reward to user_id {user_telegram_id} for {payment_count} payments.")
-
-    except Exception as e:
-        logger.error(f"Error checking/applying loyalty reward for user_id {user_telegram_id}: {e}", exc_info=True)
-
-
-def _check_and_apply_referral_reward(user_telegram_id: int):
-    """بررسی و اعمال پاداش معرفی پس از اولین پرداخت."""
-    try:
-        referrer_info = db.get_referrer_info(user_telegram_id)
-        # پاداش فقط در صورتی اعمال می‌شود که کاربر معرف داشته باشد و قبلاً پاداش نگرفته باشد
-        if referrer_info and not referrer_info.get('referral_reward_applied'):
-            referrer_id = referrer_info['referred_by_user_id']
-
-            # پیدا کردن UUID های هر دو کاربر
-            new_user_uuid = db.uuids(user_telegram_id)[0]['uuid']
-            referrer_uuid = db.uuids(referrer_id)[0]['uuid']
-
-            # اعمال پاداش به هر دو
-            combined_handler.modify_user_on_all_panels(new_user_uuid, add_gb=REFERRAL_REWARD_GB, add_days=REFERRAL_REWARD_DAYS)
-            combined_handler.modify_user_on_all_panels(referrer_uuid, add_gb=REFERRAL_REWARD_GB, add_days=REFERRAL_REWARD_DAYS)
-
-            # ثبت اعمال پاداش در دیتابیس
-            db.mark_referral_reward_as_applied(user_telegram_id)
-
-            # ارسال پیام تبریک
-            new_user_name = escape_markdown(db.user(user_telegram_id).get('first_name', ''))
-            referrer_name = escape_markdown(db.user(referrer_id).get('first_name', ''))
-
-            _notify_user(user_telegram_id, f"🎁 هدیه اولین خرید شما ({REFERRAL_REWARD_GB}GB) به دلیل معرفی توسط *{referrer_name}* فعال شد\\!")
-            _notify_user(referrer_id, f"🎉 تبریک\\! کاربر *{new_user_name}* اولین خرید خود را انجام داد و هدیه معرفی ({REFERRAL_REWARD_GB}GB) برای شما فعال شد\\.")
-
-            logger.info(f"Referral reward applied for user {user_telegram_id} and referrer {referrer_id}.")
-
-    except Exception as e:
-        logger.error(f"Error applying referral reward for user {user_telegram_id}: {e}", exc_info=True)
-
 
 def handle_reset_transfer_cooldown(call, params):
     """محدودیت زمانی انتقال ترافیک را برای یک کاربر ریست می‌کند."""
@@ -1035,7 +930,6 @@ def handle_force_snapshot(call, params):
     _safe_edit(uid, msg_id, escape_markdown("⏳ در حال دریافت اطلاعات از پنل‌ها و به‌روزرسانی آمار مصرف... لطفاً چند لحظه صبر کنید."), reply_markup=None)
 
     try:
-        # این کد دقیقا از روی تابع scheduler کپی شده است
         all_users_info = combined_handler.get_all_users_combined()
         if not all_users_info:
             bot.answer_callback_query(call.id, "هیچ کاربری در پنل‌ها یافت نشد.", show_alert=True)
@@ -1262,7 +1156,6 @@ def handle_achievement_request_callback(call: types.CallbackQuery, params: list)
         if db.add_achievement(user_id, badge_code):
             badge_info = ACHIEVEMENTS.get(badge_code, {})
             
-            # --- پیام‌های خلاقانه و شخصی‌سازی شده ---
             creative_messages = {
                 "swimming_champion": "🌊 بهت افتخار می‌کنیم قهرمان\\! سرعت و استقامتت در آب الهام‌بخش است\\. نشان «قهرمان شنا» به پاس تلاشت به تو اهدا شد\\.",
                 "bodybuilder": "💪 تلاش و انضباط تو در باشگاه ستودنی است\\! نشان «بدن‌ساز» به پروفایل افتخاراتت اضافه شد\\. به ساختن ادامه بده\\!",
@@ -1285,7 +1178,7 @@ def handle_achievement_request_callback(call: types.CallbackQuery, params: list)
             reply_markup=None, parse_mode="MarkdownV2"
         )
         bot.answer_callback_query(call.id, "درخواست تایید شد.")
-    else: # reject
+    else:
         db.update_achievement_request_status(request_id, 'rejected', admin_id)
         bot.edit_message_text(
             text=base_admin_message + "\n\n❌ *توسط شما رد شد*",
