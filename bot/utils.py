@@ -201,7 +201,12 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             }
         },
         {
-            "name": "V2Box",
+            "name": "V2Box Android",
+            "regex": re.compile(r"^(V2Box)/([\d.]+)\s+\((Android)\s+([\d.]+)\)"),
+            "extractor": lambda m: {"client": "V2Box", "version": m.group(2), "os": f"Android {m.group(4)}"}
+        },
+        {
+            "name": "V2Box iOS",
             "regex": re.compile(r"^(V2Box)\s+([\d.]+);(IOS)\s+([\d.]+)"),
             "extractor": lambda m: {"client": m.group(1), "version": m.group(2), "os": f"iOS {m.group(4)}"}
         },

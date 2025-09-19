@@ -219,7 +219,7 @@ def birthday_gifts_job(bot) -> None:
                             db.log_gift_given(user_id, 'birthday', current_year)
         
         elif days_left == 15:
-            if not db.has_recent_warning(user_id, 'pre_birthday_reminder', hours=360*24):
+            if not db.has_recent_warning(user_id, 'pre_birthday_reminder', hours=360 * 24):
                  user_settings = db.get_user_settings(user_id)
                  if user_settings.get('promotional_alerts', True):
                     user_name = user.get('first_name', 'کاربر عزیز')
@@ -249,7 +249,8 @@ def check_achievements_and_anniversary(bot) -> None:
             
             days_since_creation = (datetime.now(pytz.utc) - first_uuid_creation_date).days
             payment_count = len(db.get_user_payment_history(uuid_id))
-            referral_count = db.get_user_referral_count(user_id)
+            referred_users = db.get_referred_users(user_id)
+            referral_count = sum(1 for u in referred_users if u.get('referral_reward_applied'))
             
             # --- بررسی دستاوردها ---
             if days_since_creation >= 365 and db.add_achievement(user_id, 'veteran'):

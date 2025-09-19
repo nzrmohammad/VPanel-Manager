@@ -1123,37 +1123,79 @@ class DatabaseManager:
 
     def get_daily_usage_per_panel(self, days: int = 30) -> list[dict[str, Any]]:
         """
-        مصرف روزانه تفکیک شده برای هر پنل را جهت استفاده در نمودار جدید برمی‌گرداند.
+        (نسخه نهایی و اصلاح شده) مصرف روزانه را به تفکیک هر پنل و با مدیریت صحیح ریست شدن حجم، محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
+        now_in_tehran = datetime.now(tehran_tz)
         summary = []
 
-        # تاریخ‌ها را از امروز به گذشته محاسبه می‌کنیم
-        for i in range(days - 1, -1, -1):
-            target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
-            day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
-            day_end_utc = day_start_utc + timedelta(days=1)
+        with self.write_conn() as c:
+            for i in range(days - 1, -1, -1):
+                target_date = now_in_tehran.date() - timedelta(days=i)
+                day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+                day_end_utc = day_start_utc + timedelta(days=1)
 
-            query = """
-                SELECT
-                    SUM(COALESCE(h_diff, 0)) as total_h,
-                    SUM(COALESCE(m_diff, 0)) as total_m
-                FROM (
-                    SELECT
-                        MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_diff,
-                        MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_diff
+                # ۱. دریافت آخرین اسنپ‌شات روز قبل برای هر کاربر
+                prev_day_snapshots_query = """
+                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
+                    FROM (
+                        SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
+                            ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn
+                        FROM usage_snapshots
+                        WHERE taken_at < ?
+                    )
+                    WHERE rn = 1
+                """
+                prev_day_rows = c.execute(prev_day_snapshots_query, (day_start_utc,)).fetchall()
+                baseline_usage = {row['uuid_id']: {'h_start': row['hiddify_usage_gb'], 'm_start': row['marzban_usage_gb']} for row in prev_day_rows}
+
+                # ۲. دریافت تمام اسنپ‌شات‌های روز مورد نظر
+                daily_snapshots_query = """
+                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
                     FROM usage_snapshots
                     WHERE taken_at >= ? AND taken_at < ?
-                    GROUP BY uuid_id
-                )
-            """
-            with self.write_conn() as c:
-                row = c.execute(query, (day_start_utc, day_end_utc)).fetchone()
+                    ORDER BY uuid_id, taken_at ASC
+                """
+                daily_rows = c.execute(daily_snapshots_query, (day_start_utc, day_end_utc)).fetchall()
+
+                # ۳. محاسبه مصرف روزانه برای هر کاربر
+                daily_usage_by_user = {}
+                for row in daily_rows:
+                    uuid_id = row['uuid_id']
+                    if uuid_id not in daily_usage_by_user:
+                        baseline = baseline_usage.get(uuid_id)
+                        daily_usage_by_user[uuid_id] = {
+                            'h_total': 0.0,
+                            'm_total': 0.0,
+                            'h_last': baseline['h_start'] if baseline and baseline['h_start'] is not None else row['hiddify_usage_gb'],
+                            'm_last': baseline['m_start'] if baseline and baseline['m_start'] is not None else row['marzban_usage_gb']
+                        }
+
+                    user_daily = daily_usage_by_user[uuid_id]
+                    current_h = row['hiddify_usage_gb'] or 0.0
+                    current_m = row['marzban_usage_gb'] or 0.0
+                    last_h = user_daily['h_last'] or 0.0
+                    last_m = user_daily['m_last'] or 0.0
+
+                    # اگر مصرف فعلی کمتر از قبلی باشد یعنی ریست شده
+                    h_diff = current_h if current_h < last_h else current_h - last_h
+                    m_diff = current_m if current_m < last_m else current_m - last_m
+
+                    user_daily['h_total'] += max(0, h_diff)
+                    user_daily['m_total'] += max(0, m_diff)
+                    user_daily['h_last'] = current_h
+                    user_daily['m_last'] = current_m
+
+                # ۴. جمع‌بندی مصرف کل برای آن روز
+                day_total_h_gb = sum(d['h_total'] for d in daily_usage_by_user.values())
+                day_total_m_gb = sum(d['m_total'] for d in daily_usage_by_user.values())
+
                 summary.append({
                     'date': target_date.strftime('%Y-%m-%d'),
-                    'total_h_gb': round(row['total_h'] if row and row['total_h'] else 0, 2),
-                    'total_m_gb': round(row['total_m'] if row and row['total_m'] else 0, 2)
+                    'total_h_gb': round(day_total_h_gb, 2),
+                    'total_m_gb': round(day_total_m_gb, 2)
                 })
+
         return summary
 
     def get_activity_heatmap_data(self) -> List[Dict[str, Any]]:
@@ -2578,6 +2620,79 @@ class DatabaseManager:
                 "UPDATE achievement_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
                 (status, admin_id, datetime.now(pytz.utc), request_id)
             )
+
+    def get_new_vips_last_7_days(self) -> list[dict]:
+        """کاربرانی که در ۷ روز گذشته VIP شده‌اند را برمی‌گرداند."""
+        seven_days_ago = datetime.now(pytz.utc) - timedelta(days=7)
+        query = """
+            SELECT u.user_id, u.first_name
+            FROM users u
+            JOIN user_uuids uu ON u.user_id = uu.user_id
+            WHERE uu.is_vip = 1 AND uu.updated_at >= ?
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (seven_days_ago,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def count_all_active_users(self) -> int:
+        """تعداد کل کاربران فعال را برمی‌گرداند."""
+        with self._conn() as c:
+            row = c.execute("SELECT COUNT(id) FROM user_uuids WHERE is_active = 1").fetchone()
+            return row[0] if row else 0
+
+    def check_if_gift_given(self, user_id: int, gift_type: str, year: int) -> bool:
+        """بررسی می‌کند که آیا هدیه‌ای در سال جاری به کاربر داده شده است یا خیر."""
+        table_map = {
+            'birthday': 'birthday_gift_log',
+            'anniversary_1': 'anniversary_gift_log',
+            'anniversary_2': 'anniversary_gift_log',
+            'anniversary_3': 'anniversary_gift_log',
+        }
+        table_name = table_map.get(gift_type)
+        if not table_name:
+            return False
+        with self._conn() as c:
+            row = c.execute(
+                f"SELECT 1 FROM {table_name} WHERE user_id = ? AND gift_year = ?",
+                (user_id, year)
+            ).fetchone()
+            return row is not None
+
+    def log_gift_given(self, user_id: int, gift_type: str, year: int):
+        """ثبت می‌کند که هدیه‌ای در سال جاری به کاربر داده شده است."""
+        table_map = {
+            'birthday': 'birthday_gift_log',
+            'anniversary_1': 'anniversary_gift_log',
+            'anniversary_2': 'anniversary_gift_log',
+            'anniversary_3': 'anniversary_gift_log',
+        }
+        table_name = table_map.get(gift_type)
+        if not table_name:
+            return
+        with self.write_conn() as c:
+            c.execute(
+                f"INSERT OR IGNORE INTO {table_name} (user_id, gift_year) VALUES (?, ?)",
+                (user_id, year)
+            )
+
+    def get_lottery_participants(self) -> list[int]:
+        """لیست شناسه‌های کاربری واجد شرایط برای قرعه‌کشی را برمی‌گرداند."""
+        thirty_days_ago = datetime.now(pytz.utc) - timedelta(days=30)
+        query = """
+            SELECT DISTINCT u.user_id
+            FROM users u
+            JOIN user_uuids uu ON u.user_id = uu.user_id
+            JOIN usage_snapshots us ON uu.id = us.uuid_id
+            WHERE us.taken_at >= ?
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (thirty_days_ago,)).fetchall()
+            return [row['user_id'] for row in rows]
+
+    def clear_lottery_tickets(self):
+        """تمام بلیط‌های قرعه‌کشی را پاک می‌کند."""
+        # This is a placeholder logic. You should implement your own logic for clearing lottery tickets if you have a separate table for them.
+        pass
 
     def add_monthly_cost(self, year: int, month: int, cost: float, description: str) -> bool:
         """Adds a new monthly cost entry."""
