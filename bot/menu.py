@@ -481,10 +481,13 @@ class Menu:
             types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:us_ddev:{identifier}{context_suffix}")
         )
         kb.add(
-             types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}"),
-             types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}")
+             types.InlineKeyboardButton("📜 ریست سابقه پرداخت", callback_data=f"admin:reset_phist:{identifier}{context_suffix}"),
+             types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}")
         )
-        kb.add(types.InlineKeyboardButton("🎁 اهدای نشان", callback_data=f"admin:awd_b_menu:{identifier}{context_suffix}"))
+        kb.add(
+             types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}"),
+             types.InlineKeyboardButton("🎁 اهدای نشان", callback_data=f"admin:awd_b_menu:{identifier}{context_suffix}")
+        )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))

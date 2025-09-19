@@ -274,8 +274,6 @@ def show_plan_categories(call: types.CallbackQuery):
 
     _safe_edit(uid, msg_id, prompt, reply_markup=reply_markup, parse_mode=None)
 
-# In info.py
-
 def show_addons_page(call: types.CallbackQuery):
     """(نسخه نهایی) صفحه خرید بسته‌های افزودنی را بر اساس دسترسی کاربر نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
@@ -355,8 +353,13 @@ def confirm_addon_purchase(call: types.CallbackQuery):
     """(نسخه نهایی و اصلاح شده) از کاربر برای خرید بسته افزودنی تاییدیه می‌گیرد و پیش‌نمایش وضعیت را نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    parts = call.data.split(':')
+    
+    parts = call.data.split(':', 3)
+    if len(parts) < 4:
+        bot.answer_callback_query(call.id, "خطا: اطلاعات بسته نامعتبر است.", show_alert=True)
+        return
     addon_type, addon_name = parts[2], parts[3]
+    # --- END OF FIX ---
 
     all_addons = load_json_file('addons.json')
     addon_to_buy = next((a for a in all_addons if a.get("type") == addon_type and a.get("name") == addon_name), None)
@@ -442,18 +445,24 @@ def confirm_addon_purchase(call: types.CallbackQuery):
     confirm_text = "\n".join(lines)
 
     kb = types.InlineKeyboardMarkup(row_width=2)
+    
     kb.add(
         types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"wallet:addon_execute:{addon_type}:{addon_name}"),
         types.InlineKeyboardButton("❌ انصراف", callback_data="show_addons")
     )
+    
     _safe_edit(uid, msg_id, confirm_text, reply_markup=kb)
 
 def execute_addon_purchase(call: types.CallbackQuery):
     """(نسخه نهایی و کامل) خرید بسته افزودنی را نهایی کرده، به کاربر و ادمین اطلاع‌رسانی می‌کند."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    parts = call.data.split(':')
-    addon_type, addon_name = parts[1], parts[2]
+    
+    parts = call.data.split(':', 3)
+    if len(parts) < 4:
+        bot.answer_callback_query(call.id, "خطا: اطلاعات بسته نامعتبر است.", show_alert=True)
+        return
+    addon_type, addon_name = parts[2], parts[3]
 
     try:
         wait_text = get_string('purchase_in_progress', lang_code)

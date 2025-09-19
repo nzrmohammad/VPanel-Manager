@@ -272,6 +272,8 @@ ADMIN_CALLBACK_HANDLERS = {
     "awd_b": user_management.handle_award_badge,
     "ach_req_approve": user_management.handle_achievement_request_callback,
     "ach_req_reject": user_management.handle_achievement_request_callback,
+    "reset_phist": user_management.handle_reset_payment_history_confirm,
+    "do_reset_phist": user_management.handle_reset_payment_history_action,
     
     # Reporting & Analytics
     "health_check": reporting.handle_health_check,

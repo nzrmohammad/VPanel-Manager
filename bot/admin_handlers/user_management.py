@@ -1191,3 +1191,65 @@ def handle_achievement_request_callback(call: types.CallbackQuery, params: list)
         badge_name = ACHIEVEMENTS.get(badge_code, {}).get('name', 'درخواستی')
         rejection_message = f"با سلام، درخواست شما برای نشان «{badge_name}» بررسی شد اما در حال حاضر مورد تایید قرار نگرفت. لطفاً در صورت تمایل، بعداً دوباره تلاش کنید یا با پشتیبانی در تماس باشید."
         bot.send_message(user_id, rejection_message)
+
+def handle_reset_payment_history_confirm(call, params):
+    """Asks for confirmation before deleting payment history."""
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 'search' else None
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    uuid_id_in_db = db.get_uuid_id_by_uuid(info['uuid'])
+    if not uuid_id_in_db:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    payment_count = len(db.get_user_payment_history(uuid_id_in_db))
+    panel_short_for_back = 'h' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'm'
+    context_suffix = f":{context}" if context else ""
+    back_callback = f"admin:us:{panel_short_for_back}:{identifier}{context_suffix}"
+
+    if payment_count == 0:
+        prompt = "ℹ️ این کاربر هیچ سابقه پرداختی برای ریست کردن ندارد."
+        kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback))
+        _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
+        return
+
+    prompt = f"⚠️ آیا از حذف کامل تاریخچه پرداخت ({payment_count} مورد) برای کاربر «{escape_markdown(info.get('name', ''))}» اطمینان دارید؟ این عمل شمارنده تمدید را صفر می‌کند و غیرقابل بازگشت است."
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    confirm_callback = f"admin:do_reset_phist:{identifier}{context_suffix}"
+    kb.add(
+        types.InlineKeyboardButton("✅ بله، ریست کن", callback_data=confirm_callback),
+        types.InlineKeyboardButton("❌ انصراف", callback_data=back_callback)
+    )
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+
+
+def handle_reset_payment_history_action(call, params):
+    """Deletes all payment records for a user and confirms."""
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 'search' else None
+    
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    uuid_id_in_db = db.get_uuid_id_by_uuid(info['uuid'])
+    if not uuid_id_in_db:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    deleted_count = db.delete_user_payment_history(uuid_id_in_db)
+    bot.answer_callback_query(call.id, f"✅ {deleted_count} رکورد پرداخت با موفقیت حذف شد. شمارنده تمدید صفر شد.", show_alert=True)
+    
+    summary_params = ['h', identifier]
+    if context:
+        summary_params.append(context)
+    
+    handle_show_user_summary(call, summary_params)

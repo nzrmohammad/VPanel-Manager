@@ -2808,6 +2808,13 @@ class DatabaseManager:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
+    def delete_user_payment_history(self, uuid_id: int) -> int:
+        """Deletes all payment records for a specific uuid_id and returns the count of deleted rows."""
+        with self.write_conn() as c:
+            cursor = c.execute("DELETE FROM payments WHERE uuid_id = ?", (uuid_id,))
+            logger.info(f"ADMIN ACTION: Deleted {cursor.rowcount} payment records for uuid_id {uuid_id}.")
+            return cursor.rowcount
+
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
         access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
