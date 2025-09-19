@@ -460,6 +460,10 @@ def _handle_global_search_response(message: types.Message):
         _safe_edit(uid, original_msg_id, "❌ خطایی در هنگام جستجو رخ داد.", reply_markup=menu.admin_search_menu())
 
 def handle_log_payment(call, params):
+    """
+    (نسخه کامل و اصلاح شده)
+    پرداخت دستی را برای یک کاربر ثبت کرده و او را به منوی صحیح (جستجو یا مدیریت) بازمی‌گرداند.
+    """
     identifier = params[0]
     context = "search" if len(params) > 1 and params[1] == 'search' else None
     context_suffix = f":{context}" if context else ""
@@ -492,14 +496,13 @@ def handle_log_payment(call, params):
             f"✅ پرداخت شما برای اکانت *{user_name}* با موفقیت ثبت و سرویس شما *{action_text}*\\."
         )
         _notify_user(user_telegram_id, notification_text)
+
         if previous_payments_count == 0:
             _check_and_apply_referral_reward(user_telegram_id)
 
-
         panel_for_menu = 'hiddify' if bool(info.get('breakdown', {}).get('hiddify')) else 'marzban'
-        back_callback = "admin:search_menu" if context == "search" else None
+        back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
         text_to_show = fmt_admin_user_summary(info) + f"\n\n*✅ پرداخت با موفقیت ثبت شد\\.*"
-        
         kb = menu.admin_user_interactive_management(identifier, info['is_active'], panel_for_menu,
                                                     back_callback=back_callback)
         _safe_edit(uid, msg_id, text_to_show, reply_markup=kb)

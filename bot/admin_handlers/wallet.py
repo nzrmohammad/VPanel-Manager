@@ -172,13 +172,11 @@ def handle_manual_charge_cancel(call: types.CallbackQuery, params: list):
     identifier = convo.get('identifier')
     context = convo.get('context')
 
-    # اگر اطلاعات کافی برای بازگشت نداریم، به منوی اصلی برمی‌گردیم
     if not all([msg_id, identifier]):
         cancel_text = escape_markdown("❌ عملیات شارژ دستی لغو شد.")
         _safe_edit(admin_id, msg_id, cancel_text, reply_markup=menu.admin_panel())
         return
 
-    # --- START OF FIX: Rebuild the user summary view ---
     info = combined_handler.get_combined_user_info(identifier)
     if info:
         db_user = None
@@ -187,17 +185,14 @@ def handle_manual_charge_cancel(call: types.CallbackQuery, params: list):
             if user_telegram_id:
                 db_user = db.user(user_telegram_id)
         
-        # متن اصلی اطلاعات کاربر به همراه پیام لغو عملیات
         text = fmt_admin_user_summary(info, db_user) + "\n\n" + escape_markdown("❌ عملیات شارژ دستی لغو شد.")
         
-        # ساخت دکمه‌های مدیریت کاربر با back_callback صحیح
         panel_type = 'hiddify' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'marzban'
         back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
         kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel_type, back_callback=back_callback)
 
         _safe_edit(admin_id, msg_id, text, reply_markup=kb)
     else:
-        # اگر به هر دلیلی اطلاعات کاربر یافت نشد، به منوی جستجو برمی‌گردیم
         cancel_text = escape_markdown("❌ عملیات لغو شد و اطلاعات کاربر یافت نشد.")
         _safe_edit(admin_id, msg_id, cancel_text, reply_markup=menu.admin_search_menu())
 
