@@ -1846,75 +1846,98 @@ class DatabaseManager:
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
         report = {'top_10_overall': [], 'top_daily': {}}
-
-        weekly_usage_by_uuid = {}
-        daily_usage_by_uuid = {i: {} for i in range(7)}
+        
+        usage_data = {}
 
         with self.write_conn() as c:
-            all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
-            all_week_snapshots = c.execute(all_snapshots_query, (week_start_utc,)).fetchall()
+            active_uuids = c.execute("SELECT id, user_id FROM user_uuids WHERE is_active = 1").fetchall()
+            uuid_map = {row['id']: {'user_id': row['user_id']} for row in active_uuids}
 
-            snapshots_by_user = {}
-            for snap in all_week_snapshots:
-                snapshots_by_user.setdefault(snap['uuid_id'], []).append(snap)
+            for i in range(7):
+                day_start_local = (week_start_utc.astimezone(tehran_tz) + timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+                day_end_local = day_start_local + timedelta(days=1)
+                day_start_utc_loop = day_start_local.astimezone(pytz.utc)
+                day_end_utc_loop = day_end_local.astimezone(pytz.utc)
+                day_of_week_jalali = (jdatetime.datetime.fromgregorian(datetime=day_start_local).weekday() + 1) % 7
 
-            for uuid_id, user_snaps in snapshots_by_user.items():
-                last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, week_start_utc)).fetchone()
+                prev_day_snapshots_query = """
+                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
+                    FROM (
+                        SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
+                            ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn
+                        FROM usage_snapshots
+                        WHERE taken_at < ?
+                    )
+                    WHERE rn = 1
+                """
+                prev_day_rows = c.execute(prev_day_snapshots_query, (day_start_utc_loop,)).fetchall()
+                baseline_usage = {row['uuid_id']: {'h_start': row['hiddify_usage_gb'], 'm_start': row['marzban_usage_gb']} for row in prev_day_rows}
 
-                last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
-                last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
+                daily_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE taken_at >= ? AND taken_at < ? ORDER BY uuid_id, taken_at ASC"
+                daily_rows = c.execute(daily_snapshots_query, (day_start_utc_loop, day_end_utc_loop)).fetchall()
+                
+                daily_usage_by_uuid = {}
+                for row in daily_rows:
+                    uuid_id = row['uuid_id']
+                    if uuid_id not in daily_usage_by_uuid:
+                        baseline = baseline_usage.get(uuid_id)
+                        daily_usage_by_uuid[uuid_id] = {
+                            'h_total': 0.0, 'm_total': 0.0,
+                            'h_last': baseline['h_start'] if baseline and baseline['h_start'] is not None else row['hiddify_usage_gb'],
+                            'm_last': baseline['m_start'] if baseline and baseline['m_start'] is not None else row['marzban_usage_gb']
+                        }
+                    
+                    user_daily = daily_usage_by_uuid[uuid_id]
+                    current_h = row['hiddify_usage_gb'] or 0.0
+                    current_m = row['marzban_usage_gb'] or 0.0
+                    h_diff = current_h - (user_daily['h_last'] or 0.0)
+                    m_diff = current_m - (user_daily['m_last'] or 0.0)
+                    
+                    user_daily['h_total'] += max(0, h_diff)
+                    user_daily['m_total'] += max(0, m_diff)
+                    user_daily['h_last'] = current_h
+                    user_daily['m_last'] = current_m
 
-                for snap in user_snaps:
-                    h_diff = max(0, (snap['hiddify_usage_gb'] or 0.0) - last_h)
-                    m_diff = max(0, (snap['marzban_usage_gb'] or 0.0) - last_m)
-                    total_diff = h_diff + m_diff
+                for uuid_id, daily_data in daily_usage_by_uuid.items():
+                    if uuid_id not in uuid_map: continue
+                    if uuid_id not in usage_data:
+                        usage_data[uuid_id] = {'weekly_total': 0.0, 'daily_usages': [0.0] * 7}
+                    
+                    day_total = daily_data['h_total'] + daily_data['m_total']
+                    usage_data[uuid_id]['daily_usages'][day_of_week_jalali] = day_total
+                    usage_data[uuid_id]['weekly_total'] += day_total
 
-                    weekly_usage_by_uuid.setdefault(uuid_id, 0.0)
-                    weekly_usage_by_uuid[uuid_id] += total_diff
-
-                    snap_date_local = snap['taken_at'].astimezone(tehran_tz)
-                    day_of_week_jalali = (jdatetime.datetime.fromgregorian(datetime=snap_date_local).weekday() + 1) % 7
-                    daily_usage_by_uuid[day_of_week_jalali].setdefault(uuid_id, 0.0)
-                    daily_usage_by_uuid[day_of_week_jalali][uuid_id] += total_diff
-
-                    last_h, last_m = snap['hiddify_usage_gb'] or 0.0, snap['marzban_usage_gb'] or 0.0
-
-        user_id_map = {row['id']: row['user_id'] for row in self.get_all_user_uuids()}
+        usage_by_user_id = {}
         user_info_map = {user['user_id']: user for user in self.get_all_bot_users()}
-
-        weekly_usage_by_user_id = {}
-        for uuid_id, total_usage in weekly_usage_by_uuid.items():
-            user_id = user_id_map.get(uuid_id)
+        
+        for uuid_id, data in usage_data.items():
+            user_id = uuid_map.get(uuid_id, {}).get('user_id')
             if user_id:
-                weekly_usage_by_user_id.setdefault(user_id, 0.0)
-                weekly_usage_by_user_id[user_id] += total_usage
+                if user_id not in usage_by_user_id:
+                    usage_by_user_id[user_id] = {'weekly_total': 0.0, 'daily_usages': [0.0] * 7}
+                usage_by_user_id[user_id]['weekly_total'] += data['weekly_total']
+                for i in range(7):
+                    usage_by_user_id[user_id]['daily_usages'][i] += data['daily_usages'][i]
 
-        sorted_weekly_by_user_id = sorted(weekly_usage_by_user_id.items(), key=lambda item: item[1], reverse=True)
-        for user_id, total_usage in sorted_weekly_by_user_id[:10]:
-            if total_usage > 0.01:
+        sorted_weekly = sorted(usage_by_user_id.items(), key=lambda item: item[1]['weekly_total'], reverse=True)
+        for user_id, data in sorted_weekly[:10]:
+            if data['weekly_total'] > 0.01:
                 user_info = user_info_map.get(user_id)
-                user_name = user_info.get('first_name', 'کاربر ناشناس') if user_info else 'کاربر ناشناس'
-                report['top_10_overall'].append({'name': user_name, 'total_usage': total_usage})
+                user_name = user_info.get('first_name', f'کاربر {user_id}') if user_info else f'کاربر {user_id}'
+                report['top_10_overall'].append({'name': user_name, 'total_usage': data['weekly_total']})
 
-        for day_index, daily_data in daily_usage_by_uuid.items():
-            if not daily_data: continue
-
-            daily_usage_by_user_id = {}
-            for uuid_id, usage in daily_data.items():
-                user_id = user_id_map.get(uuid_id)
-                if user_id:
-                    daily_usage_by_user_id.setdefault(user_id, 0.0)
-                    daily_usage_by_user_id[user_id] += usage
-
-            if not daily_usage_by_user_id: continue
-
-            top_user_id = max(daily_usage_by_user_id, key=daily_usage_by_user_id.get)
-            top_usage = daily_usage_by_user_id[top_user_id]
-
-            if top_usage > 0.01:
-                top_user_info = user_info_map.get(top_user_id)
-                top_user_name = top_user_info.get('first_name', 'کاربر ناشناس') if top_user_info else 'کاربر ناشناس'
-                report['top_daily'][day_index] = {'name': top_user_name, 'usage': top_usage}
+        for i in range(7):
+            daily_top_user_id = None
+            daily_top_usage = 0
+            for user_id, data in usage_by_user_id.items():
+                if data['daily_usages'][i] > daily_top_usage:
+                    daily_top_usage = data['daily_usages'][i]
+                    daily_top_user_id = user_id
+            
+            if daily_top_user_id and daily_top_usage > 0.01:
+                user_info = user_info_map.get(daily_top_user_id)
+                user_name = user_info.get('first_name', f'کاربر {daily_top_user_id}') if user_info else f'کاربر {daily_top_user_id}'
+                report['top_daily'][i] = {'name': user_name, 'usage': daily_top_usage}
 
         return report
 

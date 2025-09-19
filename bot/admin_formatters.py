@@ -261,16 +261,16 @@ def fmt_lottery_participants_list(participants: list) -> str:
     """لیست شرکت‌کنندگان در قرعه‌کشی را برای ادمین فرمت‌بندی می‌کند."""
     lines = ["🍀 *لیست هفتگی واجدین شرایط قرعه‌کشی ماهانه*"]
     lines.append("`──────────────────`")
-    
+
     if not participants:
         lines.append("_در این هفته هیچ کاربری واجد شرایط نشده است._")
         return "\n".join(lines)
-        
+
     for i, user in enumerate(participants):
         name = escape_markdown(user.get('first_name', 'کاربر ناشناس'))
         badge_count = user.get('lucky_badge_count', 0)
         user_id = user.get('user_id', 'N/A')
-        lines.append(f"`{i+1}.` *{name}* \\(`{user_id}`\\) - {badge_count} نشان")
+        lines.append(f"`{i+1}.` *{name}* \\(`{user_id}`\\) \\- {badge_count} نشان")
         
     return "\n".join(lines)
 
