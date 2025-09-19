@@ -1741,61 +1741,44 @@ class DatabaseManager:
             return {'total': total_usage, 'night': night_usage}
 
 
-    def count_recently_active_users(self, minutes: int = 15) -> dict:
+    def count_recently_active_users(self, all_users_data: list, minutes: int = 15) -> dict:
         """
-        (نسخه نهایی و اصلاح شده) تعداد کاربران یکتایی که در N دقیقه گذشته مصرف داشته‌اند را با مقایسه دو اسنپ‌شات آخرشان محاسبه می‌کند.
+        (نسخه نهایی و اصلاح شده) تعداد کاربران آنلاینی که در N دقیقه گذشته فعالیت داشته‌اند را
+        بر اساس داده‌های مستقیم از پنل‌ها محاسبه می‌کند.
         """
-        time_limit = datetime.now(pytz.utc) - timedelta(minutes=minutes)
-        
         results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0, 'marzban_us': 0}
-        active_users = {'hiddify': set(), 'marzban_fr': set(), 'marzban_tr': set(), 'marzban_us': set()}
+        time_limit = datetime.now(pytz.utc) - timedelta(minutes=minutes)
 
-        with self.write_conn() as c:
-            all_uuids = c.execute("SELECT id FROM user_uuids WHERE is_active = 1").fetchall()
-            uuid_ids = [row['id'] for row in all_uuids]
+        for user in all_users_data:
+            last_online = user.get('last_online')
+            if not (user.get('is_active') and last_online and isinstance(last_online, datetime)):
+                continue
 
-            for uuid_id in uuid_ids:
-                snapshots = c.execute(
-                    """
-                    SELECT s.hiddify_usage_gb, s.marzban_usage_gb, s.taken_at, uu.has_access_fr, uu.has_access_tr, uu.has_access_us
-                    FROM usage_snapshots s
-                    JOIN user_uuids uu ON s.uuid_id = uu.id
-                    WHERE s.uuid_id = ?
-                    ORDER BY s.taken_at DESC
-                    LIMIT 2
-                    """, (uuid_id,)
-                ).fetchall()
+            # Ensure last_online is timezone-aware for correct comparison
+            last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
 
-                if len(snapshots) < 2:
-                    continue
-
-                latest_snap, previous_snap = snapshots[0], snapshots[1]
-
-                latest_snap_time = latest_snap['taken_at']
-                if latest_snap_time.tzinfo is None:
-                    latest_snap_time = pytz.utc.localize(latest_snap_time)
-
-                if latest_snap_time < time_limit:
-                    continue
-
-                h_increase = (latest_snap['hiddify_usage_gb'] or 0) - (previous_snap['hiddify_usage_gb'] or 0)
-                m_increase = (latest_snap['marzban_usage_gb'] or 0) - (previous_snap['marzban_usage_gb'] or 0)
-
-                if h_increase > 0.001:
-                    active_users['hiddify'].add(uuid_id)
-
-                if m_increase > 0.001:
-                    if latest_snap['has_access_fr']:
-                        active_users['marzban_fr'].add(uuid_id)
-                    if latest_snap['has_access_tr']:
-                        active_users['marzban_tr'].add(uuid_id)
-                    if latest_snap['has_access_us']:
-                        active_users['marzban_us'].add(uuid_id)
-
-        results['hiddify'] = len(active_users['hiddify'])
-        results['marzban_fr'] = len(active_users['marzban_fr'])
-        results['marzban_tr'] = len(active_users['marzban_tr'])
-        results['marzban_us'] = len(active_users['marzban_us'])
+            if last_online_aware >= time_limit:
+                # Check which panel this user was active on based on the breakdown
+                breakdown = user.get('breakdown', {})
+                
+                h_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+                m_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'marzban'), None)
+                
+                # Determine the most recent panel activity
+                if h_online and (not m_online or h_online >= m_online):
+                    results['hiddify'] += 1
+                elif m_online:
+                    # To be more precise, you need to know which marzban server they connected to.
+                    # This requires more specific data from the panel not currently available.
+                    # As a fallback, we increment all accessible marzban servers.
+                    user_record = self.get_user_uuid_record(user.get('uuid', ''))
+                    if user_record:
+                        if user_record.get('has_access_fr'):
+                            results['marzban_fr'] += 1
+                        if user_record.get('has_access_tr'):
+                            results['marzban_tr'] += 1
+                        if user_record.get('has_access_us'):
+                            results['marzban_us'] += 1
         return results
 
     def get_or_create_referral_code(self, user_id: int) -> str:

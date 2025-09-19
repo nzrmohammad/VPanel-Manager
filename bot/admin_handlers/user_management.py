@@ -1193,7 +1193,7 @@ def handle_achievement_request_callback(call: types.CallbackQuery, params: list)
         bot.send_message(user_id, rejection_message)
 
 def handle_reset_payment_history_confirm(call, params):
-    """Asks for confirmation before deleting payment history."""
+    """(نسخه اصلاح شده) از ادمین برای حذف تاریخچه پرداخت تاییدیه می‌گیرد."""
     identifier = params[0]
     context = "search" if len(params) > 1 and params[1] == 'search' else None
     uid, msg_id = call.from_user.id, call.message.message_id
@@ -1219,7 +1219,10 @@ def handle_reset_payment_history_confirm(call, params):
         _safe_edit(uid, msg_id, escape_markdown(prompt), reply_markup=kb)
         return
 
-    prompt = f"⚠️ آیا از حذف کامل تاریخچه پرداخت ({payment_count} مورد) برای کاربر «{escape_markdown(info.get('name', ''))}» اطمینان دارید؟ این عمل شمارنده تمدید را صفر می‌کند و غیرقابل بازگشت است."
+    prompt = (
+        f"⚠️ آیا از حذف کامل تاریخچه پرداخت \\({payment_count} مورد\\) برای کاربر «{escape_markdown(info.get('name', ''))}» "
+        f"اطمینان دارید؟ این عمل شمارنده تمدید را صفر می‌کند و غیرقابل بازگشت است\\."
+    )
     
     kb = types.InlineKeyboardMarkup(row_width=2)
     confirm_callback = f"admin:do_reset_phist:{identifier}{context_suffix}"
@@ -1231,7 +1234,7 @@ def handle_reset_payment_history_confirm(call, params):
 
 
 def handle_reset_payment_history_action(call, params):
-    """Deletes all payment records for a user and confirms."""
+    """(بدون تغییر) رکوردهای پرداخت کاربر را حذف کرده و نتیجه را اعلام می‌کند."""
     identifier = params[0]
     context = "search" if len(params) > 1 and params[1] == 'search' else None
     
