@@ -71,6 +71,12 @@ def handle_wallet_callbacks(call: types.CallbackQuery):
             start_transfer_flow(call)
         elif action == 'transfer_execute':
             execute_wallet_transfer(call)
+        elif action == 'addon_confirm':
+            from .info import confirm_addon_purchase
+            confirm_addon_purchase(call)
+        elif action == 'addon_execute':
+            from .info import execute_addon_purchase
+            execute_addon_purchase(call)
         elif action == 'gift_start':
             start_gift_flow(call)
         elif action == 'gift_plan_select':
