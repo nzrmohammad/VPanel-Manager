@@ -1492,33 +1492,57 @@ class DatabaseManager:
         return random_pool, fixed_pool
 
     def get_user_daily_usage_history_by_panel(self, uuid_id: int, days: int = 7) -> list:
-        """تاریخچه مصرف روزانه کاربر را به تفکیک هر پنل برای تعداد روز مشخص شده برمی‌گرداند."""
+        """(نسخه نهایی و اصلاح شده) تاریخچه مصرف روزانه را با مدیریت صحیح ریست شدن حجم محاسبه می‌کند."""
         tehran_tz = pytz.timezone("Asia/Tehran")
+        now_in_tehran = datetime.now(tehran_tz)
         history = []
+
         with self.write_conn() as c:
             for i in range(days):
-                target_date = datetime.now(tehran_tz).date() - timedelta(days=i)
+                target_date = now_in_tehran.date() - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
 
-                query = """
-                    SELECT
-                        (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h_usage,
-                        (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as m_usage
-                    FROM usage_snapshots
-                    WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
-                """
-                row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
+                last_snap_before = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                    (uuid_id, day_start_utc)
+                ).fetchone()
 
-                h_usage = max(0, row['h_usage'] if row and row['h_usage'] else 0)
-                m_usage = max(0, row['m_usage'] if row and row['m_usage'] else 0)
+                snapshots_today = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? ORDER BY taken_at ASC",
+                    (uuid_id, day_start_utc, day_end_utc)
+                ).fetchall()
+
+                total_h_usage, total_m_usage = 0.0, 0.0
+                
+                if last_snap_before:
+                    last_h = last_snap_before['hiddify_usage_gb'] or 0.0
+                    last_m = last_snap_before['marzban_usage_gb'] or 0.0
+                elif snapshots_today:
+                    last_h = snapshots_today[0]['hiddify_usage_gb'] or 0.0
+                    last_m = snapshots_today[0]['marzban_usage_gb'] or 0.0
+                else: 
+                    last_h, last_m = 0.0, 0.0
+
+                for snap in snapshots_today:
+                    current_h = snap['hiddify_usage_gb'] or 0.0
+                    current_m = snap['marzban_usage_gb'] or 0.0
+                    
+                    h_diff = current_h if current_h < last_h else current_h - last_h
+                    m_diff = current_m if current_m < last_m else current_m - last_m
+                    
+                    total_h_usage += h_diff
+                    total_m_usage += m_diff
+                    
+                    last_h, last_m = current_h, current_m
 
                 history.append({
                     "date": target_date,
-                    "hiddify_usage": h_usage,
-                    "marzban_usage": m_usage,
-                    "total_usage": h_usage + m_usage
+                    "hiddify_usage": total_h_usage,
+                    "marzban_usage": total_m_usage,
+                    "total_usage": total_h_usage + total_m_usage
                 })
+                
         return history
 
     def add_sent_report(self, user_id: int, message_id: int):

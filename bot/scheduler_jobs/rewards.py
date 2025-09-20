@@ -360,10 +360,16 @@ def run_lucky_lottery(bot) -> None:
     if not participants:
         logger.info("LUCKY LOTTERY: No eligible participants this month.")
         for admin_id in ADMIN_IDS:
-            bot.send_message(admin_id, "ℹ️ قرعه‌کشی ماهانه خوش‌شانسی به دلیل عدم وجود شرکت‌کننده واجد شرایط، این ماه انجام نشد.", parse_mode="MarkdownV2")
+            bot.send_message(admin_id, "ℹ️ قرعه‌کشی ماهانه خوش‌شانسی به دلیل عدم وجود شرکت‌کننده واجد شرایط، این ماه انجام نشد\\.", parse_mode="MarkdownV2")
         return
 
-    winner = random.choice(participants)
+    weighted_participants = []
+    for p in participants:
+        for _ in range(p.get('lucky_badge_count', 1)):
+            weighted_participants.append(p)
+
+    winner = random.choice(weighted_participants)
+    
     winner_id = winner['user_id']
     winner_name = escape_markdown(winner['first_name'])
     
@@ -373,9 +379,9 @@ def run_lucky_lottery(bot) -> None:
         db.add_achievement_points(winner_id, points_reward)
 
         winner_message = (
-            f"🎉 **شما برنده قرعه‌کشی ماهانه خوش‌شانسی شدید!** 🎉\n\n"
-            f"تبریک! به همین مناسبت، *{points_reward} امتیاز* به حساب شما اضافه شد.\n\n"
-            f"می‌توانید از این امتیاز در «فروشگاه دستاوردها» استفاده کنید."
+            f"🎉 *شما برنده قرعه‌کشی ماهانه خوش‌شانسی شدید\\!* 🎉\n\n"
+            f"تبریک\\! به همین مناسبت، *{points_reward} امتیاز* به حساب شما اضافه شد\\.\n\n"
+            f"می‌توانید از این امتیاز در «فروشگاه دستاوردها» استفاده کنید\\."
         )
         send_warning_message(bot, winner_id, winner_message)
 

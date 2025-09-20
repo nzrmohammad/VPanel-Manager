@@ -393,10 +393,17 @@ def handle_shop_callbacks(call: types.CallbackQuery):
 
         if db.spend_achievement_points(uid, item['cost']):
             user_uuids = db.uuids(uid)
-            if user_uuids:
-                user_main_uuid = user_uuids[0]['uuid']
-                purchase_successful = False
+            purchase_successful = False
 
+            if item_key == "buy_lottery_ticket":
+                if db.add_achievement(uid, 'lucky_one'):
+                    purchase_successful = True
+                    from scheduler_jobs.rewards import notify_user_achievement
+                    notify_user_achievement(bot, uid, 'lucky_one')
+            
+            elif user_uuids:
+                user_main_uuid = user_uuids[0]['uuid']
+                
                 target = item.get("target")
                 add_gb = item.get("gb", 0)
                 add_days = item.get("days", 0)
@@ -411,25 +418,25 @@ def handle_shop_callbacks(call: types.CallbackQuery):
                     user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel
                 )
 
-                if purchase_successful:
-                    db.log_shop_purchase(uid, item_key, item['cost'])
-                    bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
+            if purchase_successful:
+                db.log_shop_purchase(uid, item_key, item['cost'])
+                bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
 
-                    user = db.user(uid)
-                    user_points = user.get('achievement_points', 0) if user else 0
-                    
-                    access_rights = db.get_user_access_rights(uid)
+                user = db.user(uid)
+                user_points = user.get('achievement_points', 0) if user else 0
+                
+                access_rights = db.get_user_access_rights(uid)
 
-                    purchased_item_name = escape_markdown(item['name'])
-                    success_message = (
-                        f"✅ *خرید با موفقیت انجام شد*\\!\n\n"
-                        f"شما آیتم «*{purchased_item_name}*» را خریداری کردید و تغییرات روی سرویس شما اعمال شد\\.\n\n"
-                        f"💰 *موجودی امتیاز فعلی:* {user_points}"
-                    )
-                    _safe_edit(uid, msg_id, success_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
-                else:
-                    db.add_achievement_points(uid, item['cost'])
-                    bot.answer_callback_query(call.id, "❌ خطایی در اعمال تغییرات رخ داد. امتیاز شما بازگردانده شد.", show_alert=True)
+                purchased_item_name = escape_markdown(item['name'])
+                success_message = (
+                    f"✅ *خرید با موفقیت انجام شد*\\!\n\n"
+                    f"شما آیتم «*{purchased_item_name}*» را خریداری کردید و تغییرات روی سرویس شما اعمال شد\\.\n\n"
+                    f"💰 *موجودی امتیاز فعلی:* {user_points}"
+                )
+                _safe_edit(uid, msg_id, success_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
+            else:
+                db.add_achievement_points(uid, item['cost'])
+                bot.answer_callback_query(call.id, "❌ خطایی در اعمال تغییرات رخ داد. امتیاز شما بازگردانده شد.", show_alert=True)
         else:
             bot.answer_callback_query(call.id, "❌ امتیاز شما کافی نیست.", show_alert=True)
 
