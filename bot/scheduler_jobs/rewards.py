@@ -80,7 +80,7 @@ def send_weekly_admin_digest(bot) -> None:
         upcoming_birthdays_lines = []
         users_with_birthdays = db.get_users_with_birthdays()
         for user in users_with_birthdays:
-            days_left = db.days_until_next_birthday(user['birthday'])
+            days_left = days_until_next_birthday(user['birthday'])
             if 0 <= days_left < 7:
                 birthday_date = now_jalali + timedelta(days=days_left)
                 day_name = escape_markdown(birthday_date.strftime('%A'))
