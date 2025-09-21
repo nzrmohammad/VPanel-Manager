@@ -4,7 +4,7 @@ from bot.database import db
 
 logger = logging.getLogger(__name__)
 
-def renew_monthly_costs_job():
+def renew_monthly_costs_job(bot):  # پارامتر bot به اینجا اضافه می شود
     """
     هزینه‌های ماه قبل را برای ماه جاری به صورت خودکار تمدید می‌کند.
     این تابع در روز اول هر ماه میلادی اجرا می‌شود.
