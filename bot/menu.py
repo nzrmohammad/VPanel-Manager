@@ -488,8 +488,8 @@ class Menu:
              types.InlineKeyboardButton("🎁 اهدای نشان", callback_data=f"admin:awd_b_menu:{identifier}{context_suffix}")
         )
         kb.add(
-            types.InlineKeyboardButton("🔔 هشدار اولیه عدم پرداخت", callback_data=f"admin:us_spn:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🚨 هشدار نهایی عدم پرداخت", callback_data=f"admin:us_sdw:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("🚨 هشدار نهایی عدم پرداخت", callback_data=f"admin:us_sdw:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("🔔 هشدار اولیه عدم پرداخت", callback_data=f"admin:us_spn:{identifier}{context_suffix}") 
         )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
