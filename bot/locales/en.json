@@ -245,5 +245,8 @@
   "purchase_summary_before_status": "Status Before Purchase",
   "purchase_summary_after_status": "Status After Purchase",
   "days_unit": "days",
-  "purchase_in_progress": "⏳ Processing your purchase... Please wait."
+  "purchase_in_progress": "⏳ Processing your purchase... Please wait.",
+  "payment_reminder_message": "🔔 Payment Reminder\n\nDear user, your payment for the new service period has not been registered in our system yet.\n\nIf you have already made the payment, please send the receipt to support. Otherwise, to avoid service interruption, please proceed with the payment.\n\nThank you for your cooperation.",
+  "disconnection_warning_message": "🚨 Service Disconnection Warning\n\nDear user, despite our previous reminder, your payment has not yet been registered.\n\n❗️Your service will be disconnected within the next 24 hours.\n\nTo prevent this, please make the payment immediately or contact support.",
+  "disconnection_warning_sent_confirmation": "✅ Disconnection warning sent successfully."
 }

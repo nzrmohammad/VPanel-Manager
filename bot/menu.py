@@ -449,7 +449,6 @@ class Menu:
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به انتخاب پنل", callback_data="admin:management_menu"))
         return kb
 
-
     def admin_user_interactive_management(self, identifier: str, is_active: bool, panel: str, back_callback: str | None = None) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         
@@ -488,10 +487,15 @@ class Menu:
              types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}"),
              types.InlineKeyboardButton("🎁 اهدای نشان", callback_data=f"admin:awd_b_menu:{identifier}{context_suffix}")
         )
+        kb.add(
+            types.InlineKeyboardButton("🔔 هشدار اولیه عدم پرداخت", callback_data=f"admin:us_spn:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("🚨 هشدار نهایی عدم پرداخت", callback_data=f"admin:us_sdw:{identifier}{context_suffix}")
+        )
 
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))
         return kb
+
 
     def admin_edit_user_menu(self, identifier: str, panel: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
@@ -685,8 +689,8 @@ class Menu:
     def admin_search_menu(self) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
-            types.InlineKeyboardButton("🔎 جست و جوی جامع کاربر", callback_data="admin:sg"),
-            types.InlineKeyboardButton("🆔 جست و جو با آیدی تلگرام", callback_data="admin:search_by_tid")
+            types.InlineKeyboardButton("🔎 نام کاربر", callback_data="admin:sg"),
+            types.InlineKeyboardButton("🆔 آیدی تلگرام", callback_data="admin:search_by_tid")
         )
         kb.add(types.InlineKeyboardButton("🔥 پاکسازی کامل کاربر با آیدی", callback_data="admin:purge_user"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))

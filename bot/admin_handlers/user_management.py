@@ -10,6 +10,7 @@ from ..utils import _safe_edit, escape_markdown, load_service_plans, save_servic
 from ..user_handlers.wallet import _check_and_apply_loyalty_reward, _check_and_apply_referral_reward
 from ..config import ACHIEVEMENTS
 from ..scheduler_jobs.rewards import notify_user_achievement
+from ..language import get_string
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -465,7 +466,7 @@ def handle_log_payment(call, params):
     پرداخت دستی را برای یک کاربر ثبت کرده و او را به منوی صحیح (جستجو یا مدیریت) بازمی‌گرداند.
     """
     identifier = params[0]
-    context = "search" if len(params) > 1 and params[1] == 'search' else None
+    context = "search" if len(params) > 1 and params[1] == 's' else None
     context_suffix = f":{context}" if context else ""
     
     uid, msg_id = call.from_user.id, call.message.message_id
@@ -617,14 +618,17 @@ def _save_user_note(message: types.Message):
         _safe_edit(uid, msg_id, text_to_show, reply_markup=kb)
 
 
-def _notify_user(user_id: Optional[int], message: str):
+def _notify_user(user_id: Optional[int], message: str) -> bool:
+    """Notifies a user and returns True on success, False on failure."""
     if not user_id:
-        return
+        return False
     try:
         bot.send_message(user_id, message, parse_mode="MarkdownV2")
         logger.info(f"Sent notification to user {user_id}")
+        return True
     except Exception as e:
         logger.warning(f"Failed to send notification to user {user_id}: {e}")
+        return False
 
 
 def handle_search_by_telegram_id_convo(call, params):
@@ -1259,3 +1263,91 @@ def handle_reset_payment_history_action(call, params):
         summary_params.append(context)
     
     handle_show_user_summary(call, summary_params)
+
+def handle_send_payment_reminder(call, params):
+    """
+    Handles sending a payment reminder to the user and updates the admin's view.
+    """
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 's' else None
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+    if not user_telegram_id:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    lang_code = db.get_user_language(user_telegram_id)
+    reminder_message = escape_markdown(get_string("payment_reminder_message", lang_code))
+
+    # We use the _notify_user function which returns True on success
+    success = _notify_user(user_telegram_id, reminder_message)
+
+    if success:
+        bot.answer_callback_query(call.id, "✅ پیام با موفقیت ارسال شد.")
+        
+        # After successfully sending the message, we rebuild the admin's view with a confirmation text.
+        db_user = db.user(user_telegram_id)
+        text_to_show = fmt_admin_user_summary(info, db_user) + "\n\n*✅ هشدار اولیه یادآوری عدم پرداخت با موفقیت ارسال شد\\.*"
+        
+        panel_for_menu = 'hiddify' if any(p.get('type') == 'hiddify' for p in info.get('breakdown', {}).values()) else 'marzban'
+        back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
+        kb = menu.admin_user_interactive_management(identifier, info.get('is_active', False), panel_for_menu, back_callback=back_callback)
+        
+        # Now we edit the admin's message to show the confirmation
+        _safe_edit(uid, msg_id, text_to_show, reply_markup=kb)
+    else:
+        bot.answer_callback_query(call.id, "❌ خطا در ارسال پیام به کاربر.", show_alert=True)
+
+
+def handle_send_disconnection_warning(call, params):
+    """
+    Handles sending a final disconnection warning to the user.
+    """
+    identifier = params[0]
+    context = "search" if len(params) > 1 and params[1] == 's' else None
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+    if not user_telegram_id:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+
+    lang_code = db.get_user_language(user_telegram_id)
+    warning_message = escape_markdown(get_string("disconnection_warning_message", lang_code))
+
+    success = False
+    try:
+        bot.send_message(user_telegram_id, warning_message, parse_mode="MarkdownV2")
+        logger.info(f"Successfully sent disconnection warning to user {user_telegram_id}")
+        success = True
+    except Exception as e:
+        logger.warning(f"Failed to send disconnection warning to user {user_telegram_id}: {e}")
+        bot.answer_callback_query(call.id, "❌ خطا در ارسال پیام به کاربر.", show_alert=True)
+        return
+
+    if success:
+        admin_lang_code = db.get_user_language(uid)
+        bot.answer_callback_query(call.id, get_string("disconnection_warning_sent_confirmation", admin_lang_code))
+        
+        db_user = db.user(user_telegram_id)
+        fresh_info = combined_handler.get_combined_user_info(identifier)
+        
+        confirmation_msg = get_string("disconnection_warning_sent_confirmation", admin_lang_code)
+        text_to_show = fmt_admin_user_summary(fresh_info, db_user) + f"\n\n*{escape_markdown(confirmation_msg)}*"
+        
+        panel_for_menu = 'hiddify' if any(p.get('type') == 'hiddify' for p in fresh_info.get('breakdown', {}).values()) else 'marzban'
+        back_callback = "admin:search_menu" if context == "search" else "admin:management_menu"
+        kb = menu.admin_user_interactive_management(identifier, fresh_info.get('is_active', False), panel_for_menu, back_callback=back_callback)
+        
+        _safe_edit(uid, msg_id, text_to_show, reply_markup=kb)

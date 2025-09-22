@@ -262,6 +262,8 @@ ADMIN_CALLBACK_HANDLERS = {
     "us_delc": user_management.handle_delete_user_confirm,
     "del_a": user_management.handle_delete_user_action,
     "us_note": user_management.handle_ask_for_note,
+    "us_spn": user_management.handle_send_payment_reminder,
+    "us_sdw": user_management.handle_send_disconnection_warning,
     "search_by_tid": user_management.handle_search_by_telegram_id_convo,
     "purge_user": user_management.handle_purge_user_convo,
     "us_ddev": user_management.handle_delete_devices_confirm,
