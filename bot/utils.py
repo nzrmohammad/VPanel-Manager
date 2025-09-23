@@ -201,6 +201,24 @@ def parse_user_agent(user_agent: str) -> Optional[Dict[str, Optional[str]]]:
             }
         },
         {
+            "name": "NekoBox",
+            "regex": re.compile(r"^(NekoBox)/(\w+)/([\d.]+)"),
+            "extractor": lambda m: {
+                "client": "NekoBox",
+                "version": m.group(3),
+                "os": m.group(2).upper()
+            }
+        },
+        {
+            "name": "V2Box Generic",
+            "regex": re.compile(r"^(v2box|V2Box)/([\d.]+)$"),
+            "extractor": lambda m: {
+                "client": "V2Box",
+                "version": m.group(2),
+                "os": "Unknown"
+            }
+        },
+        {
             "name": "V2Box Android",
             "regex": re.compile(r"^(V2Box)/([\d.]+)\s+\((Android)\s+([\d.]+)\)"),
             "extractor": lambda m: {"client": "V2Box", "version": m.group(2), "os": f"Android {m.group(4)}"}
