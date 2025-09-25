@@ -300,7 +300,7 @@ class DatabaseManager:
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
         """
-        (نسخه نهایی و کاملاً پایدار) مصرف روزانه را با مدیریت ریست شدن حجم محاسبه می‌کند.
+        (نسخه نهایی و کاملاً پایدار) مصرف روزانه را با در نظر گرفتن کاربران جدید و ریست شدن حجم محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
@@ -308,41 +308,36 @@ class DatabaseManager:
         today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
         with self._conn() as c:
-            snapshots_today = c.execute(
-                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC",
-                (uuid_id, today_midnight_utc)
-            ).fetchall()
-
-            last_snap_before = c.execute(
+            # 1. پیدا کردن آخرین آمار مصرف قبل از شروع امروز (نقطه شروع ما)
+            last_snap_before_today = c.execute(
                 "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                 (uuid_id, today_midnight_utc)
             ).fetchone()
 
-            if last_snap_before:
-                last_h = last_snap_before['hiddify_usage_gb'] or 0.0
-                last_m = last_snap_before['marzban_usage_gb'] or 0.0
-            elif snapshots_today:
-                last_h = snapshots_today[0]['hiddify_usage_gb'] or 0.0
-                last_m = snapshots_today[0]['marzban_usage_gb'] or 0.0
-            else:
+            # 2. پیدا کردن آخرین آمار مصرف ثبت شده در امروز (نقطه پایان ما)
+            last_snap_today = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
+                (uuid_id, today_midnight_utc)
+            ).fetchone()
+
+            # اگر امروز هیچ آماری ثبت نشده، مصرف صفر است
+            if not last_snap_today:
                 return {'hiddify': 0.0, 'marzban': 0.0}
 
-            total_h_usage = 0.0
-            total_m_usage = 0.0
+            # اگر کاربر جدید است و هیچ آماری از قبل ندارد، نقطه شروع صفر است
+            start_h = last_snap_before_today['hiddify_usage_gb'] if last_snap_before_today else 0.0
+            start_m = last_snap_before_today['marzban_usage_gb'] if last_snap_before_today else 0.0
             
-            for snap in snapshots_today:
-                current_h = snap['hiddify_usage_gb'] or 0.0
-                current_m = snap['marzban_usage_gb'] or 0.0
-                
-                h_diff = current_h if current_h < last_h else current_h - last_h
-                m_diff = current_m if current_m < last_m else current_m - last_m
-                
-                total_h_usage += h_diff
-                total_m_usage += m_diff
-                
-                last_h, last_m = current_h, current_m
+            end_h = last_snap_today['hiddify_usage_gb'] or 0.0
+            end_m = last_snap_today['marzban_usage_gb'] or 0.0
 
-            return {'hiddify': total_h_usage, 'marzban': total_m_usage}
+            # 3. محاسبه مصرف و مدیریت حالت ریست شدن حجم
+            # اگر مصرف امروز از دیروز کمتر باشد (یعنی ریست شده)، کل مصرف امروز را به عنوان مصرف روزانه در نظر می‌گیریم
+            usage_h = end_h if end_h < start_h else end_h - start_h
+            usage_m = end_m if end_m < start_m else end_m - start_m
+            
+            # برای جلوگیری از مقادیر منفی در شرایط خاص
+            return {'hiddify': max(0, usage_h), 'marzban': max(0, usage_m)}
 
     def get_weekly_usage_by_uuid(self, uuid_str: str) -> Dict[str, float]:
         """

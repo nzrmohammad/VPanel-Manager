@@ -104,15 +104,31 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         db.set_renewal_reminder_sent(uuid_id_in_db)
                         db.create_notification(user_id_in_telegram, "یادآوری تمدید", f"تنها ۱ روز از اعتبار اکانت «{user_name}» شما باقی مانده است.", "warning")
 
-                # 3. ارسال هشدار انقضای اکانت
-                if user_settings.get('expiry_warnings') and expire_days is not None and 1 < expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
-                    if not db.has_recent_warning(uuid_id_in_db, 'expiry'):
-                        msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\nاکانت *{{user_name}}* شما تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
-                        if send_warning_message(bot, user_id_in_telegram, msg_template, user_name=user_name, expire_days=str(expire_days)):
-                            db.log_warning(uuid_id_in_db, 'expiry')
-                            db.create_notification(user_id_in_telegram, "هشدار انقضای اکانت", f"اکانت «{user_name}» شما تا {expire_days} روز دیگر منقضی می‌شود.", "warning")
+                # 3. ارسال هشدارهای انقضای اکانت (به تفکیک پنل)
+                if user_settings.get('expiry_warnings'):
+                    breakdown = info.get('breakdown', {})
+                    for panel_name, panel_details in breakdown.items():
+                        panel_data = panel_details.get('data', {})
+                        panel_type = panel_details.get('type')
+                        expire_days = panel_data.get('expire')
+
+                        if expire_days is not None and 1 <= expire_days <= WARNING_DAYS_BEFORE_EXPIRY:
+                            # یک شناسه هشدار منحصر به فرد برای هر پنل ایجاد می‌کنیم
+                            warning_type_key = f'expiry_{panel_type}'
+                            if not db.has_recent_warning(uuid_id_in_db, warning_type_key):
+                                server_name = "🇩🇪" if panel_type == 'hiddify' else "🇫🇷🇹🇷🇺🇸"
+                                msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\n"
+                                                f"سرویس شما در پنل *{server_name}* تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
+                                
+                                if send_warning_message(bot, user_id_in_telegram, msg_template, expire_days=str(expire_days)):
+                                    db.log_warning(uuid_id_in_db, warning_type_key)
+                                    db.create_notification(
+                                        user_id_in_telegram, 
+                                        "هشدار انقضای اکانت", 
+                                        f"اکانت شما در سرور {server_name} تا {expire_days} روز دیگر منقضی می‌شود.", 
+                                        "warning"
+                                    )
                 
-                # --- ✅ **کد جدید برای اکانت‌های منقضی شده** ---
                 # 3.5. ارسال هشدار برای اکانت‌های منقضی شده
                 if user_settings.get('expiry_warnings') and expire_days is not None and expire_days <= 0:
                     # برای جلوگیری از ارسال پیام تکراری، هر ۴۸ ساعت یکبار چک می‌کنیم
@@ -124,7 +140,6 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         if send_warning_message(bot, user_id_in_telegram, msg_template, user_name=user_name, reply_markup=kb):
                             db.log_warning(uuid_id_in_db, 'expired')
                             db.create_notification(user_id_in_telegram, "اکانت منقضی شده", f"اعتبار اکانت «{user_name}» شما به پایان رسیده است.", "warning")
-                # --- **پایان کد جدید** ---
 
                 # 4. ارسال هشدارهای اتمام حجم
                 breakdown = info.get('breakdown', {})
@@ -222,7 +237,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                 f"کاربر «{user_name}» بیش از ۵ دستگاه ({device_count} دستگاه) متصل کرده است. احتمال به اشتراک گذاری لینک وجود دارد.",
                                 "broadcast"
                             )
-                    db.log_warning(uuid_id_in_db, 'too_many_devices')
+                    db.log_warning(uuid_id_in_db, 'too_many_devices_admin_alert')
 
             except Exception as e:
                 logger.error(f"SCHEDULER (Warnings): Error processing UUID_ID {u_row.get('id', 'N/A')}: {e}", exc_info=True)
