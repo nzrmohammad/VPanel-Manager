@@ -680,7 +680,10 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             warning_type = warning.get('warning_type')
             warning_text = ""
             
-            if warning_type in ["low_data_marzban", "volume_depleted_marzban"]:
+            base_text = ""
+            flag_str = ""
+            
+            if warning_type in ["low_data_marzban", "volume_depleted_marzban", "expiry_marzban"]:
                 flags = []
                 db_rec = db_users_map.get(user_uuid) if user_uuid else None
 
@@ -690,7 +693,14 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                     if db_rec.get('has_access_us'): flags.append("🇺🇸")
                 
                 flag_str = "".join(flags)
-                base_text = "کمبود حجم" if "low" in warning_type else "اتمام حجم"
+                
+                if "low" in warning_type:
+                    base_text = "کمبود حجم"
+                elif "depleted" in warning_type:
+                    base_text = "اتمام حجم"
+                elif "expiry" in warning_type:
+                    base_text = "انقضای سرویس"
+
                 warning_text = f"{base_text} {flag_str}" if flag_str else base_text
             else:
                 warning_map = {
@@ -698,6 +708,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                     "expired": "سرویس منقضی شده",
                     "low_data_hiddify": "کمبود حجم 🇩🇪", 
                     "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
+                    "expiry_hiddify": "انقضای سرویس 🇩🇪",
                     "unusual_daily_usage": "مصرف غیرعادی", 
                     "too_many_devices": "تعداد دستگاه بالا",
                     "inactive_user_reminder": "یادآوری عدم فعالیت"
