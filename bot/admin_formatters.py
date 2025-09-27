@@ -548,6 +548,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     
     db_users_map = {u['uuid']: u for u in db_manager.get_all_user_uuids()}
+    top_consumer_today = {"name": "N/A", "usage": 0.0}
 
     for user_info in all_users_from_api:
         if user_info.get("is_active"):
@@ -590,6 +591,9 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
         f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
         f" 🇫🇷🇹🇷🇺🇸 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
     ]
+
+    if top_consumer_today["usage"] > 0:
+        report_lines.append(f"🔥 *قهرمان امروز:* {escape_markdown(top_consumer_today['name'])} \\({escape_markdown(format_daily_usage(top_consumer_today['usage']))}\\)")
 
     # --- بخش ۳: افزودن لیست‌های جزئی ---
     if active_today_users:

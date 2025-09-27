@@ -23,9 +23,7 @@ def nightly_report(bot, target_user_id: int = None) -> None:
     tehran_tz = pytz.timezone("Asia/Tehran")
     now_gregorian = datetime.now(tehran_tz)
     
-    if not target_user_id and jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6:
-        logger.info("SCHEDULER (Nightly): Friday, skipping daily report for users.")
-        return
+    is_friday = jdatetime.datetime.fromgregorian(datetime=now_gregorian).weekday() == 6
 
     now_str = jdatetime.datetime.fromgregorian(datetime=now_gregorian).strftime("%Y/%m/%d - %H:%M")
     logger.info(f"SCHEDULER: ----- Running nightly report at {now_str} -----")
@@ -42,7 +40,7 @@ def nightly_report(bot, target_user_id: int = None) -> None:
 
     for user_id in user_ids_to_process:
         try:
-            # گزارش جامع برای ادمین‌ها
+            # گزارش جامع برای ادمین‌ها (همیشه ارسال می‌شود)
             if user_id in ADMIN_IDS:
                 admin_header = f"👑 *گزارش جامع* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
                 admin_report_text = fmt_admin_report(all_users_info_from_api, db)
@@ -57,6 +55,10 @@ def nightly_report(bot, target_user_id: int = None) -> None:
                         time.sleep(0.5)
                 else:
                     bot.send_message(user_id, admin_full_message, parse_mode="MarkdownV2")
+
+            # اگر جمعه بود و کاربر ادمین نبود، گزارش شخصی برای او ارسال نمی‌شود
+            if is_friday and user_id not in ADMIN_IDS and not target_user_id:
+                continue
 
             # گزارش شخصی برای همه کاربران (شامل ادمین‌ها)
             user_settings = db.get_user_settings(user_id)
