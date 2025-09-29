@@ -1,4 +1,5 @@
 import pytz
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from .config import EMOJIS, PAGE_SIZE, ACHIEVEMENTS
@@ -7,6 +8,9 @@ from .utils import (
     format_daily_usage, escape_markdown,
     format_relative_time , to_shamsi, days_until_next_birthday, create_progress_bar, parse_user_agent
 )
+
+logger = logging.getLogger(__name__)
+
 
 def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
     """
@@ -534,147 +538,166 @@ def fmt_user_payment_history(payments: list, user_name: str, page: int) -> str:
 
 def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
     """
-    (نسخه نهایی با چیدمان سفارشی)
-    گزارش جامع ادمین را با چیدمان درخواستی شما تولید می‌کند.
+    (نسخه نهایی با چیدمان سفارشی و لاگ‌های جامع برای عیب‌یابی)
+    گزارش جامع ادمین را تولید کرده و مراحل کلیدی را برای عیب‌یابی لاگ می‌کند.
     """
-    if not all_users_from_api:
-        return "هیچ کاربری در پنل یافت نشد"
+    try:
+        if not all_users_from_api:
+            logger.warning("fmt_admin_report: `all_users_from_api` list is empty. Report generation stopped.")
+            return "هیچ کاربری در پنل یافت نشد"
 
-    # --- بخش ۱: محاسبات اولیه (بدون تغییر) ---
-    active_users, total_daily_hiddify, total_daily_marzban = 0, 0.0, 0.0
-    expiring_soon_users, new_users_today, expired_recently_users = [], [], []
-    
-    now_utc = datetime.now(pytz.utc)
-    start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    db_users_map = {u['uuid']: u for u in db_manager.get_all_user_uuids()}
-    top_consumer_today = {"name": "N/A", "usage": 0.0}
-    active_today_users = []
+        logger.info(f"fmt_admin_report: Starting comprehensive report generation for {len(all_users_from_api)} users from API.")
 
-    for user_info in all_users_from_api:
-        if user_info.get("is_active"):
-            active_users += 1
+        # --- بخش ۱: محاسبات اولیه ---
+        active_users, total_daily_hiddify, total_daily_marzban = 0, 0.0, 0.0
+        expiring_soon_users, new_users_today, expired_recently_users = [], [], []
 
-        daily_usage_sum = 0
-        if user_info.get('uuid'):
-            daily_usage_dict = db_manager.get_usage_since_midnight_by_uuid(user_info['uuid'])
-            h_usage = daily_usage_dict.get('hiddify', 0.0)
-            m_usage = daily_usage_dict.get('marzban', 0.0)
-            total_daily_hiddify += h_usage
-            total_daily_marzban += m_usage
-            user_info['daily_usage_dict'] = daily_usage_dict
-            daily_usage_sum = h_usage + m_usage
+        now_utc = datetime.now(pytz.utc)
+        start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        if daily_usage_sum > 0:
-            active_today_users.append(user_info)
-            if daily_usage_sum > top_consumer_today["usage"]:
-                top_consumer_today = {"name": user_info.get('name', 'N/A'), "usage": daily_usage_sum}
+        db_users_map = {u['uuid']: u for u in db_manager.get_all_user_uuids()}
+        top_consumer_today = {"name": "N/A", "usage": 0.0}
+        active_today_users = []
 
-        expire_days = user_info.get('expire')
-        if expire_days is not None:
-            if 0 <= expire_days <= 3: expiring_soon_users.append(user_info)
-            elif -2 <= expire_days < 0: expired_recently_users.append(user_info)
+        logger.debug(f"fmt_admin_report: Starting to process {len(all_users_from_api)} users.")
 
-        created_at_info = db_users_map.get(user_info.get('uuid'))
-        if created_at_info and created_at_info.get('created_at'):
-            created_at = created_at_info['created_at']
-            if isinstance(created_at, datetime) and (now_utc - created_at.astimezone(pytz.utc)).days < 1:
-                new_users_today.append(user_info)
+        for user_info in all_users_from_api:
+            if user_info.get("is_active"):
+                active_users += 1
 
-    total_daily_all = total_daily_hiddify + total_daily_marzban
-    payments_today_count = db_manager.get_total_payments_in_range(start_of_today_utc, now_utc)
+            daily_usage_sum = 0
+            if user_info.get('uuid'):
+                daily_usage_dict = db_manager.get_usage_since_midnight_by_uuid(user_info['uuid'])
+                h_usage = daily_usage_dict.get('hiddify', 0.0)
+                m_usage = daily_usage_dict.get('marzban', 0.0)
+                total_daily_hiddify += h_usage
+                total_daily_marzban += m_usage
+                user_info['daily_usage_dict'] = daily_usage_dict
+                daily_usage_sum = h_usage + m_usage
 
-    # --- بخش ۲: ساخت متن گزارش (هدر) ---
-    report_lines = [
-        f"*{escape_markdown('⚙️ خلاصه وضعیت کل پنل')}*",
-        f"👤 تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
-        f"✅ اکانت‌های فعال : *{active_users}*",
-        f"➕ کاربران جدید امروز : *{len(new_users_today)}*",
-        f"💳 پرداخت‌های امروز : *{payments_today_count}*",
-        f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
-        f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-        f" 🇫🇷🇹🇷🇺🇸 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
-    ]
+            if daily_usage_sum > 0:
+                active_today_users.append(user_info)
+                if daily_usage_sum > top_consumer_today["usage"]:
+                    top_consumer_today = {"name": user_info.get('name', 'N/A'), "usage": daily_usage_sum}
+                    logger.debug(f"fmt_admin_report: New top consumer found: {top_consumer_today['name']} with usage {top_consumer_today['usage']:.2f} GB.")
 
-    if top_consumer_today["usage"] > 0.01:
-        report_lines.append(f"🔥 *قهرمان امروز : * {escape_markdown(top_consumer_today['name'])} \\({escape_markdown(format_daily_usage(top_consumer_today['usage']))}\\)")
-    
-    # 1. کاربران فعال امروز
-    if active_today_users:
-        report_lines.extend(["`──────────────────`", f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*"])
-        active_today_users.sort(key=lambda u: u.get('name', ''))
-        for user in active_today_users:
-            user_name = escape_markdown(user.get('name', 'کاربر ناشناس'))
-            user_db_record = db_users_map.get(user.get('uuid'))
-            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
-            user_emoji = "👑" if is_vip else "👤"
 
-            daily_dict = user.get('daily_usage_dict', {})
-            usage_parts = []
-            h_usage = daily_dict.get('hiddify', 0.0)
-            if h_usage > 0.001: usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(h_usage))}")
-            m_usage = daily_dict.get('marzban', 0.0)
-            if m_usage > 0.001 and user_db_record:
-                flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us')] if user_db_record.get(has)]
-                if flags: usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(m_usage))}")
-            
-            usage_str = escape_markdown(" | ").join(usage_parts)
-            if usage_str:
-                report_lines.append(f"{user_emoji} {user_name} : {usage_str}")
+            expire_days = user_info.get('expire')
+            if expire_days is not None:
+                if 0 <= expire_days <= 3: expiring_soon_users.append(user_info)
+                elif -2 <= expire_days < 0: expired_recently_users.append(user_info)
 
-    # 2. کاربران در آستانه انقضا
-    if expiring_soon_users:
-        report_lines.extend(["`──────────────────`", f"*{escape_markdown('⚠️ کاربرانی که تا ۳ روز آینده منقضی می شوند')}*"])
-        expiring_soon_users.sort(key=lambda u: u.get('expire', 99))
-        for user in expiring_soon_users:
-            name = escape_markdown(user['name'])
-            days = user['expire']
-            user_db_record = db_users_map.get(user.get('uuid'))
-            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
-            user_emoji = "👑" if is_vip else "👤"
-            report_lines.append(f"{user_emoji} {name} : {days} روز")
+            created_at_info = db_users_map.get(user_info.get('uuid'))
+            if created_at_info and created_at_info.get('created_at'):
+                created_at = created_at_info['created_at']
+                if isinstance(created_at, datetime) and (now_utc - created_at.astimezone(pytz.utc)).days < 1:
+                    new_users_today.append(user_info)
 
-    # 3. کاربران منقضی شده
-    if expired_recently_users:
-        report_lines.extend(["`──────────────────`", f"*{escape_markdown('❌ کاربران منقضی (۴۸ ساعت اخیر)')}*"])
-        expired_recently_users.sort(key=lambda u: u.get('name', ''))
-        for user in expired_recently_users:
-            name = escape_markdown(user['name'])
-            user_db_record = db_users_map.get(user.get('uuid'))
-            is_vip = user_db_record.get('is_vip', False) if user_db_record else False
-            user_emoji = "👑" if is_vip else "👤"
-            report_lines.append(f"{user_emoji} {name}")
+        total_daily_all = total_daily_hiddify + total_daily_marzban
+        payments_today_count = db_manager.get_total_payments_in_range(start_of_today_utc, now_utc)
 
-    # 4. هشدارهای ارسال شده
-    sent_warnings_raw = db_manager.get_sent_warnings_since_midnight()
-    if sent_warnings_raw:
-        report_lines.extend(["`──────────────────`", f"*{escape_markdown('🔔 هشدارهای ارسال شده امروز')}*"])
-        
-        warnings_by_type = {}
-        for w in sent_warnings_raw:
-            warnings_by_type.setdefault(w.get('warning_type', 'unknown'), []).append(w)
-            
-        warning_map = {
-            "low_data_hiddify": "کمبود حجم 🇩🇪", "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-            "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸",
-            "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸",
-            "expired": "منقضی شده", "inactive_user_reminder": "یادآوری عدم فعالیت",
-            "unusual_daily_usage_admin_alert": "مصرف غیرعادی (به ادمین)",
-            "too_many_devices_admin_alert": "تعداد دستگاه بالا (به ادمین)"
-        }
-        
-        for warning_type, warnings in warnings_by_type.items():
-            type_fa = warning_map.get(warning_type, warning_type)
-            report_lines.append(f"*{escape_markdown(f'   - دسته: {type_fa}')}*")
-            for warning in warnings:
-                user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
-                user_uuid = warning.get('uuid')
-                db_rec_for_vip = db_users_map.get(user_uuid) if user_uuid else None
-                is_vip = db_rec_for_vip.get('is_vip', False) if db_rec_for_vip else False
+        logger.info(f"fmt_admin_report: Calculation complete. Total daily usage: {total_daily_all:.2f} GB. Top consumer: {top_consumer_today['name']} ({top_consumer_today['usage']:.2f} GB).")
+        logger.info(f"fmt_admin_report: Found {len(expiring_soon_users)} expiring users, {len(new_users_today)} new users, {len(expired_recently_users)} recently expired users.")
+
+
+        # --- بخش ۲: ساخت متن گزارش (هدر) ---
+        report_lines = [
+            f"*{escape_markdown('⚙️ خلاصه وضعیت کل پنل')}*",
+            f"👤 تعداد کل اکانت‌ها : *{len(all_users_from_api)}*",
+            f"✅ اکانت‌های فعال : *{active_users}*",
+            f"➕ کاربران جدید امروز : *{len(new_users_today)}*",
+            f"💳 پرداخت‌های امروز : *{payments_today_count}*",
+            f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
+            f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
+            f" 🇫🇷🇹🇷🇺🇸 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+        ]
+
+        if top_consumer_today["usage"] > 0.01:
+            report_lines.append(f"🔥 *قهرمان امروز : * {escape_markdown(top_consumer_today['name'])} \\({escape_markdown(format_daily_usage(top_consumer_today['usage']))}\\)")
+        else:
+            logger.info(f"fmt_admin_report: Top consumer of the day was NOT displayed because their usage ({top_consumer_today['usage']:.4f} GB) was not greater than 0.01.")
+
+        # 1. کاربران فعال امروز
+        if active_today_users:
+            report_lines.extend(["`──────────────────`", f"*{escape_markdown('✅ کاربران فعال امروز و مصرفشان')}*"])
+            active_today_users.sort(key=lambda u: u.get('name', ''))
+            for user in active_today_users:
+                user_name = escape_markdown(user.get('name', 'کاربر ناشناس'))
+                user_db_record = db_users_map.get(user.get('uuid'))
+                is_vip = user_db_record.get('is_vip', False) if user_db_record else False
                 user_emoji = "👑" if is_vip else "👤"
-                report_lines.append(f"     {user_emoji} {user_name}")
 
-    return "\n".join(report_lines)
+                daily_dict = user.get('daily_usage_dict', {})
+                usage_parts = []
+                h_usage = daily_dict.get('hiddify', 0.0)
+                if h_usage > 0.001: usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(h_usage))}")
+                m_usage = daily_dict.get('marzban', 0.0)
+                if m_usage > 0.001 and user_db_record:
+                    flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us')] if user_db_record.get(has)]
+                    if flags: usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(m_usage))}")
+
+                usage_str = escape_markdown(" | ").join(usage_parts)
+                if usage_str:
+                    report_lines.append(f"{user_emoji} {user_name} : {usage_str}")
+
+        # 2. کاربران در آستانه انقضا
+        if expiring_soon_users:
+            report_lines.extend(["`──────────────────`", f"*{escape_markdown('⚠️ کاربرانی که تا ۳ روز آینده منقضی می شوند')}*"])
+            expiring_soon_users.sort(key=lambda u: u.get('expire', 99))
+            for user in expiring_soon_users:
+                name = escape_markdown(user['name'])
+                days = user['expire']
+                user_db_record = db_users_map.get(user.get('uuid'))
+                is_vip = user_db_record.get('is_vip', False) if user_db_record else False
+                user_emoji = "👑" if is_vip else "👤"
+                report_lines.append(f"{user_emoji} {name} : {days} روز")
+
+        # 3. کاربران منقضی شده
+        if expired_recently_users:
+            report_lines.extend(["`──────────────────`", f"*{escape_markdown('❌ کاربران منقضی (۴۸ ساعت اخیر)')}*"])
+            expired_recently_users.sort(key=lambda u: u.get('name', ''))
+            for user in expired_recently_users:
+                name = escape_markdown(user['name'])
+                user_db_record = db_users_map.get(user.get('uuid'))
+                is_vip = user_db_record.get('is_vip', False) if user_db_record else False
+                user_emoji = "👑" if is_vip else "👤"
+                report_lines.append(f"{user_emoji} {name}")
+
+        # 4. هشدارهای ارسال شده
+        sent_warnings_raw = db_manager.get_sent_warnings_since_midnight()
+        if sent_warnings_raw:
+            report_lines.extend(["`──────────────────`", f"*{escape_markdown('🔔 هشدارهای ارسال شده امروز')}*"])
+
+            warnings_by_type = {}
+            for w in sent_warnings_raw:
+                warnings_by_type.setdefault(w.get('warning_type', 'unknown'), []).append(w)
+
+            warning_map = {
+                "low_data_hiddify": "کمبود حجم 🇩🇪", "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
+                "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸",
+                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸",
+                "expired": "منقضی شده", "inactive_user_reminder": "یادآوری عدم فعالیت",
+                "unusual_daily_usage_admin_alert": "مصرف غیرعادی (به ادمین)",
+                "too_many_devices_admin_alert": "تعداد دستگاه بالا (به ادمین)"
+            }
+
+            for warning_type, warnings in warnings_by_type.items():
+                type_fa = warning_map.get(warning_type, warning_type)
+                report_lines.append(f"*{escape_markdown(f'   - دسته: {type_fa}')}*")
+                for warning in warnings:
+                    user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
+                    user_uuid = warning.get('uuid')
+                    db_rec_for_vip = db_users_map.get(user_uuid) if user_uuid else None
+                    is_vip = db_rec_for_vip.get('is_vip', False) if db_rec_for_vip else False
+                    user_emoji = "👑" if is_vip else "👤"
+                    report_lines.append(f"     {user_emoji} {user_name}")
+        
+        logger.info(f"fmt_admin_report: Successfully generated report with {len(report_lines)} lines.")
+        return "\n".join(report_lines)
+
+    except Exception as e:
+        logger.error(f"FATAL ERROR in fmt_admin_report: {e}", exc_info=True)
+        return escape_markdown(f"❌ خطای بحرانی در هنگام ساخت گزارش جامع: {e}")
 
 def fmt_top_consumers(users: list, page: int) -> str:
     title = "پرمصرف‌ترین کاربران"
