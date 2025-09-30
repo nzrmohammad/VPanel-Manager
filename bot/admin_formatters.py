@@ -681,17 +681,31 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 "too_many_devices_admin_alert": "تعداد دستگاه بالا (به ادمین)"
             }
 
-            for warning_type, warnings in warnings_by_type.items():
-                type_fa = warning_map.get(warning_type, warning_type)
-                report_lines.append(f"*{escape_markdown(f'   - دسته: {type_fa}')}*")
-                for warning in warnings:
-                    user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
-                    user_uuid = warning.get('uuid')
-                    db_rec_for_vip = db_users_map.get(user_uuid) if user_uuid else None
-                    is_vip = db_rec_for_vip.get('is_vip', False) if db_rec_for_vip else False
-                    user_emoji = "👑" if is_vip else "👤"
-                    report_lines.append(f"     {user_emoji} {user_name}")
-        
+            # Order of warning types to be displayed
+            warning_order = [
+                "low_data_hiddify",
+                "low_data_marzban",
+                "expiry_hiddify",
+                "expiry_marzban",
+                "expired",
+                "too_many_devices_admin_alert",
+                "unusual_daily_usage_admin_alert",
+                "inactive_user_reminder",
+            ]
+
+            for warning_type in warning_order:
+                if warning_type in warnings_by_type:
+                    warnings = warnings_by_type[warning_type]
+                    type_fa = warning_map.get(warning_type, warning_type)
+                    report_lines.append(f"*{escape_markdown(f'دسته : {type_fa}')}*")
+                    for warning in warnings:
+                        user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
+                        user_uuid = warning.get('uuid')
+                        db_rec_for_vip = db_users_map.get(user_uuid) if user_uuid else None
+                        is_vip = db_rec_for_vip.get('is_vip', False) if db_rec_for_vip else False
+                        user_emoji = "👑" if is_vip else "👤"
+                        report_lines.append(f"{user_emoji} {user_name}")
+
         logger.info(f"fmt_admin_report: Successfully generated report with {len(report_lines)} lines.")
         return "\n".join(report_lines)
 
