@@ -699,7 +699,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 if warning_type in warnings_by_type:
                     warnings = warnings_by_type[warning_type]
                     type_fa = warning_map.get(warning_type, warning_type)
-                    report_lines.append(f"*{escape_markdown(f'دسته : {type_fa}')}*")
+                    report_lines.append(f"*{escape_markdown(f'{type_fa}')}*")
                     for warning in warnings:
                         user_name = escape_markdown(warning.get('name', 'کاربر ناشناس'))
                         user_uuid = warning.get('uuid')
