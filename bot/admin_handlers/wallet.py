@@ -37,16 +37,13 @@ def handle_charge_request_callback(call: types.CallbackQuery, params: list):
 
     try:
         if decision == 'charge_confirm':
-            # در توضیحات تراکنش، از یک متن عمومی‌تر استفاده می‌کنیم
             if db.update_wallet_balance(user_id, amount, 'deposit', f"شارژ توسط مدیریت (درخواست #{request_id})"):
                 db.update_charge_request_status(request_id, is_pending=False)
                 
-                # ✅ اصلاح اصلی: مبلغ را برای MarkdownV2 آماده‌سازی می‌کنیم
                 amount_str = escape_markdown(f"{amount:,.0f}")
                 success_text = f"✅ حساب شما به مبلغ *{amount_str} تومان* با موفقیت شارژ شد\\."
                 
-                # به جای دکمه لغو، دکمه بازگشت به منوی کیف پول را نمایش می‌دهیم
-                _safe_edit(user_id, user_message_id, success_text, reply_markup=menu.user_cancel_action("wallet:main", lang_code))
+                _safe_edit(user_id, user_message_id, success_text, reply_markup=menu.post_charge_menu(lang_code))
                 
                 bot.edit_message_caption(caption=f"{original_caption}\n\n✅ تایید شد توسط شما.", chat_id=admin_id, message_id=call.message.message_id)
                 bot.answer_callback_query(call.id, "شارژ حساب کاربر تایید شد.", show_alert=True)
@@ -59,7 +56,6 @@ def handle_charge_request_callback(call: types.CallbackQuery, params: list):
             
             reject_text = "❌ درخواست شارژ حساب شما توسط ادمین رد شد. لطفاً با پشتیبانی تماس بگیرید."
             
-            # ✅ اصلاح اصلی: به جای دکمه لغو، دکمه بازگشت به منوی کیف پول نمایش داده می‌شود
             _safe_edit(user_id, user_message_id, escape_markdown(reject_text), reply_markup=menu.user_cancel_action("wallet:main", lang_code))
 
             bot.edit_message_caption(caption=f"{original_caption}\n\n❌ توسط شما رد شد.", chat_id=admin_id, message_id=call.message.message_id)

@@ -665,6 +665,14 @@ class Menu:
         kb.add(types.InlineKeyboardButton(f"✖️ {cancel_text}", callback_data=back_callback))
         return kb
 
+    def post_charge_menu(self, lang_code: str = 'fa') -> types.InlineKeyboardMarkup:
+        """یک کیبورد برای نمایش بعد از شارژ موفق کیف پول ایجاد می‌کند."""
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        btn_view_plans = types.InlineKeyboardButton("🛒 مشاهده سرویس‌ها", callback_data="view_plans")
+        btn_back_to_wallet = types.InlineKeyboardButton("🔙 بازگشت به کیف پول", callback_data="wallet:main")
+        kb.add(btn_view_plans, btn_back_to_wallet)
+        return kb
+
     def admin_cancel_action(self, back_callback="admin:panel") -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("✖️ لغو عملیات", callback_data=back_callback))

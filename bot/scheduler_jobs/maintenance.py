@@ -1,6 +1,9 @@
 import logging
 from datetime import datetime
 import pytz
+import asyncio
+import time
+
 
 from telebot import apihelper
 
@@ -75,35 +78,85 @@ def update_online_reports(bot) -> None:
                 logger.error(f"Scheduler: Failed to update online report for chat {msg_info['chat_id']}: {e}")
 
 
-def sync_users_with_panels(bot) -> None:
+def sync_users_with_panels(bot):
     """
-    به صورت دوره‌ای، کاربرانی که از پنل‌ها حذف شده‌اند را در دیتابیس ربات غیرفعال می‌کند.
+    (نسخه اصلاح‌شده نهایی با اجرای غیرمسدود دیتابیس)
+    اطلاعات کاربران را از پنل‌ها دریافت کرده و دیتابیس محلی را به‌روزرسانی می‌کند.
+    عملیات دیتابیس در یک ترد جداگانه اجرا می‌شود تا از بلاک شدن برنامه اصلی جلوگیری شود.
     """
-    logger.info("SCHEDULER: Starting user synchronization with panels.")
+    async def async_sync():
+        start_time = time.time()
+        logger.info("SYNCER: Starting panel data synchronization cycle.")
+
+        try:
+            # ۱. دریافت تمام کاربران از پنل‌ها (عملیات تحت شبکه)
+            all_users_from_api = combined_handler.get_all_users_combined()
+
+            if not all_users_from_api:
+                logger.warning("SYNCER: Fetched user list from panels is empty. Skipping sync cycle.")
+                return
+
+            # ۲. دریافت اطلاعات کاربران فعلی از دیتابیس (عملیات I/O)
+            loop = asyncio.get_running_loop()
+            
+            # اجرای عملیات خواندن از دیتابیس در یک ترد جداگانه
+            db_users = await loop.run_in_executor(
+                None, db.get_all_user_uuids_and_panel_data
+            )
+            db_users_map = {user['uuid']: user for user in db_users} if db_users else {}
+
+            logger.info(f"SYNCER: Fetched {len(all_users_from_api)} users from panels and {len(db_users_map)} users from local DB.")
+            
+            update_tasks = []
+
+            # ۳. مقایسه و آماده‌سازی تسک‌های آپدیت
+            for user_data in all_users_from_api:
+                uuid = user_data.get('uuid')
+                if not uuid:
+                    continue
+
+                db_user = db_users_map.get(uuid)
+                
+                # فقط در صورتی که داده‌ها تغییر کرده باشند، آپدیت کن
+                if not db_user or \
+                   db_user.get('used_traffic_hiddify') != user_data.get('used_traffic_hiddify', 0) or \
+                   db_user.get('used_traffic_marzban') != user_data.get('used_traffic_marzban', 0) or \
+                   db_user.get('last_online_jalali') != user_data.get('last_online_jalali', None):
+                    
+                    # بسته‌بندی تابع آپدیت و آرگومان‌های آن برای اجرا در ترد دیگر
+                    task = loop.run_in_executor(
+                        None,
+                        db.add_or_update_user_from_panel,
+                        uuid,
+                        user_data.get('name'),
+                        user_data.get('telegram_id'),
+                        user_data.get('expire_days_hiddify'),
+                        user_data.get('expire_days_marzban'),
+                        user_data.get('last_online_jalali'),
+                        user_data.get('used_traffic_hiddify', 0),
+                        user_data.get('used_traffic_marzban', 0)
+                    )
+                    update_tasks.append(task)
+
+            if not update_tasks:
+                logger.info("SYNCER: No user data changes detected. Database is already up to date.")
+            else:
+                logger.info(f"SYNCER: Starting database update for {len(update_tasks)} users with changed data.")
+                await asyncio.gather(*update_tasks)
+                logger.info("SYNCER: Database update for all users completed successfully.")
+
+        except Exception as e:
+            logger.error(f"SYNCER: An unexpected error occurred during the async sync cycle: {e}", exc_info=True)
+        
+        end_time = time.time()
+        logger.info(f"SYNCER: Synchronization cycle finished in {end_time - start_time:.2f} seconds.")
+
+    # چون کتابخانه schedule به صورت async نیست، ما تابع async خود را در یک event loop جدید اجرا می‌کنیم.
     try:
-        panel_uuids = {user['uuid'] for user in combined_handler.get_all_users_combined() if user.get('uuid')}
-        if not panel_uuids:
-            logger.warning("SYNC: Could not fetch any users from panels. Aborting sync.")
-            return
-
-        bot_uuids = {row['uuid'] for row in db.all_active_uuids()}
-        
-        uuids_to_deactivate = bot_uuids - panel_uuids
-        
-        if uuids_to_deactivate:
-            logger.warning(f"SYNC: Found {len(uuids_to_deactivate)} orphan UUIDs to deactivate.")
-            for uuid_str in uuids_to_deactivate:
-                uuid_record = db.get_user_uuid_record(uuid_str)
-                if uuid_record:
-                    db.deactivate_uuid(uuid_record['id'])
-                    logger.info(f"SYNC: Deactivated orphan user with UUID: {uuid_str}")
-        else:
-            logger.info("SYNC: Database is already in sync with panels.")
-
-    except Exception as e:
-        logger.error(f"Error during user synchronization: {e}", exc_info=True)
-    finally:
-        logger.info("SCHEDULER: User synchronization finished.")
+        asyncio.run(async_sync())
+    except RuntimeError: # اگر یک event loop از قبل در این ترد در حال اجرا باشد
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(async_sync())
 
 
 def cleanup_old_reports(bot) -> None:
