@@ -590,8 +590,10 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             created_at_info = db_users_map.get(user_info.get('uuid'))
             if created_at_info and created_at_info.get('created_at'):
                 created_at = created_at_info['created_at']
-                if isinstance(created_at, datetime) and (now_utc - created_at.astimezone(pytz.utc)).days < 1:
-                    new_users_today.append(user_info)
+                if isinstance(created_at, datetime):
+                    created_at_aware = created_at if created_at.tzinfo else pytz.utc.localize(created_at)
+                    if (now_utc - created_at_aware).days < 1:
+                        new_users_today.append(user_info)
 
         total_daily_all = total_daily_hiddify + total_daily_marzban
         payments_today_count = db_manager.get_total_payments_in_range(start_of_today_utc, now_utc)
