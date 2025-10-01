@@ -635,7 +635,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 if h_usage > 0.001: usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(h_usage))}")
                 m_usage = daily_dict.get('marzban', 0.0)
                 if m_usage > 0.001 and user_db_record:
-                    flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us')] if user_db_record.get(has)]
+                    flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'), ("🇷🇴", 'has_access_ro')] if user_db_record.get(has)]
                     if flags: usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(m_usage))}")
 
                 usage_str = escape_markdown(" | ").join(usage_parts)

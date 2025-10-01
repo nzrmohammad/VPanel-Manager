@@ -1459,7 +1459,7 @@ class DatabaseManager:
 
     def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
         """Updates a user's access status for a specific server."""
-        if server not in ['de', 'fr', 'tr', 'us']:
+        if server not in ['de', 'fr', 'tr', 'us', 'ro']:
             return False
 
         column_name = f"has_access_{server}"
@@ -2863,6 +2863,35 @@ class DatabaseManager:
             cursor = c.execute("DELETE FROM payments WHERE uuid_id = ?", (uuid_id,))
             logger.info(f"ADMIN ACTION: Deleted {cursor.rowcount} payment records for uuid_id {uuid_id}.")
             return cursor.rowcount
+
+    def get_all_user_uuids_and_panel_data(self) -> List[Dict[str, Any]]:
+        """
+        تمام UUID های فعال کاربران و اطلاعات پنل آن‌ها، شامل مصرف و آخرین زمان آنلاین بودن
+        را از اسنپ‌شات‌ها دریافت می‌کند.
+        """
+        query = """
+            WITH LastSnapshots AS (
+                SELECT
+                    uuid_id,
+                    MAX(taken_at) as last_taken_at
+                FROM usage_snapshots
+                GROUP BY uuid_id
+            )
+            SELECT
+                uu.uuid,
+                uu.user_id,
+                uu.name,
+                COALESCE(s.hiddify_usage_gb, 0) as used_traffic_hiddify,
+                COALESCE(s.marzban_usage_gb, 0) as used_traffic_marzban,
+                s.taken_at as last_online_jalali
+            FROM user_uuids uu
+            LEFT JOIN LastSnapshots ls ON uu.id = ls.uuid_id
+            LEFT JOIN usage_snapshots s ON ls.uuid_id = s.uuid_id AND ls.last_taken_at = s.taken_at
+            WHERE uu.is_active = 1;
+        """
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in rows]
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""

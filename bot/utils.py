@@ -411,6 +411,7 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     has_access_us = user_record.get('has_access_us', False)
+    has_access_ro = user_record.get('has_access_ro', False)
 
     parts = []
     breakdown = info.get('breakdown', {})
@@ -424,7 +425,7 @@ def create_info_config(user_uuid: str) -> Optional[str]:
         limit_str = f"{limit:.0f}" if limit > 0 else '∞'
         parts.append(f"🇩🇪 {usage:.0f}/{limit_str}GB")
 
-    if (has_access_fr or has_access_tr or has_access_us) and marzban_info:
+    if (has_access_fr or has_access_tr or has_access_us or has_access_ro) and marzban_info:
         flags = []
         if has_access_fr:
             flags.append("🇫🇷")
@@ -432,6 +433,8 @@ def create_info_config(user_uuid: str) -> Optional[str]:
             flags.append("🇹🇷")
         if has_access_us:
             flags.append("🇺🇸")
+        if has_access_ro:
+            flags.append("🇷🇴")        
 
         flag_str = "".join(flags)
         usage = marzban_info.get('current_usage_GB', 0)

@@ -54,7 +54,8 @@ def handle_toggle_setting(call: types.CallbackQuery):
     valid_settings = [
         'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
         'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
-        'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us'
+        'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us',
+        'data_warning_ro'
     ]
 
     # فقط اگر کلید معتبر بود، آن را در دیتابیس تغییر می‌دهیم

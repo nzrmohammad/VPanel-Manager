@@ -185,28 +185,31 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             account_lines.append(f"📊 حجم‌کل : {escape_markdown(f'{info.get("usage_limit_GB", 0):.2f} GB')}")
             if access_rights.get('has_access_de') and hiddify_info:
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('usage_limit_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and marzban_info:
+            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
+                if access_rights.get('has_access_ro'): flags.append("🇷🇴")
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('usage_limit_GB', 0)))}")
 
             account_lines.append(f"🔥 حجم‌مصرف شده : {escape_markdown(f'{info.get("current_usage_GB", 0):.2f} GB')}")
             if access_rights.get('has_access_de') and hiddify_info:
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('current_usage_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and marzban_info:
+            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
+                if access_rights.get('has_access_ro'): flags.append("🇷🇴")
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('current_usage_GB', 0)))}")
 
             account_lines.append(f"📥 حجم‌باقی‌مانده : {escape_markdown(f'{max(0, info.get("usage_limit_GB", 0) - info.get("current_usage_GB", 0)):.2f} GB')}")
             if access_rights.get('has_access_de') and hiddify_info:
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('remaining_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and marzban_info:
+            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
+                if access_rights.get('has_access_ro'): flags.append("🇷🇴")
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('remaining_GB', 0)))}")
 
             # این بخش مصرف روزانه را به گزارش اضافه می‌کند
@@ -214,10 +217,11 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
                 account_lines.append("⚡️ حجم مصرف شده امروز:")
                 if access_rights.get('has_access_de') and daily_usage_dict.get('hiddify',0) > 0.001:
                     account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(daily_usage_dict.get('hiddify',0)))}")
-                if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us')) and daily_usage_dict.get('marzban',0) > 0.001:
+                if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and daily_usage_dict.get('marzban',0) > 0.001:
                     flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                     if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                     if access_rights.get('has_access_us'): flags.append("🇺🇸")
+                    if access_rights.get('has_access_ro'): flags.append("🇷🇴")
                     account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(daily_usage_dict.get('marzban',0)))}")
             else:
                 logger.debug(f"fmt_user_report: Daily usage section for '{name}' was skipped because total daily usage ({sum(daily_usage_dict.values()):.4f} GB) was not > 0.001.")
@@ -381,7 +385,8 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
         "germany": "fmt_plan_type_germany", 
         "france": "fmt_plan_type_france",
         "turkey": "fmt_plan_type_turkey",
-        "usa" : "fmt_plan_type_usa"
+        "usa" : "fmt_plan_type_usa",
+        "romania": "fmt_plan_type_romania"
     }
     type_title = get_string(type_map.get(plan_type, "fmt_plan_type_general"), lang_code)
     
@@ -393,7 +398,7 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
 
     if plan_type == "combined":
         lines.append(escape_markdown(get_string('plan_guide_combined', lang_code)))
-    elif plan_type in ["germany", "france", "turkey", "usa"]:
+    elif plan_type in ["germany", "france", "turkey", "usa", "romania"]:
         lines.append(escape_markdown(get_string('plan_guide_dedicated', lang_code)))
 
     separator = "`────────────────────`"
@@ -414,6 +419,8 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
             details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_tr"])}')
         elif plan_type == 'usa' and plan.get('volume_us'):
             details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_us"])}')
+        elif plan_type == 'romania' and plan.get('volume_ro'):
+            details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_ro"])}')
         elif plan_type == 'combined':
             if plan.get('volume_de'):
                 # details.append(f'*{get_string("fmt_plan_label_germany", lang_code)}:* {escape_markdown(plan["volume_de"])}')

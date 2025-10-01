@@ -31,6 +31,12 @@ def run_update():
         cursor = conn.cursor()
         print("✅ با موفقیت به دیتابیس متصل شد.")
 
+        # --- START OF FIX ---
+        # Add new columns for Romania access
+        add_column_if_not_exists(cursor, "users", "data_warning_ro", "INTEGER DEFAULT 1")
+        add_column_if_not_exists(cursor, "user_uuids", "has_access_ro", "INTEGER DEFAULT 0")
+        # --- END OF FIX ---
+
         # مرحله ۱: ستون‌ها را بدون محدودیت UNIQUE اضافه می‌کنیم
         referral_code_added = add_column_if_not_exists(cursor, "users", "referral_code", "TEXT")
         add_column_if_not_exists(cursor, "users", "referred_by_user_id", "INTEGER")
