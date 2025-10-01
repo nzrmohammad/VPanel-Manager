@@ -84,6 +84,7 @@
   "fmt_plan_type_france": "فرانسه",
   "fmt_plan_type_turkey": "ترکیه",
   "fmt_plan_type_usa": "آمریکا",
+  "fmt_plan_type_romania": "رومانی",
   "fmt_plan_type_general": "عمومی",
   "fmt_plans_title": "🚀 پلن‌های فروش سرویس ({type_title})",
   "fmt_plan_label_total_volume": "حجم کل",

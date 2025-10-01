@@ -291,7 +291,7 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
             elif panel_details.get('type') == 'marzban': panel_data['usage_limit_GB'] += add_gb_fr
     else:
         target_panel_type = 'hiddify' if plan_type == 'germany' else 'marzban'
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         volume_key = volume_key_map.get(plan_type)
         add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0')) if volume_key else 0
         
@@ -325,7 +325,7 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
         if add_gb_de > 0 or add_days > 0: lines.append(f" 🇩🇪 : *\\+{int(add_gb_de)} GB* \\| *\\+{int(add_days)} روز*")
         if add_gb_fr > 0 or add_days > 0: lines.append(f" {dynamic_marzban_flags} : *\\+{int(add_gb_fr)} GB* \\| *\\+{int(add_days)} روز*")
     else:
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         flag_map = {'germany': '🇩🇪', 'france': '🇫🇷', 'turkey': '🇹🇷', 'usa': '🇺🇸'}
         volume_key = volume_key_map.get(plan_type)
         add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0')) if volume_key else 0
@@ -404,7 +404,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
         if add_gb_fr > 0: combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr, target_panel_type='marzban')
     else:
         target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         volume_key = volume_key_map.get(plan_type)
         if volume_key:
             add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
@@ -684,7 +684,7 @@ def confirm_gift_purchase(call: types.CallbackQuery, plan_name: str):
             elif panel_details.get('type') == 'marzban': panel_details.get('data', {})['usage_limit_GB'] += add_gb_fr
     else:
         target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         volume_key = volume_key_map.get(plan_type)
         add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0')) if volume_key else 0
         for panel_details in info_after.get('breakdown', {}).values():
@@ -718,7 +718,7 @@ def confirm_gift_purchase(call: types.CallbackQuery, plan_name: str):
         if add_gb_de > 0 or add_days > 0: lines.append(f" 🇩🇪 : *\\+{int(add_gb_de)} GB* \\| *\\+{int(add_days)} روز*")
         if add_gb_fr > 0 or add_days > 0: lines.append(f" {dynamic_marzban_flags} : *\\+{int(add_gb_fr)} GB* \\| *\\+{int(add_days)} روز*")
     else:
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         flag_map = {'germany': '🇩🇪', 'france': '🇫🇷', 'turkey': '🇹🇷', 'usa': '🇺🇸'}
         volume_key = volume_key_map.get(plan_type)
         add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0')) if volume_key else 0
@@ -797,7 +797,7 @@ def execute_gift_purchase(call: types.CallbackQuery, plan_name: str):
         if add_gb_fr > 0: combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr, target_panel_type='marzban')
     else:
         target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us'}
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         volume_key = volume_key_map.get(plan_type)
         add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0')) if volume_key else 0
         if add_gb > 0 or add_days > 0:

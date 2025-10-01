@@ -249,5 +249,47 @@
         "volume_us": "۲۰۰ گیگابایت",
         "duration": "۳۰ روز",
         "price": 680000
+    },
+    {
+        "name": "RO Economy 🇷🇴",
+        "type": "romania",
+        "volume_ro": "۲۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 140000
+    },
+    {
+        "name": "RO Standard 🇷🇴",
+        "type": "romania",
+        "volume_ro": "۳۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 210000
+    },
+    {
+        "name": "RO Pro 🇷🇴",
+        "type": "romania",
+        "volume_ro": "۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 350000
+    },
+    {
+        "name": "RO Premium 🇷🇴",
+        "type": "romania",
+        "volume_ro": "۱۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 700000
+    },
+    {
+        "name": "RO Ultimate 🇷🇴",
+        "type": "romania",
+        "volume_ro": "۱۵۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 1050000
+    },
+    {
+        "name": "RO Max 🇷🇴",
+        "type": "romania",
+        "volume_ro": "۲۰۰ گیگابایت",
+        "duration": "۳۰ روز",
+        "price": 1400000
     }
 ]

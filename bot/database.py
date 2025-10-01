@@ -52,6 +52,7 @@ class DatabaseManager:
                     data_warning_fr INTEGER DEFAULT 1,
                     data_warning_tr INTEGER DEFAULT 1,
                     data_warning_us INTEGER DEFAULT 1,
+                    data_warning_ro INTEGER DEFAULT 1,        
                     show_info_config INTEGER DEFAULT 1,
                     admin_note TEXT,
                     lang_code TEXT,
@@ -81,6 +82,7 @@ class DatabaseManager:
                     has_access_fr INTEGER DEFAULT 0,
                     has_access_tr INTEGER DEFAULT 0,
                     has_access_us INTEGER DEFAULT 0,
+                    has_access_ro INTEGER DEFAULT 0,
                     FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
                     UNIQUE(user_id, uuid)
                 );
@@ -484,7 +486,7 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self.write_conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, 'data_warning_ro' show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 row_dict = dict(row)
                 return {
@@ -495,6 +497,7 @@ class DatabaseManager:
                     'data_warning_fr': bool(row_dict.get('data_warning_fr', True)),
                     'data_warning_tr': bool(row_dict.get('data_warning_tr', True)),
                     'data_warning_us': bool(row_dict.get('data_warning_us', True)),
+                    'data_warning_ro': bool(row_dict.get('data_warning_ro', True)),
                     'show_info_config': bool(row_dict.get('show_info_config', True)),
                     'auto_delete_reports': bool(row_dict.get('auto_delete_reports', False)),
                     'achievement_alerts': bool(row_dict.get('achievement_alerts', True)),
@@ -503,15 +506,15 @@ class DatabaseManager:
             return {
                 'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True,
                 'data_warning_de': True, 'data_warning_fr': True, 'data_warning_tr': True,
-                'data_warning_us': True, 'show_info_config': True, 'auto_delete_reports': False,
-                'achievement_alerts': True, 'promotional_alerts': True
+                'data_warning_us': True, 'data_warning_ro': True, 'show_info_config': True,
+                'auto_delete_reports': False, 'achievement_alerts': True, 'promotional_alerts': True
             }
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
         valid_settings = [
             'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
             'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
-            'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us'
+            'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us', 'data_warning_ro'
         ]
 
         if setting in valid_settings:
@@ -865,7 +868,7 @@ class DatabaseManager:
         with self.write_conn() as c:
             query = """
                 SELECT id, user_id, uuid, name, is_active, created_at, is_vip, 
-                       has_access_de, has_access_fr, has_access_tr, has_access_us
+                       has_access_de, has_access_fr, has_access_tr, has_access_us, has_access_ro
                 FROM user_uuids
                 ORDER BY created_at DESC
             """
@@ -1440,6 +1443,7 @@ class DatabaseManager:
                 uu.has_access_fr,
                 uu.has_access_tr,
                 uu.has_access_us,
+                uu.has_access_ro,
                 -- Check if a mapping exists for the user's UUID
                 CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
             FROM users u
@@ -1798,6 +1802,8 @@ class DatabaseManager:
                             results['marzban_tr'] += 1
                         if user_record.get('has_access_us'):
                             results['marzban_us'] += 1
+                        if user_record.get('has_access_ro'):
+                            results['marzban_us'] += 1    
         return results
 
     def get_or_create_referral_code(self, user_id: int) -> str:
@@ -2860,7 +2866,7 @@ class DatabaseManager:
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
-        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False}
+        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False }
         user_uuids = self.uuids(user_id)
         if user_uuids:
             first_uuid_record = self.uuid_by_id(user_id, user_uuids[0]['id'])
@@ -2869,6 +2875,7 @@ class DatabaseManager:
                 access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
                 access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
                 access_rights['has_access_us'] = first_uuid_record.get('has_access_us', False)
+                access_rights['has_access_ro'] = first_uuid_record.get('has_access_ro', False)
 
         return access_rights
 

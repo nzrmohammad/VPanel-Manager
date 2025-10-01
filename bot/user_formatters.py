@@ -26,6 +26,7 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     has_access_fr = user_record.get('has_access_fr', False) if user_record else False
     has_access_tr = user_record.get('has_access_tr', False) if user_record else False
     has_access_us = user_record.get('has_access_us', False) if user_record else False
+    has_access_ro = user_record.get('has_access_ro', False) if user_record else False
 
     raw_name = info.get("name", get_string('unknown_user', lang_code))
     is_active_overall = info.get("is_active", False)
@@ -47,6 +48,7 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
             if has_access_fr: flags += "🇫🇷"
             if has_access_tr: flags += "🇹🇷"
             if has_access_us: flags += "🇺🇸"
+            if has_access_ro: flags += "🇷🇴"
         
         if not flags:
             return []
@@ -297,7 +299,8 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     if user_record.get('has_access_fr'): flags.append("🇫🇷")
                     if user_record.get('has_access_tr'): flags.append("🇹🇷")
                     if user_record.get('has_access_us'): flags.append("🇺🇸")
-                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸" # Fallback
+                    if user_record.get('has_access_ro'): flags.append("🇷🇴")
+                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸🇷🇴" # Fallback
                     breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
                 
                 if breakdown_parts:
@@ -339,6 +342,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 if user_record.get('has_access_fr'): flags.append("🇫🇷")
                 if user_record.get('has_access_tr'): flags.append("🇹🇷")
                 if user_record.get('has_access_us'): flags.append("🇺🇸")
+                if user_record.get('has_access_ro'): flags.append("🇷🇴")
                 if flags:
                     most_used_server = "".join(flags) # به جای join با "/"، پرچم‌ها را مستقیم به هم می‌چسبانیم
 
@@ -591,9 +595,9 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if access_rights.get('has_access_de'): access_flags.append("🇩🇪")
     if access_rights.get('has_access_fr'): access_flags.append("🇫🇷")
     if access_rights.get('has_access_tr'): access_flags.append("🇹🇷")
-    # <<<<<<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>>>>>
     if access_rights.get('has_access_us'): access_flags.append("🇺🇸")
-    # <<<<<<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>>>>>
+    if access_rights.get('has_access_ro'): access_flags.append("🇷🇴")
+
     access_text = f"🛰️ سرورها : {''.join(access_flags)}" if access_flags else ""
 
     # --- 6. ساخت پیام نهایی ---
@@ -619,13 +623,13 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     lines.append("")
 
     # --- 7. منطق تفکیک اطلاعات بر اساس سرور ---
-    # <<<<<<<<<<<<<<<<<<<< START OF FIX >>>>>>>>>>>>>>>>>>>>
     marzban_flags_list = []
     if access_rights.get('has_access_fr'): marzban_flags_list.append("🇫🇷")
     if access_rights.get('has_access_tr'): marzban_flags_list.append("🇹🇷")
     if access_rights.get('has_access_us'): marzban_flags_list.append("🇺🇸")
+    if access_rights.get('has_access_ro'): marzban_flags_list.append("🇷🇴")
+
     marzban_flag_str = "".join(marzban_flags_list)
-    # <<<<<<<<<<<<<<<<<<<< END OF FIX >>>>>>>>>>>>>>>>>>>>
 
     # A. حجم کل
     lines.append(f"📦 حجم کل : *{escape_markdown(f'{total_limit_gb:.2f}')} GB*")

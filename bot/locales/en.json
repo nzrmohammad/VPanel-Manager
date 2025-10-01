@@ -84,6 +84,7 @@
   "fmt_plan_type_france": "France",
   "fmt_plan_type_turkey": "Turkey",
   "fmt_plan_type_usa": "USA",
+  "fmt_plan_type_romania": "Romania",
   "fmt_plan_type_general": "General",
   "fmt_plans_title": "🚀 Service Plans ({type_title})",
   "fmt_plan_label_total_volume": "Total Volume",

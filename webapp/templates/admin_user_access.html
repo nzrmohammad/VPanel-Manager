@@ -88,6 +88,7 @@
                         <th>فرانسه 🇫🇷</th>
                         <th>ترکیه 🇹🇷</th>
                         <th>آمریکا 🇺🇸</th>
+                        <th>رومانی 🇷🇴</th>
                     </tr>
                 </thead>
                 <tbody id="user-table-body">
@@ -115,6 +116,9 @@
                             </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="us" {% if user.has_access_us %}checked{% endif %}><span class="slider"></span></label>
+                            </td>
+                            <td class="access-toggle-cell">
+                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="ro" {% if user.has_access_ro %}checked{% endif %}><span class="slider"></span></label>
                             </td>
                         </tr>
                     {% else %}

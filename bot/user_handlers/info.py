@@ -331,6 +331,13 @@ def show_addons_page(call: types.CallbackQuery):
             for btn in create_addon_buttons(data_addons_us):
                 kb.add(btn)
 
+    if access_rights.get('has_access_ro'):
+        data_addons_ro = [a for a in all_addons if a.get("type") == "data_ro"]
+        if data_addons_ro:
+            kb.add(types.InlineKeyboardButton("حجم 🇷🇴", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_ro):
+                kb.add(btn)
+
     # نمایش بسته‌های حجم ترکیه
     if access_rights.get('has_access_tr'):
         data_addons_tr = [a for a in all_addons if a.get("type") == "data_tr"]

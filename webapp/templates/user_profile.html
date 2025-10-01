@@ -252,6 +252,15 @@
                             </label>
                         </div>
                         {% endif %}
+                        {% if user.has_access_ro %}
+                        <div class="switch-group">
+                            <label for="data_warning_ro">هشدار اتمام حجم <span class="fi fi-ro"></span></label>
+                            <label class="switch">
+                                <input type="checkbox" id="data_warning_ro" name="data_warning_ro" {% if settings.data_warning_ro %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

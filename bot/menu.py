@@ -128,6 +128,7 @@ class Menu:
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
         btn_turkey = types.InlineKeyboardButton(f"🇹🇷 {get_string('btn_cat_tr', lang_code)}", callback_data="show_plans:turkey")
         btn_usa = types.InlineKeyboardButton(f"🇺🇸 آمریکا", callback_data="show_plans:usa")
+        btn_romania = types.InlineKeyboardButton(f"🇷🇴 رومانی", callback_data="show_plans:romania")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
         
         btn_addons = types.InlineKeyboardButton("➕ حجم یا زمان", callback_data="show_addons")
@@ -138,8 +139,8 @@ class Menu:
 
         # چیدمان جدید دکمه‌ها
         kb.add(btn_usa, btn_france)
-        kb.add(btn_turkey, btn_germany)
-        kb.add(btn_combined)
+        kb.add(btn_turkey, btn_romania)
+        kb.add(btn_combined, btn_germany)
         kb.add(btn_addons, btn_achievement_shop)
         kb.add(btn_payment_methods)
         kb.add(btn_back)
@@ -346,6 +347,11 @@ class Menu:
         if access.get('has_access_us'): # Add this block
             data_warning_buttons.append(
                 types.InlineKeyboardButton(f"🇺🇸 {get_status_emoji('data_warning_us')} ", callback_data="toggle_data_warning_us")
+            )
+
+        if access.get('has_access_ro'): # Add this block
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"🇷🇴 {get_status_emoji('data_warning_ro')} ", callback_data="toggle_data_warning_ro")
             )
 
         if data_warning_buttons:

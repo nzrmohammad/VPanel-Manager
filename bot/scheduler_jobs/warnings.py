@@ -166,6 +166,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                     should_warn_fr = user_settings.get('data_warning_fr') and uuid_record.get('has_access_fr')
                     should_warn_tr = user_settings.get('data_warning_tr') and uuid_record.get('has_access_tr')
                     should_warn_us = user_settings.get('data_warning_us') and uuid_record.get('has_access_us')
+                    should_warn_ro = user_settings.get('data_warning_ro') and uuid_record.get('has_access_ro')
                     
                     if should_warn_fr or should_warn_tr or should_warn_us:
                         limit, usage = marzban_info.get('usage_limit_GB', 0.0), marzban_info.get('current_usage_GB', 0.0)
@@ -175,6 +176,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             if should_warn_fr: server_names.append("فرانسه 🇫🇷")
                             if should_warn_tr: server_names.append("ترکیه 🇹🇷")
                             if should_warn_us: server_names.append("آمریکا 🇺🇸")
+                            if should_warn_ro: server_names.append("رومانی 🇷🇴")
                             server_display_name = " / ".join(server_names)
 
                             if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_marzban'):

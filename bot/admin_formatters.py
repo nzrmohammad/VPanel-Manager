@@ -611,7 +611,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             f"💳 پرداخت‌های امروز : *{payments_today_count}*",
             f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
             f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-            f" 🇫🇷🇹🇷🇺🇸 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+            f" 🇫🇷🇹🇷🇺🇸🇷🇴 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
         ]
 
         if top_consumer_today["usage"] > 0.01:
@@ -676,8 +676,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
             warning_map = {
                 "low_data_hiddify": "کمبود حجم 🇩🇪", "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-                "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸",
-                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸",
+                "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸🇷🇴", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸🇷🇴",
+                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸🇷🇴",
                 "expired": "منقضی شده", "inactive_user_reminder": "یادآوری عدم فعالیت",
                 "unusual_daily_usage_admin_alert": "مصرف غیرعادی (به ادمین)",
                 "too_many_devices_admin_alert": "تعداد دستگاه بالا (به ادمین)"

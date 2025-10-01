@@ -112,6 +112,8 @@ def handle_plan_details_menu(call, params):
             volume = f"{escape_markdown(plan.get('volume_tr'))} 🇹🇷"
         elif plan_type == 'usa' and plan.get('volume_us'):
             volume = f"{escape_markdown(plan.get('volume_us'))} 🇺🇸"
+        elif plan_type == 'romania' and plan.get('volume_ro'):
+            volume = f"{escape_markdown(plan.get('volume_ro'))} 🇷🇴"
         
         details.extend([
             f"🔹 *{escape_markdown('نوع:')}* اختصاصی",
