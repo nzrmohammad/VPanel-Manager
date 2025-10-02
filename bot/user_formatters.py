@@ -819,6 +819,7 @@ def fmt_purchase_summary(info_before: dict, info_after: dict, plan: dict, lang_c
     if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
+    if user_access.get('has_access_ro'): marzban_flags.append("🇷🇴")
     dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else ""
 
     def sort_key(panel_item_tuple):

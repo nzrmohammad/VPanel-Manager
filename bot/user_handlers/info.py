@@ -303,6 +303,7 @@ def show_addons_page(call: types.CallbackQuery):
     all_addons = load_json_file('addons.json')
     user_data = db.user(uid)
     user_balance = user_data.get('wallet_balance', 0.0) if user_data else 0.0
+    
     access_rights = db.get_user_access_rights(uid)
 
     prompt = (f"*{escape_markdown('➕ خرید بسته‌های افزودنی')}*\n\n"
@@ -342,6 +343,7 @@ def show_addons_page(call: types.CallbackQuery):
             for btn in create_addon_buttons(data_addons_fr):
                 kb.add(btn)
 
+    # نمایش بسته‌های حجم آمریکا
     if access_rights.get('has_access_us'):
         data_addons_us = [a for a in all_addons if a.get("type") == "data_us"]
         if data_addons_us:
@@ -349,6 +351,7 @@ def show_addons_page(call: types.CallbackQuery):
             for btn in create_addon_buttons(data_addons_us):
                 kb.add(btn)
 
+    # نمایش بسته‌های حجم رومانی
     if access_rights.get('has_access_ro'):
         data_addons_ro = [a for a in all_addons if a.get("type") == "data_ro"]
         if data_addons_ro:
@@ -364,7 +367,7 @@ def show_addons_page(call: types.CallbackQuery):
             for btn in create_addon_buttons(data_addons_tr):
                 kb.add(btn)
     
-    # نمایش بسته‌های زمانی (برای همه)
+    # نمایش بسته‌های زمانی (برای همه کاربران)
     time_addons = [a for a in all_addons if a.get("type") == "time"]
     if time_addons:
         kb.add(types.InlineKeyboardButton("زمان", callback_data="noop"))
@@ -378,13 +381,12 @@ def confirm_addon_purchase(call: types.CallbackQuery):
     """(نسخه نهایی و اصلاح شده) از کاربر برای خرید بسته افزودنی تاییدیه می‌گیرد و پیش‌نمایش وضعیت را نمایش می‌دهد."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    
+
     parts = call.data.split(':', 3)
     if len(parts) < 4:
         bot.answer_callback_query(call.id, "خطا: اطلاعات بسته نامعتبر است.", show_alert=True)
         return
     addon_type, addon_name = parts[2], parts[3]
-    # --- END OF FIX ---
 
     all_addons = load_json_file('addons.json')
     addon_to_buy = next((a for a in all_addons if a.get("type") == addon_type and a.get("name") == addon_name), None)
@@ -400,7 +402,8 @@ def confirm_addon_purchase(call: types.CallbackQuery):
 
     # --- ✨ شروع منطق جدید پیش‌نمایش ---
     import copy
-    user_main_uuid = user_uuids[0]['uuid']
+    user_main_uuid_record = user_uuids[0]
+    user_main_uuid = user_main_uuid_record['uuid']
     info_before = combined_handler.get_combined_user_info(user_main_uuid)
     info_after = copy.deepcopy(info_before)
 
@@ -430,14 +433,27 @@ def confirm_addon_purchase(call: types.CallbackQuery):
         limit = p_data.get('usage_limit_GB', 0)
         expire_raw = p_data.get('expire')
         expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
-        flag = "🇩🇪" if panel_details.get('type') == 'hiddify' else "🇫🇷🇹🇷🇺🇸"
-        lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+        
+        flag = ""
+        if panel_details.get('type') == 'hiddify':
+            flag = "🇩🇪"
+        elif panel_details.get('type') == 'marzban':
+            marzban_flags = []
+            if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
+            if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
+            if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+            if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
+            flag = "".join(marzban_flags)
+
+        if flag:
+            lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+
     lines.append(f"\n*{escape_markdown('بسته انتخابی')}*")
     
     addon_details = []
     
     # تعیین پرچم بر اساس نوع بسته
-    flag_map = {'data_de': '🇩🇪', 'data_fr': '🇫🇷', 'data_tr': '🇹🇷', 'data_us': '🇺🇸', 'time': '⏰'}
+    flag_map = {'data_de': '🇩🇪', 'data_fr': '🇫🇷', 'data_tr': '🇹🇷', 'data_us': '🇺🇸', 'data_ro': '🇷🇴', 'time': '⏰'}
     flag = flag_map.get(addon_type, '🏳️')
     
     # اضافه کردن جزئیات بر اساس نوع بسته
@@ -450,16 +466,26 @@ def confirm_addon_purchase(call: types.CallbackQuery):
     if add_days > 0:
         lines.append(f"{flag} : *\\+{add_days} روز*")
         
-
     lines.append(f"\n*{escape_markdown('وضعیت پس از خرید')}*")
     for panel_details in sorted(info_after.get('breakdown', {}).values(), key=lambda p: p.get('type') != 'hiddify'):
         p_data = panel_details.get('data', {})
-        limit = p_data.get('usage_limit_GB', 0)
-        expire_raw = p_data.get('expire')
-        expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
-        flag = "🇩🇪" if panel_details.get('type') == 'hiddify' else "🇫🇷🇹🇷🇺🇸"
-        lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+        
+        flag = ""
+        if panel_details.get('type') == 'hiddify':
+            flag = "🇩🇪"
+        elif panel_details.get('type') == 'marzban':
+            marzban_flags = []
+            if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
+            if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
+            if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+            if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
+            flag = "".join(marzban_flags)
 
+        if flag:
+            limit = p_data.get('usage_limit_GB', 0)
+            expire_raw = p_data.get('expire')
+            expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+            lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
 
     lines.extend([
         f"`──────────────────`",
