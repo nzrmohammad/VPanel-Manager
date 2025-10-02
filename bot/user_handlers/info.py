@@ -196,7 +196,7 @@ def send_subscription_link(call: types.CallbackQuery):
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception as e:
-            logger.warning(f"Could not delete old message {call.message.message.id}: {e}")
+            logger.warning(f"Could not delete old message {call.message.message_id}: {e}")
 
         bot.send_photo(uid, photo=stream, caption=message_text, reply_markup=kb, parse_mode="MarkdownV2")
 
