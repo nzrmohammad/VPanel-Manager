@@ -2893,6 +2893,41 @@ class DatabaseManager:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
+    def add_or_update_user_from_panel(self, uuid: str, name: str, telegram_id: Optional[int], expire_days_hiddify: Optional[int], expire_days_marzban: Optional[int], last_online_jalali: Optional[datetime], used_traffic_hiddify: float, used_traffic_marzban: float):
+        """
+        اطلاعات یک کاربر را بر اساس داده‌های دریافت شده از پنل، در دیتابیس محلی به‌روزرسانی می‌کند.
+        این تابع عمدتاً توسط وظیفه همگام‌سازی (sync job) استفاده می‌شود.
+        """
+        with self.write_conn() as c:
+            # ۱. پیدا کردن شناسه داخلی کاربر (uuid_id) از روی رشته UUID.
+            uuid_row = c.execute("SELECT id FROM user_uuids WHERE uuid = ?", (uuid,)).fetchone()
+
+            if not uuid_row:
+                # اگر کاربری که از پنل خوانده شده در دیتابیس ربات وجود نداشته باشد، کاری انجام نمی‌دهیم.
+                # وظیفه این تابع، آپدیت کاربران ربات است، نه ساخت کاربر جدید از پنل.
+                logger.info(f"SYNCER: Skipping update for UUID {uuid} ('{name}') as it's not registered by any bot user.")
+                return
+
+            uuid_id = uuid_row['id']
+
+            # ۲. به‌روزرسانی نام نمایشی کاربر در صورتی که تغییر کرده باشد.
+            c.execute("UPDATE user_uuids SET name = ? WHERE id = ?", (name, uuid_id))
+
+            # ۳. ثبت یک اسنپ‌شات جدید از مصرف با آخرین داده‌های دریافتی از پنل.
+            # از زمان آخرین اتصال کاربر به عنوان زمان اسنپ‌شات استفاده می‌کنیم.
+            snapshot_time = last_online_jalali if last_online_jalali else datetime.now(pytz.utc)
+            c.execute(
+                "INSERT INTO usage_snapshots (uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at) VALUES (?, ?, ?, ?)",
+                (uuid_id, used_traffic_hiddify, used_traffic_marzban, snapshot_time)
+            )
+
+            # ۴. اگر این UUID به یک کاربر تلگرام متصل است، اطمینان حاصل می‌کنیم که رکورد پایه او در جدول users وجود دارد.
+            if telegram_id:
+                # این تابع در صورت عدم وجود، کاربر را می‌سازد و در غیر این صورت کاری انجام نمی‌دهد.
+                self.add_or_update_user(telegram_id, None, name, None)
+
+            logger.debug(f"SYNCER: Successfully updated data for UUID {uuid} (uuid_id: {uuid_id}).")
+
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
         access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False }

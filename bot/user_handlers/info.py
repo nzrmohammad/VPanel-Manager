@@ -279,6 +279,27 @@ def show_addons_page(call: types.CallbackQuery):
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
 
+    # --- START: بررسی وضعیت انقضای کاربر ---
+    user_uuids = db.uuids(uid)
+    if not user_uuids:
+        # اگر کاربر هیچ اکانتی ندارد، به او اطلاع داده می‌شود
+        _safe_edit(uid, msg_id, escape_markdown("شما هیچ اکانت فعالی برای خرید بسته افزودنی ندارید."), reply_markup=menu.user_cancel_action("view_plans", lang_code))
+        return
+
+    user_info = combined_handler.get_combined_user_info(user_uuids[0]['uuid'])
+    if not user_info or user_info.get('expire', -1) < 0:
+        # اگر اکانت منقضی شده باشد، اجازه خرید داده نمی‌شود
+        expired_message = (
+            f"*{escape_markdown('⚠️ اکانت شما منقضی شده است')}*\n\n"
+            f"{escape_markdown('برای خرید بسته‌های افزودنی (حجم یا زمان اضافه)، ابتدا باید سرویس اصلی خود را تمدید کنید.')}"
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🚀 تمدید سرویس اصلی", callback_data="view_plans"))
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
+        _safe_edit(uid, msg_id, expired_message, reply_markup=kb)
+        return
+    # --- END: بررسی وضعیت انقضای کاربر ---
+
     all_addons = load_json_file('addons.json')
     user_data = db.user(uid)
     user_balance = user_data.get('wallet_balance', 0.0) if user_data else 0.0
@@ -299,11 +320,8 @@ def show_addons_page(call: types.CallbackQuery):
             price_str = "{:,.0f}".format(price)
             button_text = f"{emoji} {addon.get('name')} ({price_str} تومان)"
             
-            # --- ✨ Fix starts here ---
-            # Corrected callback_data format to pass addon name with spaces
             addon_id = f"{addon.get('type')}:{addon.get('name')}"
             callback_data = f"wallet:addon_confirm:{addon_id}" if is_affordable else "wallet:insufficient"
-            # --- ✨ Fix ends here ---
             
             buttons.append(types.InlineKeyboardButton(button_text, callback_data=callback_data))
         return buttons
