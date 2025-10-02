@@ -1867,28 +1867,32 @@ class DatabaseManager:
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         today_jalali = jdatetime.datetime.now(tz=tehran_tz)
-        days_since_saturday = (today_jalali.weekday() + 1) % 7
+        
+        # ✨ FIX 1: The calculation for `days_since_saturday` was incorrect.
+        # It now correctly determines the number of days passed since the beginning of the week (Saturday).
+        days_since_saturday = today_jalali.weekday()
+        
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
         report = {'top_10_overall': [], 'top_daily': {}}
         
-        # برای نگهداری مجموع مصرف هفتگی و روزانه هر UUID
         usage_data = {}
 
         with self.write_conn() as c:
-            # دریافت تمام UUID های فعال و نگاشت آن‌ها به user_id
             active_uuids = c.execute("SELECT id, user_id FROM user_uuids WHERE is_active = 1").fetchall()
             uuid_map = {row['id']: {'user_id': row['user_id']} for row in active_uuids}
 
-            # حلقه برای ۷ روز هفته
+            # Loop for all 7 days of the week, from Saturday to Friday
             for i in range(7):
                 day_start_local = (week_start_utc.astimezone(tehran_tz) + timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
                 day_end_local = day_start_local + timedelta(days=1)
                 day_start_utc_loop = day_start_local.astimezone(pytz.utc)
                 day_end_utc_loop = day_end_local.astimezone(pytz.utc)
-                day_of_week_jalali = (jdatetime.datetime.fromgregorian(datetime=day_start_local).weekday() + 1) % 7
+                
+                # ✨ FIX 2: The weekday index calculation was off by one.
+                # It now correctly gets the index (0 for Saturday, 1 for Sunday, ..., 6 for Friday).
+                day_of_week_jalali = jdatetime.datetime.fromgregorian(datetime=day_start_local).weekday()
 
-                # دریافت آخرین رکورد مصرف هر UUID *قبل* از شروع این روز
                 prev_day_snapshots_query = """
                     SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
                     FROM (
@@ -1902,7 +1906,6 @@ class DatabaseManager:
                 prev_day_rows = c.execute(prev_day_snapshots_query, (day_start_utc_loop,)).fetchall()
                 baseline_usage = {row['uuid_id']: {'h_start': row['hiddify_usage_gb'], 'm_start': row['marzban_usage_gb']} for row in prev_day_rows}
 
-                # دریافت تمام رکوردهای مصرف در طول این روز
                 daily_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE taken_at >= ? AND taken_at < ? ORDER BY uuid_id, taken_at ASC"
                 daily_rows = c.execute(daily_snapshots_query, (day_start_utc_loop, day_end_utc_loop)).fetchall()
                 
@@ -1910,9 +1913,7 @@ class DatabaseManager:
                 for row in daily_rows:
                     uuid_id = row['uuid_id']
                     if uuid_id not in daily_usage_by_uuid:
-                        # اولین بار که این UUID را در این روز می‌بینیم
                         baseline = baseline_usage.get(uuid_id)
-                        # نقطه شروع محاسبه، یا مصرف آخر روز قبل است یا صفر (برای کاربران جدید)
                         h_baseline = baseline['h_start'] if baseline and baseline['h_start'] is not None else 0.0
                         m_baseline = baseline['m_start'] if baseline and baseline['m_start'] is not None else 0.0
                         
@@ -1926,19 +1927,15 @@ class DatabaseManager:
                     current_h = row['hiddify_usage_gb'] or 0.0
                     current_m = row['marzban_usage_gb'] or 0.0
                     
-                    # محاسبه تفاوت با آخرین رکورد ثبت شده
                     h_diff = current_h - user_daily['h_last']
                     m_diff = current_m - user_daily['m_last']
                     
-                    # فقط مقادیر مثبت (مصرف) را اضافه می‌کنیم تا ریست شدن پنل خطا ایجاد نکند
                     user_daily['h_total'] += max(0, h_diff)
                     user_daily['m_total'] += max(0, m_diff)
                     
-                    # آخرین مقدار مصرف را برای محاسبه بعدی ذخیره می‌کنیم
                     user_daily['h_last'] = current_h
                     user_daily['m_last'] = current_m
 
-                # ذخیره مصرف محاسبه شده روزانه در ساختار داده کلی
                 for uuid_id, daily_data in daily_usage_by_uuid.items():
                     if uuid_id not in uuid_map: continue
                     if uuid_id not in usage_data:
@@ -1948,7 +1945,6 @@ class DatabaseManager:
                     usage_data[uuid_id]['daily_usages'][day_of_week_jalali] = day_total
                     usage_data[uuid_id]['weekly_total'] += day_total
 
-        # تجمیع مصرف تمام UUID های یک کاربر تلگرام
         usage_by_user_id = {}
         user_info_map = {user['user_id']: user for user in self.get_all_bot_users()}
         
@@ -1961,7 +1957,6 @@ class DatabaseManager:
                 for i in range(7):
                     usage_by_user_id[user_id]['daily_usages'][i] += data['daily_usages'][i]
 
-        # مرتب‌سازی و آماده‌سازی خروجی نهایی
         sorted_weekly = sorted(usage_by_user_id.items(), key=lambda item: item[1]['weekly_total'], reverse=True)
         for user_id, data in sorted_weekly[:10]:
             if data['weekly_total'] > 0.01:
