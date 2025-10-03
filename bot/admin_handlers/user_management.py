@@ -898,16 +898,18 @@ def handle_reset_all_daily_usage_action(call, params):
     """(نسخه نهایی) مصرف روزانه همه کاربران را صفر کرده و یک نقطه شروع جدید ثبت می‌کند."""
     uid, msg_id = call.from_user.id, call.message.message_id
     _safe_edit(uid, msg_id, escape_markdown("⏳ در حال حذف اسنپ‌شات‌های امروز..."), reply_markup=None)
-    
+
     deleted_count = db.delete_all_daily_snapshots()
-    
+
     _safe_edit(uid, msg_id, escape_markdown(f"✅ {deleted_count} رکورد حذف شد. حالا در حال ثبت نقطه شروع جدید..."), reply_markup=None)
 
     try:
+        # این بخش، همان پروسه نیمه‌شب را به صورت دستی اجرا می‌کند
         all_users_info = combined_handler.get_all_users_combined()
         user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
+        # این تابع در دیتابیس شما به درستی از user_uuids استفاده می‌کند
         all_uuids_from_db = list(db.all_active_uuids())
-        
+
         reset_count = 0
         for u_row in all_uuids_from_db:
             uuid_str = u_row['uuid']
@@ -916,6 +918,7 @@ def handle_reset_all_daily_usage_action(call, params):
                 breakdown = info.get('breakdown', {})
                 h_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'hiddify')
                 m_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'marzban')
+                # u_row['id'] در اینجا به درستی به id جدول user_uuids اشاره دارد
                 db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
                 reset_count += 1
 
