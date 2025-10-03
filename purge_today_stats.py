@@ -1,71 +1,72 @@
-import sqlite3
+# File: manual_fix_today_stats.py
+import sys
+import os
+import logging
 from datetime import datetime
 import pytz
 
-# --- تنظیمات ---
-DB_PATH = 'bot_data.db'
-# --- پایان تنظیمات ---
+# --- این بخش برای دسترسی به ماژول‌های ربات ضروری است ---
+# اطمینان حاصل کنید که این اسکریپت در پوشه اصلی پروژه (کنار run_bot.py) قرار دارد
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# ----------------------------------------------------
 
-def purge_and_reset_today():
+# --- ایمپورت‌های لازم از ماژول‌های ربات ---
+from bot.database import db
+from bot.combined_handler import get_all_users_combined
+# -----------------------------------------
+
+# --- تنظیمات اولیه لاگ برای مشاهده مراحل ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# -----------------------------------------
+
+def fix_today_stats():
     """
-    تمام آمارهای غلط ثبت شده برای امروز را پاک کرده و یک نقطه شروع صحیح
-    برای همه کاربران ایجاد می‌کند. این کار آمار گزارش‌های هفتگی را اصلاح می‌کند.
+    آمار مصرف امروز را با دریافت داده‌های زنده از پنل‌ها به طور کامل اصلاح می‌کند.
     """
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            
-            tehran_tz = pytz.timezone("Asia/Tehran")
-            now_in_tehran = datetime.now(tehran_tz)
-            today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
+        # 1. حذف تمام اسنپ‌شات‌های امروز
+        deleted_count = db.delete_all_daily_snapshots()
+        logging.info(f"Step 1: Successfully deleted {deleted_count} snapshots from today.")
 
-            # 1. حذف کامل تمام رکوردهای ثبت شده در امروز
-            print(f"🗑️ Purging all usage snapshots recorded today (after {today_midnight_utc})...")
-            cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at >= ?", (today_midnight_utc,))
-            print(f"  - ✅ {cursor.rowcount} incorrect records from today have been deleted.")
+        # 2. دریافت اطلاعات زنده و کامل کاربران از تمام پنل‌ها
+        logging.info("Step 2: Fetching live user data from all panels...")
+        all_users_info = get_all_users_combined()
+        if not all_users_info:
+            logging.error("Could not fetch any user data from panels. Aborting.")
+            return
 
-            # 2. پیدا کردن تمام کاربران فعال برای ساختن نقطه شروع جدید
-            print("\n rebuilding a clean baseline for today...")
-            # از نام جدول صحیح 'user_uuids' استفاده شده است
-            all_users = c.execute("SELECT id FROM user_uuids WHERE is_active = 1").fetchall()
-            if not all_users:
-                print("❌ No active users found.")
-                return
-            
-            total_users = len(all_users)
-            print(f"  - Found {total_users} active users.")
-            
-            processed_count = 0
-            for user_row in all_users:
-                user_id = user_row['id']
+        user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
+        logging.info(f"  - Fetched data for {len(user_info_map)} users.")
+
+        # 3. دریافت تمام کاربران فعال از دیتاباس ربات
+        logging.info("Step 3: Fetching active users from bot database...")
+        all_uuids_from_db = list(db.all_active_uuids())
+        logging.info(f"  - Found {len(all_uuids_from_db)} active UUIDs in DB.")
+
+        # 4. ثبت نقطه شروع جدید و صحیح برای امروز
+        logging.info("Step 4: Creating new, correct baseline snapshots for today...")
+        reset_count = 0
+        for u_row in all_uuids_from_db:
+            uuid_str = u_row['uuid']
+            if uuid_str in user_info_map:
+                info = user_info_map[uuid_str]
+                breakdown = info.get('breakdown', {})
+
+                # استخراج مصرف فعلی از داده‌های زنده پنل‌ها
+                h_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'hiddify')
+                m_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'marzban')
                 
-                # 3. پیدا کردن آخرین مصرف کل کاربر از دیروز (یا قبل‌تر)
-                last_snapshot = c.execute(
-                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? ORDER BY taken_at DESC LIMIT 1",
-                    (user_id,)
-                ).fetchone()
-
-                baseline_h_usage = 0.0
-                baseline_m_usage = 0.0
-                if last_snapshot:
-                    baseline_h_usage = last_snapshot['hiddify_usage_gb'] or 0.0
-                    baseline_m_usage = last_snapshot['marzban_usage_gb'] or 0.0
-
-                # 4. ثبت نقطه شروع تمیز و جدید برای امروز بر اساس آمار دیروز
-                c.execute(
-                    "INSERT INTO usage_snapshots (uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at) VALUES (?, ?, ?, ?)",
-                    (user_id, baseline_h_usage, baseline_m_usage, datetime.utcnow())
-                )
-                processed_count += 1
-
-            conn.commit()
-            print(f"  - ✅ New baseline created for all {processed_count} users.")
-            print("\n\n✅✅✅ Operation successful! Today's historical stats have been corrected.")
+                # ثبت اسنپ‌شات جدید با داده‌های صحیح
+                db.add_usage_snapshot(u_row['id'], h_usage, m_usage)
+                reset_count += 1
+        
+        logging.info(f"  - Successfully created new baseline for {reset_count} active users.")
+        print("\n\n✅✅✅ Operation successful! Today's usage stats have been fixed using live panel data.")
 
     except Exception as e:
-        print(f"\n❌ An unexpected error occurred: {e}")
+        logging.error(f"An unexpected error occurred during the fix process: {e}", exc_info=True)
+        print(f"\n❌ An error occurred: {e}")
 
 if __name__ == "__main__":
-    purge_and_reset_today()
+    print("Starting the process to fix today's usage statistics...")
+    fix_today_stats()
