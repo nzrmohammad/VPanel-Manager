@@ -199,17 +199,22 @@ ENABLE_LUCKY_LOTTERY = True
 LUCKY_LOTTERY_BADGE_REQUIREMENT = 20
 
 ACHIEVEMENT_SHOP_ITEMS = {
-    # آیتم‌های عمومی (برای همه سرورها)
-    "buy_7days":       {"name": "۷ روز", "cost": 150, "days": 7, "target": "all"},
-    "buy_30days":      {"name": "۳۰ روز", "cost": 450, "days": 30, "target": "all"},
+    "buy_7days":        {"name": "۷ روز", "cost": 150, "days": 7, "target": "all"},
+    "buy_30days":       {"name": "۳۰ روز", "cost": 450, "days": 30, "target": "all"},
     
-    # آیتم‌های مخصوص آلمان (Hiddify)
-    "buy_de_15gb":     {"name": "۱۵ گیگ (🇩🇪)", "cost": 120, "gb": 15, "target": "de"},
-    "buy_de_60gb": {"name": "۶۰ گیگ (🇩🇪)", "cost": 180, "gb": 60, "target": "de"},
+    "buy_de_15gb":      {"name": "۱۵ گیگ (🇩🇪)", "cost": 120, "gb": 15, "target": "de"},
+    "buy_de_60gb":      {"name": "۶۰ گیگ (🇩🇪)", "cost": 180, "gb": 60, "target": "de"},
     
-    # آیتم‌های مخصوص فرانسه/ترکیه (Marzban)
-    "buy_fr_tr_10gb":  {"name": "۱۰ گیگ (🇫🇷🇹🇷)", "cost": 120, "gb": 10, "target": "fr_tr"},
-    "buy_fr_tr_30gb":  {"name": "۳۰ گیگ (🇫🇷🇹🇷)", "cost": 300, "gb": 30, "target": "fr_tr"},
+    "buy_fr_10gb":      {"name": "۱۰ گیگ (🇫🇷)", "cost": 120, "gb": 10, "target": "fr"},
+    "buy_fr_30gb":      {"name": "۳۰ گیگ (🇫🇷)", "cost": 300, "gb": 30, "target": "fr"},
+
+    "buy_tr_10gb":      {"name": "۱۰ گیگ (🇹🇷)", "cost": 120, "gb": 10, "target": "tr"},
+    "buy_tr_30gb":      {"name": "۳۰ گیگ (🇹🇷)", "cost": 300, "gb": 30, "target": "tr"},
+
+    "buy_us_15gb":      {"name": "۱۵ گیگ (🇺🇸)", "cost": 150, "gb": 15, "target": "us"},
+    "buy_us_25gb":      {"name": "۲۵ گیگ (🇺🇸)", "cost": 220, "gb": 25, "target": "us"},
+    "buy_ro_15gb":      {"name": "۱۵ گیگ (🇷🇴)", "cost": 150, "gb": 15, "target": "ro"},
+    "buy_ro_25gb":      {"name": "۲۵ گیگ (🇷🇴)", "cost": 220, "gb": 25, "target": "ro"},
 
     "buy_lottery_ticket": {"name": "🎟️ بلیط قرعه‌کشی", "cost": 100, "target": "all"},
 }

@@ -153,7 +153,10 @@ class Menu:
         kb = types.InlineKeyboardMarkup(row_width=2)
         
         has_de_access = access.get('has_access_de', False)
-        has_fr_tr_access = access.get('has_access_fr', False) or access.get('has_access_tr', False)
+        has_fr_access = access.get('has_access_fr', False)
+        has_tr_access = access.get('has_access_tr', False)
+        has_us_access = access.get('has_access_us', False)
+        has_ro_access = access.get('has_access_ro', False)
 
         day_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if v.get('days', 0) > 0}
         lottery_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if 'lottery' in k}
@@ -163,7 +166,12 @@ class Menu:
         def create_button(item_key, item_data):
             target = item_data.get('target')
             show_item = False
-            if target == 'all' or (target == 'de' and has_de_access) or (target == 'fr_tr' and has_fr_tr_access):
+            if (target == 'all' or
+                (target == 'de' and has_de_access) or
+                (target == 'fr' and has_fr_access) or
+                (target == 'tr' and has_tr_access) or
+                (target == 'us' and has_us_access) or
+                (target == 'ro' and has_ro_access)):
                 show_item = True
 
             if show_item:

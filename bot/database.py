@@ -486,7 +486,7 @@ class DatabaseManager:
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         with self.write_conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, 'data_warning_ro' show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, 'data_warning_ro', show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 row_dict = dict(row)
                 return {
@@ -1868,8 +1868,7 @@ class DatabaseManager:
         tehran_tz = pytz.timezone("Asia/Tehran")
         today_jalali = jdatetime.datetime.now(tz=tehran_tz)
         
-        # ✨ FIX 1: The calculation for `days_since_saturday` was incorrect.
-        # It now correctly determines the number of days passed since the beginning of the week (Saturday).
+        # FIX: This line was incorrect. Correctly calculates days since Saturday.
         days_since_saturday = today_jalali.weekday()
         
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
@@ -1889,8 +1888,6 @@ class DatabaseManager:
                 day_start_utc_loop = day_start_local.astimezone(pytz.utc)
                 day_end_utc_loop = day_end_local.astimezone(pytz.utc)
                 
-                # ✨ FIX 2: The weekday index calculation was off by one.
-                # It now correctly gets the index (0 for Saturday, 1 for Sunday, ..., 6 for Friday).
                 day_of_week_jalali = jdatetime.datetime.fromgregorian(datetime=day_start_local).weekday()
 
                 prev_day_snapshots_query = """

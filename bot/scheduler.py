@@ -40,6 +40,7 @@ class SchedulerManager:
         schedule.every(1).hours.at(":01").do(self._run_job, maintenance.hourly_snapshots)
         schedule.every().day.at("09:00", self.tz_str).do(self._run_job, rewards.notify_admin_of_upcoming_event)
         schedule.every().saturday.at("09:30", self.tz_str).do(self._run_job, rewards.send_weekly_admin_digest)
+        schedule.every().day.at("20:00", self.tz_str).do(self._run_job, rewards.award_daily_lucky_badge)
         schedule.every(USAGE_WARNING_CHECK_HOURS).hours.do(self._run_job, warnings.check_for_warnings)
         schedule.every().day.at(report_time_str, self.tz_str).do(self._run_job, reports.nightly_report)
         schedule.every().day.at("23:50", self.tz_str).do(self._run_job, reports.send_daily_achievements_report)

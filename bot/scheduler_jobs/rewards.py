@@ -631,3 +631,37 @@ def send_achievement_leaderboard(bot) -> None:
             bot.send_message(admin_id, report_text, parse_mode="MarkdownV2")
     except Exception as e:
         logger.error(f"Failed to generate or send achievement leaderboard: {e}", exc_info=True)
+
+def award_daily_lucky_badge(bot):
+    """
+    هر روز به صورت تصادفی به ۳ کاربر فعال نشان "خوش‌شانس" را اهدا می‌کند.
+    """
+    logger.info("SCHEDULER: Running daily lucky badge awards.")
+    try:
+        # Get all active user IDs that have been active in the last 7 days
+        seven_days_ago = datetime.now(pytz.utc) - timedelta(days=7)
+        query = """
+            SELECT DISTINCT u.user_id
+            FROM users u
+            JOIN user_uuids uu ON u.user_id = uu.user_id
+            JOIN usage_snapshots us ON uu.id = us.uuid_id
+            WHERE us.taken_at >= ?
+        """
+        with db.write_conn() as c:
+            active_users_last_week = [row['user_id'] for row in c.execute(query, (seven_days_ago,)).fetchall()]
+
+        if len(active_users_last_week) < 3:
+            logger.warning("LUCKY BADGE: Not enough active users to award daily lucky badge.")
+            return
+
+        winners = random.sample(active_users_last_week, 3)
+        awarded_count = 0
+        for user_id in winners:
+            if db.add_achievement(user_id, 'lucky_one'):
+                notify_user_achievement(bot, user_id, 'lucky_one')
+                awarded_count += 1
+        
+        logger.info(f"LUCKY BADGE: Awarded 'lucky_one' badge to {awarded_count} users.")
+
+    except Exception as e:
+        logger.error(f"Error in award_daily_lucky_badge job: {e}", exc_info=True)
