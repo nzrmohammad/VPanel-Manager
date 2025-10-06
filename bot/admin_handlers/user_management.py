@@ -1408,21 +1408,97 @@ def handle_renew_apply_plan(call: types.CallbackQuery, params: list):
 
 
 def handle_renew_reset_subscription(call: types.CallbackQuery, params: list):
-    """اشتراک کاربر را ریست می‌کند (حجم و روز صفر)."""
+    """
+    اشتراک کاربر را با اعمال مجدد پلن فعلی‌اش ریست می‌کند.
+    """
     identifier = params[0]
     context_suffix = f":{params[1]}" if len(params) > 1 else ""
     uid, msg_id = call.from_user.id, call.message.message_id
 
     _safe_edit(uid, msg_id, "⏳ در حال ریست کردن اشتراک کاربر...", reply_markup=None)
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info:
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد.", show_alert=True)
+        return
+
+    # مرحله ۱: پیدا کردن پلن فعلی کاربر از روی حجم کل
+    current_total_limit_gb = info.get('usage_limit_GB', 0)
+    all_plans = load_service_plans()
+    matched_plan = None
+    for plan in all_plans:
+        plan_total_volume_gb = 0
+        plan_type = plan.get('type')
+
+        volume_str = ""
+        if plan_type == 'combined':
+            volume_str = plan.get('total_volume', '0')
+        else:
+            volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
+            volume_key = volume_key_map.get(plan_type)
+            if volume_key:
+                volume_str = plan.get(volume_key, '0')
+        
+        plan_total_volume_gb = parse_volume_string(volume_str)
+        
+        if abs(plan_total_volume_gb - current_total_limit_gb) < 0.01:
+            matched_plan = plan
+            break
+            
+    if not matched_plan:
+        bot.answer_callback_query(call.id, "❌ پلن فعلی کاربر برای اعمال مجدد یافت نشد.", show_alert=True)
+        handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
+        return
+
+    # مرحله ۲: صفر کردن مصرف فعلی در تمام پنل‌ها
+    reset_success = True
+    active_panels = {p['name']: p for p in db.get_active_panels()}
+    for panel_name, panel_details in info.get('breakdown', {}).items():
+        panel_config = active_panels.get(panel_name)
+        if not panel_config: continue
+        handler = combined_handler._get_handler_for_panel(panel_config)
+        if not handler: continue
+        
+        user_identifier_in_panel = None
+        if panel_details.get('type') == 'hiddify' and info.get('uuid'):
+            user_identifier_in_panel = info['uuid']
+        elif panel_details.get('type') == 'marzban' and panel_details.get('data', {}).get('username'):
+             user_identifier_in_panel = panel_details['data']['username']
+        
+        if user_identifier_in_panel and not handler.reset_user_usage(user_identifier_in_panel):
+            reset_success = False
+
+    if not reset_success:
+        bot.answer_callback_query(call.id, "❌ خطا در صفر کردن مصرف فعلی کاربر.", show_alert=True)
+        handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
+        return
+
+    # مرحله ۳: اعمال مجدد پلن یافت‌شده
+    plan_type = matched_plan.get('type')
+    set_days = parse_volume_string(matched_plan.get('duration', '0'))
+    apply_success = False
     
-    success = combined_handler.modify_user_on_all_panels(
-        identifier, reset_subscription=True
-    )
+    if plan_type == 'combined':
+        set_gb_de = parse_volume_string(matched_plan.get('volume_de', '0'))
+        set_gb_fr = parse_volume_string(matched_plan.get('volume_fr', '0'))
+        
+        success_de = combined_handler.modify_user_on_all_panels(identifier, set_gb=set_gb_de, set_days=set_days, target_panel_type='hiddify')
+        success_fr = combined_handler.modify_user_on_all_panels(identifier, set_gb=set_gb_fr, set_days=set_days, target_panel_type='marzban')
+        apply_success = success_de or success_fr # At least one should succeed
+    else: 
+        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
+        target_panel_type = 'hiddify' if plan_type == 'germany' else 'marzban'
+        volume_key = volume_key_map.get(plan_type)
+        set_gb = parse_volume_string(matched_plan.get(volume_key, '0')) if volume_key else 0
+        
+        apply_success = combined_handler.modify_user_on_all_panels(
+            identifier, set_gb=set_gb, set_days=set_days, target_panel_type=target_panel_type
+        )
     
-    if success:
-        bot.answer_callback_query(call.id, "✅ اشتراک کاربر با موفقیت ریست شد.", show_alert=True)
-        # Refresh user summary
-        new_params = [None, identifier, context_suffix.replace(':', '')]
-        handle_show_user_summary(call, new_params)
+    if apply_success:
+        bot.answer_callback_query(call.id, f"✅ اشتراک با موفقیت ریست و پلن '{matched_plan.get('name')}' مجدداً اعمال شد.", show_alert=True)
     else:
-        bot.answer_callback_query(call.id, "❌ خطا در ریست کردن اشتراک.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ خطا در اعمال مجدد پلن.", show_alert=True)
+
+    # نمایش مجدد اطلاعات کاربر در هر صورت
+    handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])

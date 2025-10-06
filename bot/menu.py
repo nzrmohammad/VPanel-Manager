@@ -520,7 +520,7 @@ class Menu:
         
         kb.add(
             types.InlineKeyboardButton("🔄 اعمال پلن جدید", callback_data=f"admin:renew_select_plan:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🗑 ریست کردن اشتراک (صفر کردن)", callback_data=f"admin:renew_reset:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("🔄 ریست کردن اشتراک", callback_data=f"admin:renew_reset:{identifier}{context_suffix}")
         )
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به کاربر", callback_data=f"admin:us:{panel_short}:{identifier}{context_suffix}"))
         return kb

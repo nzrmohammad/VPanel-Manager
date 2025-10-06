@@ -163,10 +163,8 @@ def register_admin_handlers(bot, scheduler_instance):
             # فراخوانی تابع دیتابیس برای افزودن امتیاز
             db.add_achievement_points(target_user_id, amount)
             
-            # --- START OF FIX: Escape the period for MarkdownV2 ---
             success_message = f"✅ *{amount}* امتیاز با موفقیت به کاربر `{target_user_id}` اضافه شد\\."
             bot.send_message(admin_id, success_message, parse_mode="MarkdownV2")
-            # --- END OF FIX ---
 
         except (ValueError, IndexError):
             bot.reply_to(message, "❌ مقادیر وارد شده نامعتبر هستند. لطفاً از اعداد صحیح استفاده کنید.", parse_mode="MarkdownV2")
