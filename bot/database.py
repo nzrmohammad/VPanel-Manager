@@ -1116,80 +1116,80 @@ class DatabaseManager:
 
     def get_daily_usage_per_panel(self, days: int = 30) -> list[dict[str, Any]]:
         """
-        (نسخه نهایی و اصلاح شده) مصرف روزانه را به تفکیک هر پنل و با مدیریت صحیح ریست شدن حجم، محاسبه می‌کند.
+        (نسخه نهایی و اصلاح شده) مصرف روزانه را به تفکیک هر پنل، با محاسبه دقیق و تفکیک‌شده برای هر کاربر محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
-        now_in_tehran = datetime.now(tehran_tz)
-        summary = []
+        end_date = datetime.now(tehran_tz)
+        start_date = end_date - timedelta(days=days)
 
         with self.write_conn() as c:
-            for i in range(days - 1, -1, -1):
-                target_date = now_in_tehran.date() - timedelta(days=i)
-                day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
-                day_end_utc = day_start_utc + timedelta(days=1)
-
-                # ۱. دریافت آخرین اسنپ‌شات روز قبل برای هر کاربر
-                prev_day_snapshots_query = """
-                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
-                    FROM (
-                        SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb,
-                            ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at DESC) as rn
-                        FROM usage_snapshots
-                        WHERE taken_at < ?
-                    )
-                    WHERE rn = 1
-                """
-                prev_day_rows = c.execute(prev_day_snapshots_query, (day_start_utc,)).fetchall()
-                baseline_usage = {row['uuid_id']: {'h_start': row['hiddify_usage_gb'], 'm_start': row['marzban_usage_gb']} for row in prev_day_rows}
-
-                # ۲. دریافت تمام اسنپ‌شات‌های روز مورد نظر
-                daily_snapshots_query = """
-                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb
+            # این کوئری پیچیده، منطق صحیح را پیاده‌سازی می‌کند.
+            # ۱. آخرین مصرف هر کاربر در هر روز را پیدا می‌کند.
+            # ۲. با استفاده از تابع LAG، مصرف روز قبل همان کاربر را کنارش قرار می‌دهد.
+            # ۳. تفاوت را محاسبه کرده و موارد ریست شدن را مدیریت می‌کند.
+            # ۴. در نهایت، مصارف روزانه تمام کاربران را برای هر روز جمع می‌زند.
+            query = """
+                WITH daily_last_snapshots AS (
+                    SELECT
+                        date(taken_at) as snapshot_date,
+                        uuid_id,
+                        MAX(hiddify_usage_gb) as hiddify_usage_gb,
+                        MAX(marzban_usage_gb) as marzban_usage_gb
                     FROM usage_snapshots
-                    WHERE taken_at >= ? AND taken_at < ?
-                    ORDER BY uuid_id, taken_at ASC
-                """
-                daily_rows = c.execute(daily_snapshots_query, (day_start_utc, day_end_utc)).fetchall()
+                    WHERE taken_at >= ?
+                    GROUP BY 1, 2
+                ),
+                daily_usage_with_prev AS (
+                    SELECT
+                        snapshot_date,
+                        uuid_id,
+                        hiddify_usage_gb,
+                        marzban_usage_gb,
+                        LAG(hiddify_usage_gb, 1, 0) OVER (PARTITION BY uuid_id ORDER BY snapshot_date) as prev_h_usage,
+                        LAG(marzban_usage_gb, 1, 0) OVER (PARTITION BY uuid_id ORDER BY snapshot_date) as prev_m_usage
+                    FROM daily_last_snapshots
+                ),
+                daily_diffs AS (
+                    SELECT
+                        snapshot_date,
+                        uuid_id,
+                        CASE
+                            WHEN hiddify_usage_gb < prev_h_usage THEN hiddify_usage_gb
+                            ELSE hiddify_usage_gb - prev_h_usage
+                        END as h_diff,
+                        CASE
+                            WHEN marzban_usage_gb < prev_m_usage THEN marzban_usage_gb
+                            ELSE marzban_usage_gb - prev_m_usage
+                        END as m_diff
+                    FROM daily_usage_with_prev
+                )
+                SELECT
+                    snapshot_date,
+                    SUM(h_diff) as total_h_gb,
+                    SUM(m_diff) as total_m_gb
+                FROM daily_diffs
+                GROUP BY 1
+                ORDER BY 1 DESC
+                LIMIT ?
+            """
+            rows = c.execute(query, (start_date.astimezone(pytz.utc), days)).fetchall()
 
-                # ۳. محاسبه مصرف روزانه برای هر کاربر
-                daily_usage_by_user = {}
-                for row in daily_rows:
-                    uuid_id = row['uuid_id']
-                    if uuid_id not in daily_usage_by_user:
-                        baseline = baseline_usage.get(uuid_id)
-                        daily_usage_by_user[uuid_id] = {
-                            'h_total': 0.0,
-                            'm_total': 0.0,
-                            'h_last': baseline['h_start'] if baseline and baseline['h_start'] is not None else row['hiddify_usage_gb'],
-                            'm_last': baseline['m_start'] if baseline and baseline['m_start'] is not None else row['marzban_usage_gb']
-                        }
+        # تبدیل نتیجه به فرمت مورد نیاز برای نمودار
+        summary_dict = {row['snapshot_date']: {'total_h_gb': row['total_h_gb'], 'total_m_gb': row['total_m_gb']} for row in rows}
+        
+        # اطمینان از وجود تمام روزها در نتیجه نهایی (حتی اگر مصرف صفر بوده)
+        result = []
+        for i in range(days):
+            target_date = (end_date.date() - timedelta(days=i))
+            date_str = target_date.strftime('%Y-%m-%d')
+            data = summary_dict.get(date_str, {'total_h_gb': 0, 'total_m_gb': 0})
+            result.append({
+                'date': date_str,
+                'total_h_gb': round(data['total_h_gb'], 2),
+                'total_m_gb': round(data['total_m_gb'], 2)
+            })
 
-                    user_daily = daily_usage_by_user[uuid_id]
-                    current_h = row['hiddify_usage_gb'] or 0.0
-                    current_m = row['marzban_usage_gb'] or 0.0
-                    last_h = user_daily['h_last'] or 0.0
-                    last_m = user_daily['m_last'] or 0.0
-
-                    # اگر مصرف فعلی کمتر از قبلی باشد یعنی ریست شده
-                    h_diff = current_h if current_h < last_h else current_h - last_h
-                    m_diff = current_m if current_m < last_m else current_m - last_m
-
-                    user_daily['h_total'] += max(0, h_diff)
-                    user_daily['m_total'] += max(0, m_diff)
-                    user_daily['h_last'] = current_h
-                    user_daily['m_last'] = current_m
-
-                # ۴. جمع‌بندی مصرف کل برای آن روز
-                day_total_h_gb = sum(d['h_total'] for d in daily_usage_by_user.values())
-                day_total_m_gb = sum(d['m_total'] for d in daily_usage_by_user.values())
-
-                summary.append({
-                    'date': target_date.strftime('%Y-%m-%d'),
-                    'total_h_gb': round(day_total_h_gb, 2),
-                    'total_m_gb': round(day_total_m_gb, 2)
-                })
-
-        return summary
+        return result[::-1] # مرتب‌سازی از قدیم به جدید
 
     def get_activity_heatmap_data(self) -> List[Dict[str, Any]]:
         """

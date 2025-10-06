@@ -429,7 +429,7 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
 
             if plan.get('volume_fr'):
                 # details.append(f'*{get_string("fmt_plan_label_france", lang_code)}:* {escape_markdown(plan["volume_fr"])}')
-                details.append(f'*{escape_markdown("حجم 🇫🇷🇹🇷🇺🇸")} : * {escape_markdown(plan["volume_fr"])}')
+                details.append(f'*{escape_markdown("حجم 🇫🇷🇹🇷")} : * {escape_markdown(plan["volume_fr"])}')
 
         details.append(f'*{get_string("fmt_plan_label_duration", lang_code)} : * {escape_markdown(plan["duration"])}')
         

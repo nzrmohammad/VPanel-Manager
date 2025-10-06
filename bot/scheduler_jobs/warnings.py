@@ -86,7 +86,13 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             "💬 در صورت داشتن هرگونه سوال یا نیاز به پشتیبانی، ما همیشه در کنار شما هستیم\\.\n\n"
                             "با آرزوی بهترین‌ها ✨"
                         )
-                        if send_warning_message(bot, user_id_in_telegram, welcome_text):
+                        # ✨ ساخت و افزودن دکمه‌های راهنما
+                        kb = types.InlineKeyboardMarkup(row_width=2)
+                        kb.add(
+                            types.InlineKeyboardButton("🛍️ مشاهده سرویس‌ها", callback_data="view_plans"),
+                            types.InlineKeyboardButton("💡 راهنمای اتصال", callback_data="get_guideme")
+                        )
+                        if send_warning_message(bot, user_id_in_telegram, welcome_text, reply_markup=kb):
                             db.mark_welcome_message_as_sent(uuid_id_in_db)
                             db.create_notification(user_id_in_telegram, "خوش آمدید!", "از اینکه به ما اعتماد کردید خوشحالیم. امیدواریم از کیفیت سرویس لذت ببرید.", "info")
 
@@ -99,7 +105,12 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         f"کاربر گرامی، تنها *۱ روز* از اعتبار اکانت *{escape_markdown(user_name)}* شما باقی مانده است\\.\n\n"
                         f"برای جلوگیری از قطع شدن سرویس، لطفاً نسبت به تمدید آن اقدام نمایید\\."
                     )
-                    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚀 مشاهده و تمدید سرویس‌ها", callback_data="view_plans"))
+                    kb = types.InlineKeyboardMarkup(row_width=2)
+                    kb.add(
+                        types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                        types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                    )
+                    
                     if bot.send_message(user_id_in_telegram, renewal_text, parse_mode="MarkdownV2", reply_markup=kb):
                         db.set_renewal_reminder_sent(uuid_id_in_db)
                         db.create_notification(user_id_in_telegram, "یادآوری تمدید", f"تنها ۱ روز از اعتبار اکانت «{user_name}» شما باقی مانده است.", "warning")
@@ -119,8 +130,13 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                 server_name = "🇩🇪" if panel_type == 'hiddify' else "🇫🇷🇹🇷🇺🇸"
                                 msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\n"
                                                 f"سرویس شما در پنل *{server_name}* تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
-                                
-                                if send_warning_message(bot, user_id_in_telegram, msg_template, expire_days=str(expire_days)):
+                                # ✨ ساخت و افزودن دکمه‌ها
+                                kb = types.InlineKeyboardMarkup(row_width=2)
+                                kb.add(
+                                    types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                                    types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                                )
+                                if send_warning_message(bot, user_id_in_telegram, msg_template, expire_days=str(expire_days), reply_markup=kb):
                                     db.log_warning(uuid_id_in_db, warning_type_key)
                                     db.create_notification(
                                         user_id_in_telegram, 
@@ -136,6 +152,12 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         msg_template = (f"❗️ *اکانت شما منقضی شده است*\n\n"
                                         f"اعتبار اکانت *{{user_name}}* شما به پایان رسیده است\\.\n\n"
                                         f"برای استفاده مجدد، لطفاً نسبت به تمدید آن اقدام نمایید\\.")
+                        # ✨ ساخت دکمه‌های جدید
+                        kb = types.InlineKeyboardMarkup(row_width=2)
+                        kb.add(
+                            types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                            types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                        )
                         kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"))
                         if send_warning_message(bot, user_id_in_telegram, msg_template, user_name=user_name, reply_markup=kb):
                             db.log_warning(uuid_id_in_db, 'expired')
@@ -152,12 +174,24 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             usage_percent = (usage / limit) * 100
                             if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_hiddify'):
                                 msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *آلمان 🇩🇪* مصرف شده است\\.")
-                                if send_warning_message(bot, user_id_in_telegram, msg):
+                                # ✨ ساخت دکمه‌ها
+                                kb = types.InlineKeyboardMarkup(row_width=2)
+                                kb.add(
+                                    types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                                    types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                                )
+                                if send_warning_message(bot, user_id_in_telegram, msg, reply_markup=kb):
                                     db.log_warning(uuid_id_in_db, 'low_data_hiddify')
                                     db.create_notification(user_id_in_telegram, "هشدار اتمام حجم", f"بیش از {int(WARNING_USAGE_THRESHOLD)}% از حجم سرویس شما در سرور آلمان 🇩🇪 مصرف شده است.", "warning")
                             if usage >= limit and not hiddify_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_hiddify'):
                                 msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *آلمان 🇩🇪* به پایان رسیده و این سرور برای شما غیرفعال شده است\\.")
-                                if send_warning_message(bot, user_id_in_telegram, msg):
+                                # ✨ ساخت دکمه‌ها
+                                kb = types.InlineKeyboardMarkup(row_width=2)
+                                kb.add(
+                                    types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                                    types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                                )
+                                if send_warning_message(bot, user_id_in_telegram, msg, reply_markup=kb):
                                     db.log_warning(uuid_id_in_db, 'volume_depleted_hiddify')
                                     db.create_notification(user_id_in_telegram, "اتمام حجم", "حجم سرویس شما در سرور آلمان 🇩🇪 به پایان رسیده است.", "warning")
                                     
@@ -181,13 +215,25 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
 
                             if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_marzban'):
                                 msg = (f"❗️ *هشدار اتمام حجم*\n\nکاربر گرامی، بیش از *{int(WARNING_USAGE_THRESHOLD)}%* از حجم سرویس شما در سرور *{server_display_name}* مصرف شده است\\.")
-                                if send_warning_message(bot, user_id_in_telegram, msg):
+                                # ✨ ساخت دکمه‌ها
+                                kb = types.InlineKeyboardMarkup(row_width=2)
+                                kb.add(
+                                    types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                                    types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                                )
+                                if send_warning_message(bot, user_id_in_telegram, msg, reply_markup=kb):
                                     db.log_warning(uuid_id_in_db, 'low_data_marzban')
                                     db.create_notification(user_id_in_telegram, "هشدار اتمام حجم", f"بیش از {int(WARNING_USAGE_THRESHOLD)}% از حجم سرویس شما در سرور {server_display_name} مصرف شده است.", "warning")
                                     
                             if usage >= limit and not marzban_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_marzban'):
                                 msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *{server_display_name}* به پایان رسیده و این سرور برای شما غیرفعال شده است\\.")
-                                if send_warning_message(bot, user_id_in_telegram, msg):
+                                # ✨ ساخت دکمه‌ها
+                                kb = types.InlineKeyboardMarkup(row_width=2)
+                                kb.add(
+                                    types.InlineKeyboardButton("🚀 تمدید سرویس", callback_data="view_plans"),
+                                    types.InlineKeyboardButton("💳 کیف پول", callback_data="wallet:main")
+                                )
+                                if send_warning_message(bot, user_id_in_telegram, msg, reply_markup=kb):
                                     db.log_warning(uuid_id_in_db, 'volume_depleted_marzban')
                                     db.create_notification(user_id_in_telegram, "اتمام حجم", f"حجم سرویس شما در سرور {server_display_name} به پایان رسیده است.", "warning")
 
