@@ -411,6 +411,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
             if add_gb > 0 or add_days > 0:
                 combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel)
     
+    db.apply_access_template(uuid_id, plan_to_buy['type'])
     info_after = combined_handler.get_combined_user_info(user_main_uuid)
     
     try:

@@ -219,6 +219,45 @@ ACHIEVEMENT_SHOP_ITEMS = {
     "buy_lottery_ticket": {"name": "🎟️ بلیط قرعه‌کشی", "cost": 100, "target": "all"},
 }
 
+# ✨ قالب‌های دسترسی بر اساس نوع پلن
+ACCESS_TEMPLATES = {
+    # --- پلن‌های تک کشوره ---
+    'de': {
+        'has_access_de': True, 'has_access_fr': False, 'has_access_tr': False, 
+        'has_access_us': False, 'has_access_ro': False
+    },
+    'fr': {
+        'has_access_de': False, 'has_access_fr': True, 'has_access_tr': False, 
+        'has_access_us': False, 'has_access_ro': False
+    },
+    'tr': {
+        'has_access_de': False, 'has_access_fr': False, 'has_access_tr': True, 
+        'has_access_us': False, 'has_access_ro': False
+    },
+    'us': {
+        'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 
+        'has_access_us': True, 'has_access_ro': False
+    },
+    'ro': {
+        'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 
+        'has_access_us': False, 'has_access_ro': True
+    },
+
+    # --- پلن ترکیبی (آلمان، فرانسه، ترکیه) ---
+    'hybrid': {
+        'has_access_de': True, 'has_access_fr': True, 'has_access_tr': True, 
+        'has_access_us': False, # ❗️ آمریکا غیرفعال است
+        'has_access_ro': False   # ❗️ رومانی را هم طبق کد شما اضافه کردم
+    },
+    
+    # --- قالب پیش‌فرض ---
+    # اگر پلنی خارج از دسته‌های بالا ساخته شود، همه دسترسی‌ها را فعال می‌کند
+    'default': {
+        'has_access_de': True, 'has_access_fr': True, 'has_access_tr': True, 
+        'has_access_us': True, 'has_access_ro': True
+    }
+}
+
 # --- Emojis & Visuals ---
 EMOJIS = {
     "fire": "🔥", "chart": "📊", "warning": "⚠️", "error": "❌",

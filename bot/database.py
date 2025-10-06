@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from .config import ACCESS_TEMPLATES
 import logging
 import pytz
 import jdatetime
@@ -2914,6 +2915,31 @@ class DatabaseManager:
                 self.add_or_update_user(telegram_id, None, name, None)
 
             logger.debug(f"SYNCER: Successfully updated data for UUID {uuid} (uuid_id: {uuid_id}).")
+
+    def apply_access_template(self, uuid_id: int, plan_category: str):
+        """دسترسی‌های کاربر را بر اساس قالب نوع پلن به‌روزرسانی می‌کند."""
+        template = ACCESS_TEMPLATES.get(plan_category, ACCESS_TEMPLATES['default'])
+
+        with self.write_conn() as c:
+            c.execute("""
+                UPDATE users
+                SET
+                    has_access_de = ?,
+                    has_access_fr = ?,
+                    has_access_tr = ?,
+                    has_access_us = ?,
+                    has_access_ro = ?
+                WHERE id = ?
+            """, (
+                template.get('has_access_de', False),
+                template.get('has_access_fr', False),
+                template.get('has_access_tr', False),
+                template.get('has_access_us', False),
+                template.get('has_access_ro', False),
+                uuid_id
+            ))
+        logging.info(f"Access template '{plan_category}' applied for user ID {uuid_id}.")
+        return True
 
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
