@@ -41,8 +41,10 @@ def handle_charge_request_callback(call: types.CallbackQuery, params: list):
                 db.update_charge_request_status(request_id, is_pending=False)
                 
                 amount_str = escape_markdown(f"{amount:,.0f}")
-                success_text = f"✅ حساب شما به مبلغ *{amount_str} تومان* با موفقیت شارژ شد\\."
-                
+                success_text = (
+                    f"✅ حساب شما به مبلغ *{amount_str} تومان* با موفقیت شارژ شد\\.\n\n"
+                    f"حالا می‌توانید سرویس مورد نظر خود را از بخش «سرویس‌ها» خریداری یا تمدید کنید\\."
+                )                
                 _safe_edit(user_id, user_message_id, success_text, reply_markup=menu.post_charge_menu(lang_code))
                 
                 bot.edit_message_caption(caption=f"{original_caption}\n\n✅ تایید شد توسط شما.", chat_id=admin_id, message_id=call.message.message_id)

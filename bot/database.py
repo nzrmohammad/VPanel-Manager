@@ -2922,7 +2922,7 @@ class DatabaseManager:
 
         with self.write_conn() as c:
             c.execute("""
-                UPDATE users
+                UPDATE user_uuids
                 SET
                     has_access_de = ?,
                     has_access_fr = ?,
