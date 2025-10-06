@@ -5,7 +5,7 @@ from ..database import db
 from ..menu import menu
 from .. import combined_handler
 from ..admin_formatters import fmt_admin_user_summary, fmt_user_payment_history
-from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans
+from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans, parse_volume_string
 
 from ..user_handlers.wallet import _check_and_apply_loyalty_reward, _check_and_apply_referral_reward
 from ..config import ACHIEVEMENTS
@@ -1354,3 +1354,75 @@ def handle_send_disconnection_warning(call, params):
         kb = menu.admin_user_interactive_management(identifier, fresh_info.get('is_active', False), panel_for_menu, back_callback=back_callback)
         
         _safe_edit(uid, msg_id, text_to_show, reply_markup=kb)
+
+def handle_renew_subscription_menu(call: types.CallbackQuery, params: list):
+    """منوی گزینه‌های تمدید اشتراک (ریست یا انتخاب پلن) را نمایش می‌دهد."""
+    identifier = params[0]
+    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    prompt = "لطفاً یکی از گزینه‌های زیر را برای تمدید اشتراک انتخاب کنید:"
+    kb = menu.admin_renew_subscription_menu(identifier, context_suffix)
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
+
+def handle_renew_select_plan_menu(call: types.CallbackQuery, params: list):
+    """منوی انتخاب پلن برای تمدید اشتراک را نمایش می‌دهد."""
+    identifier = params[0]
+    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    prompt = "لطفاً پلن مورد نظر برای اعمال روی کاربر را انتخاب کنید:"
+    kb = menu.admin_select_plan_for_renew_menu(identifier, context_suffix)
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
+
+def handle_renew_apply_plan(call: types.CallbackQuery, params: list):
+    """یک پلن جدید را روی کاربر اعمال می‌کند."""
+    plan_index, identifier = int(params[0]), params[1]
+    context_suffix = f":{params[2]}" if len(params) > 2 else ""
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    _safe_edit(uid, msg_id, "⏳ در حال اعمال پلن جدید...", reply_markup=None)
+
+    all_plans = load_service_plans()
+    if not (0 <= plan_index < len(all_plans)):
+        bot.answer_callback_query(call.id, "❌ پلن نامعتبر است.", show_alert=True)
+        return
+
+    selected_plan = all_plans[plan_index]
+    plan_name = selected_plan.get('name', 'N/A')
+    
+    set_gb = parse_volume_string(selected_plan.get('total_volume', '0'))
+    set_days = parse_volume_string(selected_plan.get('duration', '0'))
+
+    success = combined_handler.modify_user_on_all_panels(
+        identifier, set_gb=set_gb, set_days=set_days
+    )
+
+    if success:
+        bot.answer_callback_query(call.id, f"✅ پلن {plan_name} با موفقیت اعمال شد.", show_alert=True)
+        # Refresh user summary
+        new_params = [None, identifier, context_suffix.replace(':', '')]
+        handle_show_user_summary(call, new_params)
+    else:
+        bot.answer_callback_query(call.id, "❌ خطا در اعمال پلن.", show_alert=True)
+
+
+def handle_renew_reset_subscription(call: types.CallbackQuery, params: list):
+    """اشتراک کاربر را ریست می‌کند (حجم و روز صفر)."""
+    identifier = params[0]
+    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+    uid, msg_id = call.from_user.id, call.message.message_id
+
+    _safe_edit(uid, msg_id, "⏳ در حال ریست کردن اشتراک کاربر...", reply_markup=None)
+    
+    success = combined_handler.modify_user_on_all_panels(
+        identifier, reset_subscription=True
+    )
+    
+    if success:
+        bot.answer_callback_query(call.id, "✅ اشتراک کاربر با موفقیت ریست شد.", show_alert=True)
+        # Refresh user summary
+        new_params = [None, identifier, context_suffix.replace(':', '')]
+        handle_show_user_summary(call, new_params)
+    else:
+        bot.answer_callback_query(call.id, "❌ خطا در ریست کردن اشتراک.", show_alert=True)

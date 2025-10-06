@@ -472,7 +472,10 @@ class Menu:
 
         status_text = "⚙️ تغییر وضعیت"
         panel_short = 'h' if panel == 'hiddify' else 'm'
-        
+
+        btn_renew_subscription = types.InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"admin:renew_sub_menu:{identifier}{context_suffix}")
+        kb.add(btn_renew_subscription)
+
         kb.add(
             types.InlineKeyboardButton(status_text, callback_data=f"admin:us_tgl:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("📝 یادداشت ادمین", callback_data=f"admin:us_note:{identifier}{context_suffix}:{panel_short}")
@@ -510,6 +513,32 @@ class Menu:
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))
         return kb
 
+    def admin_renew_subscription_menu(self, identifier: str, context_suffix: str) -> types.InlineKeyboardMarkup:
+        """منوی گزینه‌های تمدید اشتراک را برای ادمین ایجاد می‌کند."""
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        panel_short = 'h' # Fallback
+        
+        kb.add(
+            types.InlineKeyboardButton("🔄 اعمال پلن جدید", callback_data=f"admin:renew_select_plan:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("🗑 ریست کردن اشتراک (صفر کردن)", callback_data=f"admin:renew_reset:{identifier}{context_suffix}")
+        )
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به کاربر", callback_data=f"admin:us:{panel_short}:{identifier}{context_suffix}"))
+        return kb
+
+    def admin_select_plan_for_renew_menu(self, identifier: str, context_suffix: str) -> types.InlineKeyboardMarkup:
+        """منوی انتخاب پلن برای تمدید اشتراک کاربر را نمایش می‌دهد."""
+        from .utils import load_service_plans
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        panel_short = 'h' # Fallback
+        
+        plans = load_service_plans()
+        for i, plan in enumerate(plans):
+            plan_name = plan.get('name', f'Plan {i+1}')
+            callback_data = f"admin:renew_apply_plan:{i}:{identifier}{context_suffix}"
+            kb.add(types.InlineKeyboardButton(plan_name, callback_data=callback_data))
+        
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت به گزینه‌های تمدید", callback_data=f"admin:renew_sub_menu:{identifier}{context_suffix}"))
+        return kb
 
     def admin_edit_user_menu(self, identifier: str, panel: str) -> types.InlineKeyboardMarkup:
         kb = types.InlineKeyboardMarkup(row_width=2)

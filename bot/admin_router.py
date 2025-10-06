@@ -245,6 +245,10 @@ ADMIN_CALLBACK_HANDLERS = {
     "panel_edit_start": panel_management.handle_panel_edit_start,
     "panel_delete_confirm": panel_management.handle_panel_delete_confirm,
     "panel_delete_execute": panel_management.handle_panel_delete_execute,
+    "renew_sub_menu": user_management.handle_renew_subscription_menu,
+    "renew_select_plan": user_management.handle_renew_select_plan_menu,
+    "renew_apply_plan": user_management.handle_renew_apply_plan,
+    "renew_reset": user_management.handle_renew_reset_subscription,
     
     # User Actions
     "add_user": lambda c, p: (_start_add_hiddify_user_convo if p[0] == 'hiddify' else _start_add_marzban_user_convo)(c.from_user.id, c.message.message_id),

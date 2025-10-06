@@ -4,6 +4,7 @@ from .hiddify_api_handler import HiddifyAPIHandler
 from .marzban_api_handler import MarzbanAPIHandler
 from .database import db
 from .utils import validate_uuid
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -203,7 +204,15 @@ def search_user(query: str) -> List[Dict[str, Any]]:
             
     return results
 
-def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int = 0, target_panel_type: Optional[str] = None) -> bool:
+def modify_user_on_all_panels(
+    identifier: str, 
+    add_gb: float = 0, 
+    add_days: int = 0, 
+    set_gb: Optional[float] = None,
+    set_days: Optional[int] = None,
+    reset_subscription: bool = False,
+    target_panel_type: Optional[str] = None
+) -> bool:
     user_info = get_combined_user_info(identifier)
     if not user_info: return False
 
@@ -231,34 +240,52 @@ def modify_user_on_all_panels(identifier: str, add_gb: float = 0, add_days: int 
             current_days = user_panel_data.get('expire')
             
             payload = {}
-            if add_gb != 0:
-                payload['usage_limit_GB'] = current_limit + add_gb
-            
-            # --- START OF FIX ---
-            if add_days > 0:
-                if current_days is not None and current_days > 0:
-                    # اگر کاربر منقضی نشده، روزها را به روزهای باقیمانده اضافه کن
-                    payload['package_days'] = current_days + add_days
-                else:
-                    # اگر کاربر منقضی شده یا زمان نامحدود دارد، روزها را از امروز تنظیم کن
-                    payload['package_days'] = add_days
-            # --- END OF FIX ---
+
+            if reset_subscription:
+                payload['usage_limit_GB'] = 0
+                payload['package_days'] = 0
+            elif set_gb is not None or set_days is not None:
+                if set_gb is not None:
+                    payload['usage_limit_GB'] = set_gb
+                if set_days is not None:
+                    payload['package_days'] = set_days
+            else:
+                if add_gb != 0:
+                    payload['usage_limit_GB'] = current_limit + add_gb
+                if add_days > 0:
+                    if current_days is not None and current_days > 0:
+                        payload['package_days'] = current_days + add_days
+                    else:
+                        payload['package_days'] = add_days
             
             if payload and handler.modify_user(user_info['uuid'], payload):
                 any_success = True
         
         elif panel_type == 'marzban' and user_panel_data.get('username'):
-            if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
-                any_success = True
+            marzban_payload = {}
+            if reset_subscription:
+                marzban_payload = {'data_limit': 0, 'expire': 0}
+            elif set_gb is not None or set_days is not None:
+                if set_gb is not None:
+                    marzban_payload['data_limit'] = int(set_gb * (1024**3))
+                if set_days is not None:
+                    marzban_payload['expire'] = int((datetime.now() + timedelta(days=set_days)).timestamp())
+            
+            if marzban_payload:
+                if handler.modify_user(user_panel_data['username'], data=marzban_payload):
+                    any_success = True
+            elif add_gb != 0 or add_days != 0:
+                 if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
+                    any_success = True
 
-    if any_success and add_days > 0 and user_info.get('uuid'):
+
+    if any_success and (add_days > 0 or set_days is not None or reset_subscription):
         uuid_id = db.get_uuid_id_by_uuid(user_info['uuid'])
         if uuid_id:
             db.reset_renewal_reminder_sent(uuid_id)
             logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} (UUID_ID: {uuid_id}) due to manual day extension.")
             
     return any_success
-
 
 def delete_user_from_all_panels(identifier: str) -> bool:
     """کاربر را از تمام پنل‌هایی که در آن وجود دارد حذف می‌کند."""
