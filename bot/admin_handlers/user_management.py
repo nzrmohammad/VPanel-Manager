@@ -11,12 +11,12 @@ from ..user_handlers.wallet import _check_and_apply_loyalty_reward, _check_and_a
 from ..config import ACHIEVEMENTS
 from ..scheduler_jobs.rewards import notify_user_achievement
 from ..language import get_string
-from ..user_formatters import fmt_purchase_summary
+import re
 
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
-
+renew_requests = {}
 
 def initialize_user_management_handlers(b, conv_dict):
     global bot, admin_conversations
@@ -126,13 +126,13 @@ def handle_ask_edit_value(call, params):
     context = "search" if len(params) > 3 and params[3] == "search" else None
     
     prompt_map = {
-        "agb": "مقدار حجم برای افزودن (به GB) را وارد کنید:",
+        "agb": "مقدار حجم برای افزودن «به گیگابایت» را وارد کنید:",
         "ady": "تعداد روز برای افزودن را وارد کنید:"
     }
     prompt = prompt_map.get(edit_type, "مقدار جدید را وارد کنید:")
     
     uid, msg_id = call.from_user.id, call.message.message_id
-    back_cb = f"admin:edt:{identifier}{ (':' + context) if context else '' }"
+    back_cb = f"admin:us_edt:{identifier}{(':' + context) if context else ''}"
     
     admin_conversations[uid] = {
         'edit_type': edit_type, 
@@ -1368,251 +1368,215 @@ def handle_renew_subscription_menu(call: types.CallbackQuery, params: list):
     _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
 
 def handle_renew_select_plan_menu(call: types.CallbackQuery, params: list):
-    """منوی انتخاب پلن برای تمدید اشتراک را نمایش می‌دهد."""
+    """
+    (نسخه نهایی با منطق جدید)
+    منوی انتخاب پلن را بر اساس تعداد پنل‌های در دسترس کاربر نمایش می‌دهد.
+    """
     identifier = params[0]
     context_suffix = f":{params[1]}" if len(params) > 1 else ""
     uid, msg_id = call.from_user.id, call.message.message_id
+
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info or not info.get('uuid'):
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد یا UUID ندارد.", show_alert=True)
+        return
+
+    user_telegram_id = db.get_user_id_by_uuid(info['uuid'])
+    if not user_telegram_id:
+        bot.answer_callback_query(call.id, "❌ کاربر در دیتابیس ربات یافت نشد.", show_alert=True)
+        return
+        
+    access_rights = db.get_user_access_rights(user_telegram_id)
+    all_plans = load_service_plans()
+    eligible_plans = []
     
+    # شمارش تعداد پنل‌های اختصاصی که کاربر به آن‌ها دسترسی دارد
+    specific_access_keys = ['has_access_de', 'has_access_fr', 'has_access_tr', 'has_access_us', 'has_access_ro']
+    specific_access_count = sum(1 for key in specific_access_keys if access_rights.get(key))
+    
+    # جدا کردن پلن‌های اختصاصی مجاز و پلن‌های ترکیبی
+    specific_user_plans = []
+    combined_user_plans = []
+    
+    specific_plans_map = {
+        'germany': 'has_access_de',
+        'france': 'has_access_fr',
+        'turkey': 'has_access_tr',
+        'usa': 'has_access_us',
+        'romania': 'has_access_ro'
+    }
+
+    for i, plan in enumerate(all_plans):
+        plan_type = plan.get('type')
+        if plan_type == 'combined':
+            combined_user_plans.append((i, plan))
+        elif plan_type in specific_plans_map and access_rights.get(specific_plans_map[plan_type]):
+            specific_user_plans.append((i, plan))
+            
+    # اعمال منطق جدید برای نمایش پلن‌ها
+    if specific_access_count > 1:
+        # اگر به بیش از یک پنل دسترسی دارد، هم اختصاصی‌ها و هم ترکیبی‌ها را نشان بده
+        eligible_plans.extend(specific_user_plans)
+        eligible_plans.extend(combined_user_plans)
+    elif specific_access_count == 1:
+        # اگر فقط به یک پنل دسترسی دارد، فقط همان‌ها را نشان بده
+        eligible_plans.extend(specific_user_plans)
+    else: # specific_access_count == 0
+        # اگر به هیچ پنل خاصی دسترسی ندارد، فقط ترکیبی‌ها را نشان بده
+        eligible_plans.extend(combined_user_plans)
+
     prompt = "لطفاً پلن مورد نظر برای اعمال روی کاربر را انتخاب کنید:"
-    kb = menu.admin_select_plan_for_renew_menu(identifier, context_suffix)
+    
+    # ساخت دکمه‌ها با چیدمان دو ستونه
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    buttons = []
+    for i, plan in eligible_plans:
+        plan_name = plan.get('name', f'Plan {i+1}')
+        callback_data = f"admin:renew_apply_plan:{i}:{identifier}{context_suffix}"
+        buttons.append(types.InlineKeyboardButton(plan_name, callback_data=callback_data))
+    
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            kb.row(buttons[i], buttons[i+1])
+        else:
+            kb.row(buttons[i])
+    
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به گزینه‌های تمدید", callback_data=f"admin:renew_sub_menu:{identifier}{context_suffix}"))
+    
     _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
 
+
+def _parse_plan_details(plan: dict) -> dict:
+    """
+    تابع کامل و هوشمند برای پردازش مقادیر فارسی و ساختارهای مختلف در plans.json.
+    این تابع اعداد فارسی را تشخیص داده و کلیدهای مختلف حجم را بررسی می‌کند.
+    """
+    details = {}
+    
+    # دیکشنری برای تبدیل اعداد فارسی به انگلیسی
+    persian_to_english_digits = str.maketrans('۰۱۲۳۴۵۶۷۸۹', '0123456789')
+
+    # --- بخش پردازش روز ---
+    if 'duration' in plan and isinstance(plan['duration'], str):
+        # 1. اعداد فارسی را به انگلیسی تبدیل کن
+        duration_str = plan['duration'].translate(persian_to_english_digits)
+        # 2. با استفاده از عبارت منظم، اولین عدد موجود در رشته را پیدا کن
+        day_match = re.search(r'\d+', duration_str)
+        if day_match:
+            # 3. عدد پیدا شده را به دیکشنری نهایی اضافه کن
+            details['set_days'] = int(day_match.group(0))
+
+    # --- بخش پردازش حجم ---
+    
+    # لیست تمام کلیدهای ممکنی که برای حجم در فایل شما وجود دارد
+    possible_volume_keys = [
+        'total_volume', 'volume_de', 'volume_fr', 'volume_tr', 'volume_us', 'volume_ro'
+    ]
+    
+    volume_str = None
+    # در لیست کلیدها بگرد و اولین کلیدی که در پلن وجود دارد را پیدا کن
+    for key in possible_volume_keys:
+        if key in plan and isinstance(plan[key], str):
+            volume_str = plan[key]
+            break # پس از پیدا کردن اولین کلید، از حلقه خارج شو
+
+    if volume_str:
+        # 1. اعداد فارسی را به انگلیسی تبدیل کن
+        volume_str_english = volume_str.translate(persian_to_english_digits)
+        # 2. اولین عدد موجود در رشته را پیدا کن
+        gb_match = re.search(r'\d+', volume_str_english)
+        if gb_match:
+            # 3. عدد پیدا شده را به دیکشنری نهایی اضافه کن
+            details['set_gb'] = int(gb_match.group(0))
+            
+    return details
+
 def handle_renew_apply_plan(call: types.CallbackQuery, params: list):
-    """یک پلن جدید را روی کاربر اعمال می‌کند."""
-    plan_index, identifier = int(params[0]), params[1]
-    context_suffix = f":{params[2]}" if len(params) > 2 else ""
+    """
+    (نسخه نهایی با قابلیت خواندن plans.json فارسی)
+    پلن را به درستی اعمال کرده و با استفاده از callback صحیح به منوی اطلاعات کاربر بازمی‌گردد.
+    """
+    bot.answer_callback_query(call.id, "✅ دریافت شد، در حال پردازش...")
+
+    plan_idx, identifier, *rest = params
+    plan_idx = int(plan_idx)
+    context_suffix = f":{rest[0]}" if rest else ""
     uid, msg_id = call.from_user.id, call.message.message_id
 
-    _safe_edit(uid, msg_id, "⏳ در حال اعمال پلن جدید...", reply_markup=None)
+    _safe_edit(uid, msg_id, "⏳ در حال اعمال پلن جدید...", parse_mode=None)
 
-    all_plans = load_service_plans()
-    if not (0 <= plan_index < len(all_plans)):
-        bot.answer_callback_query(call.id, "❌ پلن نامعتبر است.", show_alert=True)
-        return
+    try:
+        all_plans = load_service_plans()
+        if not (0 <= plan_idx < len(all_plans)):
+            _safe_edit(uid, msg_id, "❌ پلن انتخاب شده نامعتبر است.")
+            return
 
-    selected_plan = all_plans[plan_index]
-    plan_name = selected_plan.get('name', 'N/A')
+        selected_plan = all_plans[plan_idx]
+        
+        # استفاده از تابع کمکی جدید برای خواندن پلن
+        modification_params = _parse_plan_details(selected_plan)
+        modification_params['identifier'] = identifier
+
+        # اگر هیچ پارامتری برای تغییر یافت نشد، خطا نمایش بده
+        if len(modification_params) <= 1:
+            prompt = "❌ پلن انتخاب شده فاقد اطلاعات قابل فهم 'volume' یا 'duration' است."
+            _safe_edit(uid, msg_id, prompt)
+            return
+            
+        success = combined_handler.modify_user_on_all_panels(**modification_params)
+
+        if success:
+            prompt = f"✅ پلن **{selected_plan.get('name')}** با موفقیت اعمال شد."
+        else:
+            prompt = "❌ متاسفانه در اعمال پلن خطایی رخ داد."
+
+    except Exception as e:
+        logger.error(f"Error in handle_renew_apply_plan for user {identifier}: {e}")
+        prompt = "❌ بروز خطای سیستمی."
     
-    set_gb = parse_volume_string(selected_plan.get('total_volume', '0'))
-    set_days = parse_volume_string(selected_plan.get('duration', '0'))
+    # دکمه بازگشت با callback صحیح
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به منوی تمدید اشتراک", callback_data=f"admin:renew_sub_menu:{identifier}{context_suffix}"))
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode="Markdown")
 
-    success = combined_handler.modify_user_on_all_panels(
-        identifier, set_gb=set_gb, set_days=set_days
-    )
-
-    if success:
-        bot.answer_callback_query(call.id, f"✅ پلن {plan_name} با موفقیت اعمال شد.", show_alert=True)
-        # Refresh user summary
-        new_params = [None, identifier, context_suffix.replace(':', '')]
-        handle_show_user_summary(call, new_params)
-    else:
-        bot.answer_callback_query(call.id, "❌ خطا در اعمال پلن.", show_alert=True)
-
-def handle_renew_reset_subscription(call: types.CallbackQuery, params: list):
-    """
-    (نسخه اشکال‌زدایی پیشرفته با لاگ کامل)
-    گزارش دقیقی از نحوه فیلتر کردن و انتخاب پلن ارائه می‌دهد.
-    """
-    identifier = params[0]
-    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+def handle_user_reset_menu(call: types.CallbackQuery, params: list):
+    """(نسخه نهایی) منوی گزینه‌های ریست با دکمه بازگشت کاملا صحیح."""
+    identifier, panel_short, *rest = params
+    context_suffix = f":{rest[0]}" if rest else ""
     uid, msg_id = call.from_user.id, call.message.message_id
     
-    info = combined_handler.get_combined_user_info(identifier)
-    user_record = db.get_user_uuid_record(identifier)
-
-    if not info or not user_record:
-        bot.answer_callback_query(call.id, "❌ کاربر یا رکورد دسترسی آن یافت نشد.", show_alert=True)
-        return
-
-    all_plans = load_service_plans()
-    if not all_plans:
-        bot.answer_callback_query(call.id, "❌ هیچ پلنی در ربات تعریف نشده است.", show_alert=True)
-        return
-
-    # --- شروع بخش گزارش‌گیری و لاگ ---
+    prompt = "⚙️ کدام گزینه ریست شود؟"
+    kb = types.InlineKeyboardMarkup(row_width=2)
     
-    # ۱. ثبت دسترسی‌های کاربر
-    has_access_de = user_record.get('has_access_de', False)
-    has_access_fr = user_record.get('has_access_fr', False)
-    has_access_tr = user_record.get('has_access_tr', False)
-    has_access_us = user_record.get('has_access_us', False)
-    has_access_ro = user_record.get('has_access_ro', False)
-    is_vip = user_record.get('is_vip', False)
+    btn1 = types.InlineKeyboardButton("🔄 ریست مصرف", callback_data=f"admin:us_rusg:{identifier}{context_suffix}")
+    btn2 = types.InlineKeyboardButton("📜 سابقه پرداخت", callback_data=f"admin:reset_phist:{identifier}{context_suffix}")
+    btn3 = types.InlineKeyboardButton("💸 محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}")
+    btn4 = types.InlineKeyboardButton("🔄 تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}")
+
+    kb.add(btn1, btn2)
+    kb.add(btn3, btn4)
     
-    access_list = []
-    if has_access_de: access_list.append("آلمان 🇩🇪")
-    if has_access_fr: access_list.append("فرانسه 🇫🇷")
-    if has_access_tr: access_list.append("ترکیه 🇹🇷")
-    if has_access_us: access_list.append("آمریکا 🇺🇸")
-    if has_access_ro: access_list.append("رومانی 🇷🇴")
-    if is_vip: access_list.append("ویژه ⭐️")
+    # دکمه بازگشت با callback کاملا صحیح حاوی نوع پنل
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"admin:us:{panel_short}:{identifier}"))
     
-    debug_report = f"🔎 **گزارش اشکال‌زدایی ریست اشتراک**\n\n"
-    debug_report += f"**۱. دسترسی‌های کاربر:**\n`{', '.join(access_list) if access_list else 'هیچ دسترسی خاصی ندارد'}`\n\n"
-    debug_report += f"**۲. فرآیند فیلتر کردن پلن‌ها:**\n"
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
 
-    # ۲. فیلتر کردن پلن‌ها و ثبت دلیل حذف
-    eligible_plans = []
-    for plan in all_plans:
-        plan_type = plan.get('type', 'combined')
-        is_special_plan = plan.get('is_special', False)
-        plan_name = plan.get('name', 'بدون نام')
-        
-        is_eligible = False
-        reason = ""
-        
-        if is_special_plan and not is_vip:
-            reason = "(عدم دسترسی ویژه)"
-        elif (plan_type == 'germany' and not has_access_de) or \
-             (plan_type == 'france' and not has_access_fr) or \
-             (plan_type == 'turkey' and not has_access_tr) or \
-             (plan_type == 'usa' and not has_access_us) or \
-             (plan_type == 'romania' and not has_access_ro):
-            reason = f"(عدم دسترسی به سرور {plan_type})"
-        else:
-            is_eligible = True
-        
-        if is_eligible:
-            eligible_plans.append(plan)
-            debug_report += f"✅ `{plan_name}` - مجاز\n"
-        else:
-            debug_report += f"❌ `{plan_name}` - حذف شد {reason}\n"
 
-    # ۳. انتخاب پلن از لیست مجاز
-    debug_report += f"\n**۳. انتخاب پلن نهایی از لیست مجاز:**\n"
-    matched_plan = None
-    current_plan_name = info.get('package_name')
-
-    if current_plan_name:
-        matched_plan = next((p for p in eligible_plans if p.get('name') == current_plan_name), None)
-        if matched_plan:
-            debug_report += f"🔹 پلن بر اساس نام دقیق پیدا شد: `{current_plan_name}`\n"
-
-    if not matched_plan:
-        current_limit_gb = info.get('usage_limit_GB', 0)
-        debug_report += f"🔸 نام پلن کاربر (`{current_plan_name or 'تعریف نشده'}`) یافت نشد. جستجو بر اساس نزدیک‌ترین حجم ({current_limit_gb} گیگ) انجام می‌شود...\n"
-        
-        if current_limit_gb > 0 and eligible_plans:
-            closest_plan = min(
-                eligible_plans, 
-                key=lambda p: abs(parse_volume_string(p.get('total_volume', '0')) - current_limit_gb)
-            )
-            matched_plan = closest_plan
-            debug_report += f"🔹 نزدیک‌ترین پلن مجاز پیدا شده: `{matched_plan.get('name')}`\n"
-        else:
-            debug_report += "🔸 حجم کاربر صفر است یا هیچ پلن مجازی برای مقایسه وجود ندارد.\n"
-
-    if not matched_plan:
-        debug_report += "\n**نتیجه: هیچ پلن مناسبی یافت نشد.**"
-        _safe_edit(uid, msg_id, escape_markdown(debug_report), parse_mode='MarkdownV2')
-        bot.answer_callback_query(call.id, "❌ هیچ پلن مشابهی یافت نشد (گزارش را ببینید).", show_alert=True)
-        return
-    
-    # اگر پلن پیدا شد، پیش‌نمایش را نمایش می‌دهیم
-    _safe_edit(uid, msg_id, escape_markdown(debug_report), parse_mode='MarkdownV2') # نمایش گزارش قبل از پیش‌نمایش اصلی
-    bot.send_message(uid, "گزارش اشکال‌زدایی در پیام قبلی نمایش داده شد. اکنون پیش‌نمایش ریست را مشاهده می‌کنید:")
-    
-    # بقیه کد برای نمایش پیش‌نمایش بدون تغییر است
-    plan_duration_days = parse_volume_string(matched_plan.get('duration', '0 روز'))
-    plan_volume_gb = parse_volume_string(matched_plan.get('total_volume', '0 گیگابایت'))
-    plan_price = matched_plan.get('price', 0)
-    current_limit_gb = info.get('usage_limit_GB', 0)
-    current_expire_raw = info.get('expire')
-    current_days_left = current_expire_raw if current_expire_raw is not None and current_expire_raw >= 0 else 0
-
-    preview_text = (
-        f"🔍 *پیش‌نمایش ریست اشتراک*\n"
-        f"──────────────────\n"
-        f"**وضعیت فعلی کاربر:**\n"
-        f"▫️ حجم کل: `{current_limit_gb:.1f}` گیگابایت\n"
-        f"▫️ روزهای باقی‌مانده: `{current_days_left}` روز\n\n"
-        f"**پلن انتخابی جهت ریست:**\n"
-        f"▫️ نام: {escape_markdown(matched_plan.get('name', ''))}\n"
-        f"▫️ حجم: `{plan_volume_gb}` گیگابایت\n"
-        f"▫️ مدت: `{plan_duration_days}` روز\n\n"
-        f"**وضعیت پس از ریست:**\n"
-        f"▪️ حجم کل: `{plan_volume_gb:.1f}` گیگابایت\n"
-        f"▪️ روزهای باقی‌مانده: `{plan_duration_days}` روز\n"
-        f"──────────────────\n"
-        f"❓ *تایید نهایی*\n"
-        f"مبلغ *{plan_price:,.0f} تومان* بابت تمدید این پلن محاسبه خواهد شد\\. آیا ادامه می‌دهید؟"
-    )
-
-    markup = types.InlineKeyboardMarkup()
-    confirm_button = types.InlineKeyboardButton("✅ تایید و ریست", callback_data=f"admin:renew_confirm:{identifier}{context_suffix}")
-    cancel_button = types.InlineKeyboardButton("❌ لغو", callback_data=f"admin:us:{identifier}{context_suffix}")
-    markup.add(confirm_button, cancel_button)
-
-    _safe_edit(uid, msg_id, preview_text, reply_markup=markup, parse_mode='MarkdownV2')
-
-def handle_confirm_renew_subscription(call: types.CallbackQuery, params: list):
-    """
-    (نسخه کامل نهایی)
-    عملیات ریست اشتراک را پس از تایید ادمین انجام می‌دهد.
-    """
-    identifier = params[0]
-    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+def handle_user_warning_menu(call: types.CallbackQuery, params: list):
+    """(نسخه نهایی) منوی هشدارهای عدم پرداخت با دکمه بازگشت کاملا صحیح."""
+    identifier, panel_short, *rest = params
+    context_suffix = f":{rest[0]}" if rest else ""
     uid, msg_id = call.from_user.id, call.message.message_id
-
-    # جلوگیری از خطای Markdown با حذف parse_mode
-    _safe_edit(uid, msg_id, "⏳ در حال ریست کردن اشتراک کاربر، لطفاً صبر کنید...", reply_markup=None, parse_mode=None)
-
-    info = combined_handler.get_combined_user_info(identifier)
-    if not info:
-        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد.", show_alert=True)
-        handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
-        return
-
-    current_plan_name = info.get('package_name')
-    if not current_plan_name:
-        bot.answer_callback_query(call.id, "❌ نام پلن فعلی کاربر مشخص نیست.", show_alert=True)
-        handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
-        return
-        
-    all_plans = load_service_plans()
-    matched_plan = next((plan for plan in all_plans if plan.get('name') == current_plan_name), None)
-
-    if not matched_plan:
-        bot.answer_callback_query(call.id, f"❌ پلن '{current_plan_name}' برای اعمال مجدد یافت نشد.", show_alert=True)
-        handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
-        return
-
-    # 1. صفر کردن مصرف فعلی کاربر در تمام پنل‌ها
-    for panel_name, panel_details in info.get('breakdown', {}).items():
-        panel_config = db.get_panel_by_name(panel_name)
-        if not panel_config: continue
-        
-        handler = combined_handler._get_handler_for_panel(panel_config)
-        if not handler: continue
-
-        identifier_for_reset = None
-        if panel_details.get('type') == 'hiddify':
-            identifier_for_reset = info.get('uuid')
-        elif panel_details.get('type') == 'marzban':
-             identifier_for_reset = info.get('breakdown', {}).get(panel_name, {}).get('data', {}).get('username')
-        
-        if identifier_for_reset:
-            if not handler.reset_user_usage(identifier_for_reset):
-                bot.answer_callback_query(call.id, f"❌ خطا در صفر کردن مصرف در پنل {panel_name}.", show_alert=True)
-                handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
-                return
-
-    # 2. استخراج مقادیر جدید حجم و زمان از پلن
-    duration_str = matched_plan.get('duration', '0')
-    set_days = parse_volume_string(duration_str)
-    set_gb = parse_volume_string(matched_plan.get('total_volume', '0'))
-
-    # 3. اعمال حجم و زمان جدید به تمام پنل‌های کاربر
-    apply_success = combined_handler.modify_user_on_all_panels(
-        identifier,
-        set_days=set_days,
-        set_gb=set_gb
-    )
     
-    if apply_success:
-        bot.answer_callback_query(call.id, f"✅ اشتراک کاربر با موفقیت به پلن '{matched_plan.get('name')}' ریست شد.", show_alert=True)
-    else:
-        bot.answer_callback_query(call.id, "❌ خطا در اعمال مقادیر جدید پلن به پنل‌ها.", show_alert=True)
+    prompt = "🔔 کدام هشدار ارسال شود؟"
+    kb = types.InlineKeyboardMarkup(row_width=2)
 
-    # نمایش مجدد خلاصه وضعیت کاربر با اطلاعات به‌روز شده
-    handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
+    btn1 = types.InlineKeyboardButton("🔔 هشدار اولیه", callback_data=f"admin:us_spn:{identifier}{context_suffix}") 
+    btn2 = types.InlineKeyboardButton("🚨 هشدار نهایی", callback_data=f"admin:us_sdw:{identifier}{context_suffix}")
+    
+    kb.add(btn2, btn1)
+    
+    # دکمه بازگشت با callback کاملا صحیح حاوی نوع پنل
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"admin:us:{panel_short}:{identifier}"))
+
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)

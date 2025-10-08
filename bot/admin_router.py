@@ -246,8 +246,6 @@ ADMIN_CALLBACK_HANDLERS = {
     "renew_sub_menu": user_management.handle_renew_subscription_menu,
     "renew_select_plan": user_management.handle_renew_select_plan_menu,
     "renew_apply_plan": user_management.handle_renew_apply_plan,
-    "renew_reset": user_management.handle_renew_reset_subscription,
-    'renew_confirm': user_management.handle_confirm_renew_subscription, # تغییر در این خط
 
     
     # User Actions
@@ -257,6 +255,8 @@ ADMIN_CALLBACK_HANDLERS = {
     "us_edt": user_management.handle_edit_user_menu,
     "us_lpay": user_management.handle_log_payment,
     "us_phist": user_management.handle_payment_history,
+    'us_reset_menu': user_management.handle_user_reset_menu,      
+    'us_warn_menu': user_management.handle_user_warning_menu,   
     "ae": user_management.handle_ask_edit_value,
     "us_tgl": user_management.handle_toggle_status,
     "tglA": user_management.handle_toggle_status_action,

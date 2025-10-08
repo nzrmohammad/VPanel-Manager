@@ -464,53 +464,50 @@ class Menu:
         return kb
 
     def admin_user_interactive_management(self, identifier: str, is_active: bool, panel: str, back_callback: str | None = None) -> types.InlineKeyboardMarkup:
+        """(نسخه خلاصه‌ شده) منوی مدیریت کاربر با گزینه‌های گروه‌بندی شده."""
         kb = types.InlineKeyboardMarkup(row_width=2)
         
         context_suffix = ""
         if back_callback and back_callback.endswith("search_menu"):
             context_suffix = ":s"
 
-        status_text = "⚙️ تغییر وضعیت"
         panel_short = 'h' if panel == 'hiddify' else 'm'
 
-        btn_renew_subscription = types.InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"admin:renew_sub_menu:{identifier}{context_suffix}")
-        kb.add(btn_renew_subscription)
-
+        # ردیف اول
         kb.add(
-            types.InlineKeyboardButton(status_text, callback_data=f"admin:us_tgl:{identifier}{context_suffix}"),
+            types.InlineKeyboardButton("⚙️ تغییر وضعیت", callback_data=f"admin:us_tgl:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("📝 یادداشت ادمین", callback_data=f"admin:us_note:{identifier}{context_suffix}:{panel_short}")
         )
+        # ردیف دوم
         kb.add(
             types.InlineKeyboardButton("💳 ثبت پرداخت", callback_data=f"admin:us_lpay:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("📜 سابقه پرداخت", callback_data=f"admin:us_phist:{identifier}:0{context_suffix}")
         )
+        # ردیف سوم
         kb.add(
             types.InlineKeyboardButton("💰 شارژ کیف پول", callback_data=f"admin:us_mchg:{identifier}{context_suffix}:{panel_short}"),
             types.InlineKeyboardButton("💸 برداشت وجه", callback_data=f"admin:us_wdrw:{identifier}{context_suffix}")
         )
+        # ردیف چهارم
         kb.add(
             types.InlineKeyboardButton("🔧 ویرایش کاربر", callback_data=f"admin:us_edt:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🔄 ریست مصرف", callback_data=f"admin:us_rusg:{identifier}{context_suffix}")
-        )
-        kb.add(
-            types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:us_delc:{identifier}{context_suffix}"),
             types.InlineKeyboardButton("📱 حذف دستگاه‌ها", callback_data=f"admin:us_ddev:{identifier}{context_suffix}")
         )
+        # ردیف پنجم: دکمه‌های جدید برای منوهای خلاصه‌ شده
         kb.add(
-             types.InlineKeyboardButton("📜 ریست سابقه پرداخت", callback_data=f"admin:reset_phist:{identifier}{context_suffix}"),
-             types.InlineKeyboardButton("💸 ریست محدودیت انتقال", callback_data=f"admin:us_rtr:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("♻️ تنظیمات ریست", callback_data=f"admin:us_reset_menu:{identifier}:{panel_short}{context_suffix}"),
+            types.InlineKeyboardButton("⚠️ ارسال هشدار", callback_data=f"admin:us_warn_menu:{identifier}:{panel_short}{context_suffix}")
         )
-        kb.add(
-             types.InlineKeyboardButton("🔄 ریست تاریخ تولد", callback_data=f"admin:us_rb:{identifier}{context_suffix}"),
-             types.InlineKeyboardButton("🎁 اهدای نشان", callback_data=f"admin:awd_b_menu:{identifier}{context_suffix}")
-        )
-        kb.add(
-            types.InlineKeyboardButton("🚨 هشدار نهایی عدم پرداخت", callback_data=f"admin:us_sdw:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🔔 هشدار اولیه عدم پرداخت", callback_data=f"admin:us_spn:{identifier}{context_suffix}") 
-        )
+        
+        # ردیف ششم
+        btn_renew_subscription = types.InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"admin:renew_sub_menu:{identifier}{context_suffix}")
+        btn_delete_user = types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:us_delc:{identifier}{context_suffix}")
+        kb.add(btn_renew_subscription, btn_delete_user)
 
+        # دکمه بازگشت
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))
+        
         return kb
 
     def admin_renew_subscription_menu(self, identifier: str, context_suffix: str) -> types.InlineKeyboardMarkup:
@@ -519,8 +516,7 @@ class Menu:
         panel_short = 'h' # Fallback
         
         kb.add(
-            types.InlineKeyboardButton("🔄 اعمال پلن جدید", callback_data=f"admin:renew_select_plan:{identifier}{context_suffix}"),
-            types.InlineKeyboardButton("🔄 ریست کردن اشتراک", callback_data=f"admin:renew_reset:{identifier}{context_suffix}")
+            types.InlineKeyboardButton("🔄 اعمال پلن جدید", callback_data=f"admin:renew_select_plan:{identifier}{context_suffix}")
         )
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به کاربر", callback_data=f"admin:us:{panel_short}:{identifier}{context_suffix}"))
         return kb

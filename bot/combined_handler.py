@@ -213,8 +213,8 @@ def modify_user_on_all_panels(
     target_panel_type: Optional[str] = None
 ) -> bool:
     """
-    (نسخه نهایی با استفاده از start_date بر اساس مستندات API)
-    کاربر را ویرایش می‌کند.
+    (نسخه کاملاً اصلاح شده)
+    کاربر را با منطق صحیح و بدون پر کردن خودکار مقادیر ویرایش می‌کند.
     """
     logger.info(f"--- Starting user modification for identifier: {identifier} ---")
     logger.info(f"Inputs: add_gb={add_gb}, add_days={add_days}, set_gb={set_gb}, set_days={set_days}")
@@ -244,34 +244,27 @@ def modify_user_on_all_panels(
         if panel_type == 'hiddify' and user_info.get('uuid'):
             logger.info(f"Processing Hiddify panel '{panel_name}' for user {user_info['uuid']}")
             
-            current_limit_gb = user_panel_data.get('usage_limit_GB', 0)
             payload = {}
-            is_new_plan = False
+            # بررسی اینکه آیا یک پلن جدید در حال اعمال است یا فقط مقداری اضافه می‌شود
+            is_setting_new_plan = set_days is not None or set_gb is not None
 
-            # --- بخش حجم ---
-            if set_gb is not None:
-                payload['usage_limit_GB'] = set_gb
-                is_new_plan = True
-            elif add_gb > 0:
-                # افزودن حجم نیازی به ریست ندارد و به تنهایی ارسال می‌شود
-                payload['usage_limit_GB'] = current_limit_gb + add_gb
-
-            # --- بخش روز ---
-            if set_days is not None:
-                payload['package_days'] = set_days
-                is_new_plan = True
-            elif add_days > 0:
-                payload['package_days'] = add_days
-                is_new_plan = True
-
-            # --- منطق نهایی بر اساس مستندات ---
-            if is_new_plan:
-                # برای تعریف پلن جدید، تاریخ شروع را برابر امروز قرار می‌دهیم
+            if is_setting_new_plan:
+                # هنگام اعمال یک پلن جدید، تاریخ شروع ریست می‌شود
                 payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
-                
-                # اگر حجم در درخواست نبود، از حجم فعلی کاربر استفاده می‌کنیم
-                if 'usage_limit_GB' not in payload:
-                    payload['usage_limit_GB'] = current_limit_gb
+                if set_days is not None:
+                    payload['package_days'] = set_days
+                if set_gb is not None:
+                    payload['usage_limit_GB'] = set_gb
+            
+            elif add_days > 0:
+                # افزودن روز نیز در هیدیفای نیازمند ریست تاریخ است
+                payload['package_days'] = add_days
+                payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
+            
+            elif add_gb > 0:
+                # افزودن حجم به مقدار فعلی اضافه می‌شود
+                current_limit_gb = user_panel_data.get('usage_limit_GB', 0)
+                payload['usage_limit_GB'] = current_limit_gb + add_gb
             
             logger.info(f"Constructed Hiddify payload: {payload}")
 
@@ -280,11 +273,11 @@ def modify_user_on_all_panels(
                     any_success = True
                     logger.info(f"Successfully modified user on Hiddify panel '{panel_name}'.")
                 else:
-                    logger.error(f"Failed to modify user on Hiddify panel '{panel_name}'. Check previous logs for details.")
+                    logger.error(f"Failed to modify user on Hiddify panel '{panel_name}'.")
             else:
                 logger.info("No changes to apply for Hiddify panel.")
 
-        # ... (بخش مرزبان بدون تغییر) ...
+        # ... (بخش مرزبان بدون تغییر باقی می‌ماند) ...
         elif panel_type == 'marzban' and user_panel_data.get('username'):
             marzban_username = user_panel_data['username']
             current_limit_bytes = user_panel_data.get('data_limit', 0)
