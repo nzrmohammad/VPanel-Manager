@@ -210,18 +210,19 @@ def modify_user_on_all_panels(
     add_days: int = 0, 
     set_gb: Optional[float] = None,
     set_days: Optional[int] = None,
-    reset_subscription: bool = False,
     target_panel_type: Optional[str] = None
 ) -> bool:
+    """
+    (نسخه نهایی و اصلاح‌شده)
+    کاربر را ویرایش می‌کند. پارامترهای 'add' برای افزودن و پارامترهای 'set' برای بازنویسی کامل هستند.
+    """
     user_info = get_combined_user_info(identifier)
     if not user_info: return False
 
     all_panels_map = {p['name']: p for p in db.get_active_panels()}
     any_success = False
 
-    panels_to_modify = user_info.get('breakdown', {}).items()
-
-    for panel_name, panel_details in panels_to_modify:
+    for panel_name, panel_details in user_info.get('breakdown', {}).items():
         panel_type = panel_details.get('type')
         
         if target_panel_type and panel_type != target_panel_type:
@@ -236,54 +237,52 @@ def modify_user_on_all_panels(
         user_panel_data = panel_details.get('data', {})
         
         if panel_type == 'hiddify' and user_info.get('uuid'):
-            current_limit = user_panel_data.get('usage_limit_GB', 0)
-            current_days = user_panel_data.get('expire')
-            
+            current_limit_gb = user_panel_data.get('usage_limit_GB', 0)
+            current_days = user_panel_data.get('expire', 0)
             payload = {}
 
-            if reset_subscription:
-                payload['usage_limit_GB'] = 0
-                payload['package_days'] = 0
-            elif set_gb is not None or set_days is not None:
-                if set_gb is not None:
-                    payload['usage_limit_GB'] = set_gb
-                if set_days is not None:
-                    payload['package_days'] = set_days
-            else:
-                if add_gb != 0:
-                    payload['usage_limit_GB'] = current_limit + add_gb
-                if add_days > 0:
-                    if current_days is not None and current_days > 0:
-                        payload['package_days'] = current_days + add_days
-                    else:
-                        payload['package_days'] = add_days
+            if set_gb is not None:
+                payload['usage_limit_GB'] = set_gb
+            elif add_gb > 0:
+                payload['usage_limit_GB'] = current_limit_gb + add_gb
             
+            if set_days is not None:
+                payload['package_days'] = set_days
+            elif add_days > 0:
+                payload['package_days'] = (current_days if current_days > 0 else 0) + add_days
+
             if payload and handler.modify_user(user_info['uuid'], payload):
                 any_success = True
         
         elif panel_type == 'marzban' and user_panel_data.get('username'):
+            marzban_username = user_panel_data['username']
+            current_limit_bytes = user_panel_data.get('data_limit', 0)
+            current_expire_ts = user_panel_data.get('expire') # timestamp
             marzban_payload = {}
-            if reset_subscription:
-                marzban_payload = {'data_limit': 0, 'expire': 0}
-            elif set_gb is not None or set_days is not None:
-                if set_gb is not None:
-                    marzban_payload['data_limit'] = int(set_gb * (1024**3))
-                if set_days is not None:
-                    marzban_payload['expire'] = int((datetime.now() + timedelta(days=set_days)).timestamp())
             
-            if marzban_payload:
-                if handler.modify_user(user_panel_data['username'], data=marzban_payload):
-                    any_success = True
-            elif add_gb != 0 or add_days != 0:
-                 if handler.modify_user(user_panel_data['username'], add_usage_gb=add_gb, add_days=add_days):
-                    any_success = True
+            if set_gb is not None:
+                marzban_payload['data_limit'] = int(set_gb * (1024**3))
+            elif add_gb > 0:
+                 marzban_payload['data_limit'] = current_limit_bytes + int(add_gb * (1024**3))
+            
+            if set_days is not None:
+                new_expire_ts = int((datetime.now() + timedelta(days=set_days)).timestamp())
+                marzban_payload['expire'] = new_expire_ts
+            elif add_days > 0:
+                 start_date = datetime.now()
+                 if current_expire_ts and current_expire_ts > start_date.timestamp():
+                     start_date = datetime.fromtimestamp(current_expire_ts)
+                 new_expire_date = start_date + timedelta(days=add_days)
+                 marzban_payload['expire'] = int(new_expire_date.timestamp())
 
+            if marzban_payload and handler.modify_user(marzban_username, data=marzban_payload):
+                any_success = True
 
-    if any_success and (add_days > 0 or set_days is not None or reset_subscription):
-        uuid_id = db.get_uuid_id_by_uuid(user_info['uuid'])
+    if any_success and (add_days > 0 or set_days is not None):
+        uuid_id = db.get_uuid_id_by_uuid(user_info.get('uuid', ''))
         if uuid_id:
             db.reset_renewal_reminder_sent(uuid_id)
-            logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} (UUID_ID: {uuid_id}) due to manual day extension.")
+            logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} due to manual day/plan change.")
             
     return any_success
 

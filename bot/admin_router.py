@@ -247,6 +247,8 @@ ADMIN_CALLBACK_HANDLERS = {
     "renew_select_plan": user_management.handle_renew_select_plan_menu,
     "renew_apply_plan": user_management.handle_renew_apply_plan,
     "renew_reset": user_management.handle_renew_reset_subscription,
+    'renew_confirm': user_management.handle_confirm_renew_subscription, # تغییر در این خط
+
     
     # User Actions
     "add_user": lambda c, p: (_start_add_hiddify_user_convo if p[0] == 'hiddify' else _start_add_marzban_user_convo)(c.from_user.id, c.message.message_id),

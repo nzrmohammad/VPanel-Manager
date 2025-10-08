@@ -7,6 +7,8 @@ from requests.adapters import HTTPAdapter, Retry
 from cachetools import cached
 from .config import HIDDIFY_DOMAIN, ADMIN_PROXY_PATH, ADMIN_UUID, API_TIMEOUT, api_cache
 from .utils import safe_float
+from requests.exceptions import RequestException
+
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +129,9 @@ class HiddifyAPIHandler:
         return self._request("DELETE", f"/user/{uuid}/") is True
 
     def reset_user_usage(self, uuid: str) -> bool:
-        """مصرف یک کاربر را فقط در پنل Hiddify صفر میکند."""
-        return self.modify_user(uuid, data={"current_usage_GB": 0})
+        """(نسخه نهایی) مصرف کاربر را با استفاده از اندپوینت v1 صفر میکند."""
+        url = f"{self.base_url}/api/v1/user/reset_usage/{uuid}/"
+        return self._request("POST", url) is True
 
     def get_panel_info(self) -> Optional[Dict[str, Any]]:
             """اطلاعات پنل Hiddify را با استفاده از تنظیمات دینامیک برمیگرداند."""

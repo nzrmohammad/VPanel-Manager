@@ -819,4 +819,15 @@ class Menu:
         )
         return kb
 
+    def select_account_for_purchase_menu(self, user_uuids: list, plan_name: str, lang_code: str) -> types.InlineKeyboardMarkup:
+        """منوی انتخاب اکانت برای خرید را ایجاد می‌کند."""
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        for u in user_uuids:
+            button_text = f"👤 {u.get('name', get_string('unknown_user', lang_code))}"
+            callback_data = f"wallet:buy_for_account:{u['id']}:{plan_name}"
+            kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+        
+        kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
+        return kb
+
 menu = Menu()

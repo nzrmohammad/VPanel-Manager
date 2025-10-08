@@ -11,6 +11,8 @@ from ..user_handlers.wallet import _check_and_apply_loyalty_reward, _check_and_a
 from ..config import ACHIEVEMENTS
 from ..scheduler_jobs.rewards import notify_user_achievement
 from ..language import get_string
+from ..user_formatters import fmt_purchase_summary
+
 
 logger = logging.getLogger(__name__)
 bot, admin_conversations = None, None
@@ -1406,10 +1408,88 @@ def handle_renew_apply_plan(call: types.CallbackQuery, params: list):
     else:
         bot.answer_callback_query(call.id, "❌ خطا در اعمال پلن.", show_alert=True)
 
-
 def handle_renew_reset_subscription(call: types.CallbackQuery, params: list):
     """
-    اشتراک کاربر را با اعمال مجدد پلن فعلی‌اش ریست می‌کند.
+    پیش‌نمایش دقیق برای عملیات ریست اشتراک کاربر را با پیشوند صحیح ادمین نمایش می‌دهد.
+    """
+    identifier = params[0]
+    context_suffix = f":{params[1]}" if len(params) > 1 else ""
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    info = combined_handler.get_combined_user_info(identifier)
+    if not info:
+        bot.answer_callback_query(call.id, "❌ کاربر یافت نشد.", show_alert=True)
+        return
+
+    current_total_limit_gb = info.get('usage_limit_GB', 0)
+    all_plans = load_service_plans()
+    matched_plan = None
+    
+    for plan in all_plans:
+        plan_volume_gb = 0
+        volume_keys = ['total_volume', 'volume_de', 'volume_fr', 'volume_tr', 'volume_us', 'volume_ro']
+        found_key = next((key for key in volume_keys if key in plan), None)
+        if found_key:
+            plan_volume_str = plan.get(found_key, '0')
+            plan_volume_gb = parse_volume_string(plan_volume_str)
+        
+        if abs(plan_volume_gb - current_total_limit_gb) < 0.01:
+            matched_plan = plan
+            break
+
+    if not matched_plan:
+        bot.answer_callback_query(call.id, "❌ پلن فعلی کاربر برای اعمال مجدد یافت نشد.", show_alert=True)
+        handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
+        return
+
+    plan_name = matched_plan.get('name', 'بدون نام')
+    plan_price = matched_plan.get('price', 0)
+    plan_duration_str = matched_plan.get('duration', '0 روز')
+    
+    volume_keys = ['total_volume', 'volume_de', 'volume_fr', 'volume_tr', 'volume_us', 'volume_ro']
+    found_key = next((key for key in volume_keys if key in matched_plan), None)
+    plan_volume_str = matched_plan.get(found_key, '0 گیگابایت') if found_key else '0 گیگابایت'
+    
+    plan_duration_days = parse_volume_string(plan_duration_str)
+    plan_volume_gb = parse_volume_string(plan_volume_str)
+
+    current_limit_gb = info.get('usage_limit_GB', 0)
+    current_days_left = info.get('days_left', 0)
+
+    preview_text = (
+        f"🔍 **پیش‌نمایش ریست اشتراک**\n"
+        f"──────────────────\n"
+        f"**وضعیت فعلی کاربر:**\n"
+        f"▫️ **حجم کل:** `{current_limit_gb:.1f}` گیگابایت\n"
+        f"▫️ **روزهای باقی‌مانده:** `{current_days_left}` روز\n\n"
+        f"**پلن انتخابی جهت ریست:**\n"
+        f"▫️ **نام:** {plan_name}\n"
+        f"▫️ **حجم:** {plan_volume_str}\n"
+        f"▫️ **مدت:** {plan_duration_str}\n\n"
+        f"**وضعیت پس از ریست:**\n"
+        f"▪️ **حجم کل:** `{plan_volume_gb:.1f}` گیگابایت\n"
+        f"▪️ **روزهای باقی‌مانده:** `{plan_duration_days}` روز\n"
+        f"──────────────────\n"
+        f"❓ **تایید نهایی**\n"
+        f"مبلغ **{plan_price:,.0f} تومان** بابت تمدید این پلن محاسبه خواهد شد. آیا ادامه می‌دهید؟"
+    )
+
+    markup = types.InlineKeyboardMarkup()
+    # --- START: کد اصلاح شده ---
+    # پیشوند "admin:" به ابتدای شناسه‌ها اضافه شد
+    confirm_button = types.InlineKeyboardButton("✅ تایید و ریست", callback_data=f"admin:renew_confirm:{identifier}{context_suffix}")
+    cancel_button = types.InlineKeyboardButton("❌ لغو", callback_data=f"admin:user_summary:{identifier}{context_suffix}")
+    # --- END: کد اصلاح شده ---
+    markup.add(confirm_button, cancel_button)
+
+    _safe_edit(uid, msg_id, preview_text, reply_markup=markup, parse_mode='Markdown')
+
+    _safe_edit(uid, msg_id, preview_text, reply_markup=markup, parse_mode='Markdown')
+
+# این کد جایگزین تابع handle_confirm_renew_subscription می‌شود
+def handle_confirm_renew_subscription(call: types.CallbackQuery, params: list):
+    """
+    عملیات ریست اشتراک (شامل حجم و زمان) را پس از تایید ادمین انجام می‌دهد.
     """
     identifier = params[0]
     context_suffix = f":{params[1]}" if len(params) > 1 else ""
@@ -1422,26 +1502,19 @@ def handle_renew_reset_subscription(call: types.CallbackQuery, params: list):
         bot.answer_callback_query(call.id, "❌ کاربر یافت نشد.", show_alert=True)
         return
 
-    # مرحله ۱: پیدا کردن پلن فعلی کاربر از روی حجم کل
     current_total_limit_gb = info.get('usage_limit_GB', 0)
     all_plans = load_service_plans()
     matched_plan = None
+    
     for plan in all_plans:
-        plan_total_volume_gb = 0
-        plan_type = plan.get('type')
-
-        volume_str = ""
-        if plan_type == 'combined':
-            volume_str = plan.get('total_volume', '0')
-        else:
-            volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
-            volume_key = volume_key_map.get(plan_type)
-            if volume_key:
-                volume_str = plan.get(volume_key, '0')
+        plan_volume_gb = 0
+        volume_keys = ['total_volume', 'volume_de', 'volume_fr', 'volume_tr', 'volume_us', 'volume_ro']
+        found_key = next((key for key in volume_keys if key in plan), None)
+        if found_key:
+            plan_volume_str = plan.get(found_key, '0')
+            plan_volume_gb = parse_volume_string(plan_volume_str)
         
-        plan_total_volume_gb = parse_volume_string(volume_str)
-        
-        if abs(plan_total_volume_gb - current_total_limit_gb) < 0.01:
+        if abs(plan_volume_gb - current_total_limit_gb) < 0.01:
             matched_plan = plan
             break
             
@@ -1450,55 +1523,34 @@ def handle_renew_reset_subscription(call: types.CallbackQuery, params: list):
         handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
         return
 
-    # مرحله ۲: صفر کردن مصرف فعلی در تمام پنل‌ها
-    reset_success = True
-    active_panels = {p['name']: p for p in db.get_active_panels()}
-    for panel_name, panel_details in info.get('breakdown', {}).items():
-        panel_config = active_panels.get(panel_name)
-        if not panel_config: continue
-        handler = combined_handler._get_handler_for_panel(panel_config)
-        if not handler: continue
-        
-        user_identifier_in_panel = None
-        if panel_details.get('type') == 'hiddify' and info.get('uuid'):
-            user_identifier_in_panel = info['uuid']
-        elif panel_details.get('type') == 'marzban' and panel_details.get('data', {}).get('username'):
-             user_identifier_in_panel = panel_details['data']['username']
-        
-        if user_identifier_in_panel and not handler.reset_user_usage(user_identifier_in_panel):
-            reset_success = False
+    # صفر کردن مصرف فعلی کاربر
+    reset_success = combined_handler.reset_user_usage_on_all_panels(identifier)
 
     if not reset_success:
         bot.answer_callback_query(call.id, "❌ خطا در صفر کردن مصرف فعلی کاربر.", show_alert=True)
         handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])
         return
 
-    # مرحله ۳: اعمال مجدد پلن یافت‌شده
-    plan_type = matched_plan.get('type')
-    set_days = parse_volume_string(matched_plan.get('duration', '0'))
-    apply_success = False
+    # استخراج مقادیر جدید حجم و زمان از پلن
+    duration_str = matched_plan.get('duration', '0')
+    set_days = parse_volume_string(duration_str)
+
+    volume_keys = ['total_volume', 'volume_de', 'volume_fr', 'volume_tr', 'volume_us', 'volume_ro']
+    found_key = next((key for key in volume_keys if key in matched_plan), None)
+    volume_str = matched_plan.get(found_key, '0') if found_key else '0'
+    set_gb = parse_volume_string(volume_str)
     
-    if plan_type == 'combined':
-        set_gb_de = parse_volume_string(matched_plan.get('volume_de', '0'))
-        set_gb_fr = parse_volume_string(matched_plan.get('volume_fr', '0'))
-        
-        success_de = combined_handler.modify_user_on_all_panels(identifier, set_gb=set_gb_de, set_days=set_days, target_panel_type='hiddify')
-        success_fr = combined_handler.modify_user_on_all_panels(identifier, set_gb=set_gb_fr, set_days=set_days, target_panel_type='marzban')
-        apply_success = success_de or success_fr # At least one should succeed
-    else: 
-        volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
-        target_panel_type = 'hiddify' if plan_type == 'germany' else 'marzban'
-        volume_key = volume_key_map.get(plan_type)
-        set_gb = parse_volume_string(matched_plan.get(volume_key, '0')) if volume_key else 0
-        
-        apply_success = combined_handler.modify_user_on_all_panels(
-            identifier, set_gb=set_gb, set_days=set_days, target_panel_type=target_panel_type
-        )
+    # اعمال حجم و زمان جدید به تمام پنل‌های کاربر
+    apply_success = combined_handler.modify_user_on_all_panels(
+        identifier, 
+        set_days=set_days,
+        set_volume_gb=set_gb
+    )
     
     if apply_success:
-        bot.answer_callback_query(call.id, f"✅ اشتراک با موفقیت ریست و پلن '{matched_plan.get('name')}' مجدداً اعمال شد.", show_alert=True)
+        # اینجا می‌توانید منطق کسر هزینه از کیف پول را اضافه کنید
+        bot.answer_callback_query(call.id, f"✅ اشتراک کاربر با موفقیت به پلن '{matched_plan.get('name')}' ریست شد.", show_alert=True)
     else:
-        bot.answer_callback_query(call.id, "❌ خطا در اعمال مجدد پلن.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ خطا در اعمال مقادیر جدید پلن.", show_alert=True)
 
-    # نمایش مجدد اطلاعات کاربر در هر صورت
     handle_show_user_summary(call, [None, identifier, context_suffix.replace(':', '')])

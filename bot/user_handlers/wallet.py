@@ -44,11 +44,19 @@ def handle_wallet_callbacks(call: types.CallbackQuery):
         elif action == 'history':
             show_wallet_history(call)
         elif action == 'buy_confirm':
+            # این نقطه شروع اصلی فرآیند خرید است
             plan_name = ":".join(action_parts[2:])
-            confirm_purchase(call, plan_name)
+            check_accounts_and_start_purchase(call, plan_name)
+        elif action == 'buy_for_account':
+            # این callback جدید پس از انتخاب اکانت توسط کاربر فراخوانی می‌شود
+            uuid_id = int(action_parts[2])
+            plan_name = ":".join(action_parts[3:])
+            confirm_purchase(call, plan_name, uuid_id)
         elif action == 'buy_execute':
-            plan_name = ":".join(action_parts[2:])
-            execute_purchase(call, plan_name)
+            # در اینجا هم باید شناسه اکانت (uuid_id) را دریافت کنیم
+            uuid_id = int(action_parts[2])
+            plan_name = ":".join(action_parts[3:])
+            execute_purchase(call, plan_name, uuid_id)
         elif action == 'insufficient':
             uid, msg_id = call.from_user.id, call.message.message_id
             lang_code = db.get_user_language(uid)
@@ -240,7 +248,34 @@ def show_wallet_history(call: types.CallbackQuery):
     _safe_edit(uid, call.message.message_id, "\n".join(lines),
                reply_markup=menu.user_cancel_action("wallet:main", lang_code))
 
-def confirm_purchase(call: types.CallbackQuery, plan_name: str):
+
+def check_accounts_and_start_purchase(call: types.CallbackQuery, plan_name: str):
+    """
+    بررسی می‌کند که کاربر چند اکانت دارد.
+    اگر یکی بود، مستقیماً به تایید خرید می‌رود.
+    اگر بیشتر بود، منوی انتخاب اکانت را نمایش می‌دهد.
+    """
+    uid = call.from_user.id
+    lang_code = db.get_user_language(uid)
+    user_uuids = db.uuids(uid)
+
+    if not user_uuids:
+        bot.answer_callback_query(call.id, "خطا: شما هیچ اکانت فعالی برای خرید ندارید.", show_alert=True)
+        return
+
+    if len(user_uuids) > 1:
+        # نمایش منوی انتخاب اکانت
+        prompt = "شما چند اکانت دارید. لطفاً اکانتی که می‌خواهید خرید برای آن انجام شود را انتخاب کنید:"
+        _safe_edit(uid, call.message.message_id,
+                   escape_markdown(prompt),
+                   reply_markup=menu.select_account_for_purchase_menu(user_uuids, plan_name, lang_code))
+    else:
+        # اگر فقط یک اکانت وجود دارد، مستقیم به تایید خرید برود
+        confirm_purchase(call, plan_name, user_uuids[0]['id'])
+
+
+# تابع confirm_purchase اصلاح شده
+def confirm_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     """(نسخه نهایی) پیش‌نمایش را با اعمال صحیح روزها فقط به پنل مربوطه، نمایش می‌دهد."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
@@ -251,12 +286,11 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
         bot.answer_callback_query(call.id, "خطا: پلن مورد نظر یافت نشد.", show_alert=True)
         return
 
-    user_uuids = db.uuids(uid)
-    if not user_uuids:
-        bot.answer_callback_query(call.id, "خطا: شما هیچ اکانت فعالی برای اعمال پلن ندارید.", show_alert=True)
+    user_main_uuid_record = db.uuid_by_id(uid, uuid_id)
+    if not user_main_uuid_record:
+        bot.answer_callback_query(call.id, "خطا: اکانت انتخاب شده یافت نشد.", show_alert=True)
         return
         
-    user_main_uuid_record = user_uuids[0]
     user_main_uuid = user_main_uuid_record['uuid']
     info_before = combined_handler.get_combined_user_info(user_main_uuid)
     
@@ -349,12 +383,14 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str):
     confirm_text = "\n".join(lines)
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"wallet:buy_execute:{plan_name}"),
+        types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"wallet:buy_execute:{uuid_id}:{plan_name}"),
         types.InlineKeyboardButton("❌ انصراف", callback_data=f"show_plans:{plan_to_buy.get('type')}"))
     
     _safe_edit(uid, call.message.message_id, confirm_text, reply_markup=kb)
 
-def execute_purchase(call: types.CallbackQuery, plan_name: str):
+
+# تابع execute_purchase اصلاح شده
+def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     """(نسخه نهایی) خرید را نهایی کرده و آن را به عنوان یک اعلان در پنل وب کاربر نیز ثبت می‌کند."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
@@ -372,14 +408,12 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str):
         _safe_edit(uid, call.message.message_id, escape_markdown("خطا: پلن مورد نظر یافت نشد."))
         return
 
-    user_uuids = db.uuids(uid)
-    if not user_uuids:
-        _safe_edit(uid, call.message.message_id, escape_markdown("خطا: شما هیچ اکانت فعالی برای اعمال پلن ندارید."))
+    user_main_uuid_record = db.uuid_by_id(uid, uuid_id)
+    if not user_main_uuid_record:
+        _safe_edit(uid, call.message.message_id, escape_markdown("خطا: اکانت انتخاب شده یافت نشد."))
         return
 
-    user_main_uuid_record = user_uuids[0]
     user_main_uuid = user_main_uuid_record['uuid']
-    uuid_id = user_main_uuid_record['id']
     is_vip = user_main_uuid_record.get('is_vip', False)
     info_before = combined_handler.get_combined_user_info(user_main_uuid)
     
