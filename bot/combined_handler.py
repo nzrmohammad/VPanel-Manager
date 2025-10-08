@@ -213,11 +213,16 @@ def modify_user_on_all_panels(
     target_panel_type: Optional[str] = None
 ) -> bool:
     """
-    (نسخه نهایی و اصلاح‌شده)
-    کاربر را ویرایش می‌کند. پارامترهای 'add' برای افزودن و پارامترهای 'set' برای بازنویسی کامل هستند.
+    (نسخه نهایی با استفاده از start_date بر اساس مستندات API)
+    کاربر را ویرایش می‌کند.
     """
+    logger.info(f"--- Starting user modification for identifier: {identifier} ---")
+    logger.info(f"Inputs: add_gb={add_gb}, add_days={add_days}, set_gb={set_gb}, set_days={set_days}")
+
     user_info = get_combined_user_info(identifier)
-    if not user_info: return False
+    if not user_info:
+        logger.error(f"User with identifier '{identifier}' not found. Aborting modification.")
+        return False
 
     all_panels_map = {p['name']: p for p in db.get_active_panels()}
     any_success = False
@@ -237,27 +242,53 @@ def modify_user_on_all_panels(
         user_panel_data = panel_details.get('data', {})
         
         if panel_type == 'hiddify' and user_info.get('uuid'):
+            logger.info(f"Processing Hiddify panel '{panel_name}' for user {user_info['uuid']}")
+            
             current_limit_gb = user_panel_data.get('usage_limit_GB', 0)
-            current_days = user_panel_data.get('expire', 0)
             payload = {}
+            is_new_plan = False
 
+            # --- بخش حجم ---
             if set_gb is not None:
                 payload['usage_limit_GB'] = set_gb
+                is_new_plan = True
             elif add_gb > 0:
+                # افزودن حجم نیازی به ریست ندارد و به تنهایی ارسال می‌شود
                 payload['usage_limit_GB'] = current_limit_gb + add_gb
-            
+
+            # --- بخش روز ---
             if set_days is not None:
                 payload['package_days'] = set_days
+                is_new_plan = True
             elif add_days > 0:
-                payload['package_days'] = (current_days if current_days > 0 else 0) + add_days
+                payload['package_days'] = add_days
+                is_new_plan = True
 
-            if payload and handler.modify_user(user_info['uuid'], payload):
-                any_success = True
-        
+            # --- منطق نهایی بر اساس مستندات ---
+            if is_new_plan:
+                # برای تعریف پلن جدید، تاریخ شروع را برابر امروز قرار می‌دهیم
+                payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
+                
+                # اگر حجم در درخواست نبود، از حجم فعلی کاربر استفاده می‌کنیم
+                if 'usage_limit_GB' not in payload:
+                    payload['usage_limit_GB'] = current_limit_gb
+            
+            logger.info(f"Constructed Hiddify payload: {payload}")
+
+            if payload:
+                if handler.modify_user(user_info['uuid'], payload):
+                    any_success = True
+                    logger.info(f"Successfully modified user on Hiddify panel '{panel_name}'.")
+                else:
+                    logger.error(f"Failed to modify user on Hiddify panel '{panel_name}'. Check previous logs for details.")
+            else:
+                logger.info("No changes to apply for Hiddify panel.")
+
+        # ... (بخش مرزبان بدون تغییر) ...
         elif panel_type == 'marzban' and user_panel_data.get('username'):
             marzban_username = user_panel_data['username']
             current_limit_bytes = user_panel_data.get('data_limit', 0)
-            current_expire_ts = user_panel_data.get('expire') # timestamp
+            current_expire_ts = user_panel_data.get('expire')
             marzban_payload = {}
             
             if set_gb is not None:
@@ -279,11 +310,14 @@ def modify_user_on_all_panels(
                 any_success = True
 
     if any_success and (add_days > 0 or set_days is not None):
-        uuid_id = db.get_uuid_id_by_uuid(user_info.get('uuid', ''))
-        if uuid_id:
-            db.reset_renewal_reminder_sent(uuid_id)
-            logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} due to manual day/plan change.")
+        uuid_to_check = user_info.get('uuid')
+        if uuid_to_check:
+            uuid_id = db.get_uuid_id_by_uuid(uuid_to_check)
+            if uuid_id:
+                db.reset_renewal_reminder_sent(uuid_id)
+                logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} due to manual day/plan change.")
             
+    logger.info(f"--- Finished user modification for identifier: {identifier}. Overall success: {any_success} ---")
     return any_success
 
 def delete_user_from_all_panels(identifier: str) -> bool:
