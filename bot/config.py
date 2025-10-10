@@ -34,7 +34,7 @@ API_TIMEOUT = 45
 API_RETRY_COUNT = 3
 
 TEHRAN_TZ = pytz.timezone("Asia/Tehran")
-DAILY_REPORT_TIME = time(23, 59)
+DAILY_REPORT_TIME = time(23, 57)
 CLEANUP_TIME = time(00, 1)
 
 ADMIN_SUPPORT_CONTACT = os.getenv("ADMIN_SUPPORT_CONTACT", "@Nzrmohammad")

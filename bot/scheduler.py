@@ -37,7 +37,7 @@ class SchedulerManager:
         report_time_str = DAILY_REPORT_TIME.strftime("%H:%M")
 
         # --- زمان‌بندی تمام وظایف از ماژول‌های مربوطه ---
-        schedule.every(1).hours.at(":01").do(self._run_job, maintenance.hourly_snapshots)
+        schedule.every(1).hours.at(":05").do(self._run_job, maintenance.hourly_snapshots)
         schedule.every().day.at("09:00", self.tz_str).do(self._run_job, rewards.notify_admin_of_upcoming_event)
         schedule.every().saturday.at("09:30", self.tz_str).do(self._run_job, rewards.send_weekly_admin_digest)
         schedule.every().day.at("20:00", self.tz_str).do(self._run_job, rewards.award_daily_lucky_badge)
@@ -47,8 +47,8 @@ class SchedulerManager:
         schedule.every().thursday.at("17:15", self.tz_str).do(self._run_job, rewards.send_weekend_vip_message)
         schedule.every().thursday.at("17:20", self.tz_str).do(self._run_job, rewards.send_weekend_normal_user_message)
         schedule.every().friday.at("23:30", self.tz_str).do(self._run_job, rewards.send_achievement_leaderboard)
-        schedule.every().friday.at("23:55", self.tz_str).do(self._run_job, reports.weekly_report)
-        schedule.every().friday.at("23:59", self.tz_str).do(self._run_job, reports.send_weekly_admin_summary)
+        schedule.every().friday.at("23:50", self.tz_str).do(self._run_job, reports.weekly_report)
+        schedule.every().friday.at("23:55", self.tz_str).do(self._run_job, reports.send_weekly_admin_summary)
         schedule.every().friday.at("21:00", self.tz_str).do(self._run_job, rewards.send_lucky_badge_summary)
         schedule.every().friday.at("21:05", self.tz_str).do(self._run_job, rewards.run_lucky_lottery)
         schedule.every(ONLINE_REPORT_UPDATE_HOURS).hours.do(self._run_job, maintenance.update_online_reports)
