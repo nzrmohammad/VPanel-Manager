@@ -60,7 +60,6 @@ class SchedulerManager:
         schedule.every(8).hours.do(self._run_job, maintenance.cleanup_old_reports)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_job, maintenance.run_monthly_vacuum)
         schedule.every().day.at("01:15", self.tz_str).do(self._run_job, financials.renew_monthly_costs_job)
-
         
         self.running = True
         threading.Thread(target=self._runner, daemon=True).start()
