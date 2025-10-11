@@ -1155,11 +1155,19 @@ class DatabaseManager:
                         snapshot_date,
                         uuid_id,
                         CASE
+                            -- اگر مصرف دیروز صفر بوده، مصرف امروز را صفر در نظر بگیر تا محاسبات خراب نشود
+                            WHEN prev_h_usage = 0 THEN 0
+                            -- اگر مصرف کم شده (ریست)، مصرف امروز همان عدد جدید است
                             WHEN hiddify_usage_gb < prev_h_usage THEN hiddify_usage_gb
+                            -- حالت عادی
                             ELSE hiddify_usage_gb - prev_h_usage
                         END as h_diff,
                         CASE
+                            -- اگر مصرف دیروز صفر بوده، مصرف امروز را صفر در نظر بگیر تا محاسبات خراب نشود
+                            WHEN prev_m_usage = 0 THEN 0
+                            -- اگر مصرف کم شده (ریست)، مصرف امروز همان عدد جدید است
                             WHEN marzban_usage_gb < prev_m_usage THEN marzban_usage_gb
+                            -- حالت عادی
                             ELSE marzban_usage_gb - prev_m_usage
                         END as m_diff
                     FROM daily_usage_with_prev
