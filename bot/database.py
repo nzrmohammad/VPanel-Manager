@@ -1568,14 +1568,14 @@ class DatabaseManager:
 
     def get_user_daily_usage_history_by_panel(self, uuid_id: int, days: int = 7) -> list:
         """
-        (نسخه کاملاً اصلاح شده) مصرف روزانه کاربر را به تفکیک پنل با مدیریت صحیح baseline محاسبه می‌کند
+        (نسخه نهایی) مصرف روزانه کاربر را به تفکیک پنل با مدیریت هوشمند خطاهای ریست API محاسبه می‌کند.
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
         history = []
 
         with self._conn() as c:
-            for i in range(days - 1, -1, -1):  # از قدیم به جدید
+            for i in range(days - 1, -1, -1):
                 target_date = (now_in_tehran - timedelta(days=i)).date()
                 
                 day_start_utc = datetime(
@@ -1584,7 +1584,6 @@ class DatabaseManager:
                 ).astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
 
-                # 🔧 FIX: دریافت baseline (آخرین اسنپ‌شات قبل از این روز)
                 baseline_snap = c.execute(
                     """SELECT hiddify_usage_gb, marzban_usage_gb 
                     FROM usage_snapshots 
@@ -1593,64 +1592,53 @@ class DatabaseManager:
                     (uuid_id, day_start_utc)
                 ).fetchone()
 
-                # دریافت تمام اسنپ‌شات‌های این روز
                 daily_snaps = c.execute(
-                    """SELECT hiddify_usage_gb, marzban_usage_gb, taken_at
+                    """SELECT hiddify_usage_gb, marzban_usage_gb
                     FROM usage_snapshots 
                     WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?
                     ORDER BY taken_at ASC""",
                     (uuid_id, day_start_utc, day_end_utc)
                 ).fetchall()
 
-                # اگر هیچ اسنپ‌شاتی در این روز نبود
                 if not daily_snaps:
                     history.append({
-                        "date": target_date,
-                        "hiddify_usage": 0.0,
-                        "marzban_usage": 0.0,
-                        "total_usage": 0.0
+                        "date": target_date, "hiddify_usage": 0.0,
+                        "marzban_usage": 0.0, "total_usage": 0.0
                     })
                     continue
 
-                # 🔧 FIX: تنظیم baseline
-                if baseline_snap:
-                    last_h = baseline_snap['hiddify_usage_gb'] or 0.0
-                    last_m = baseline_snap['marzban_usage_gb'] or 0.0
-                else:
-                    # اگر baseline نبود، از صفر شروع کن
-                    last_h = 0.0
-                    last_m = 0.0
-
+                last_h = baseline_snap['hiddify_usage_gb'] if baseline_snap else 0.0
+                last_m = baseline_snap['marzban_usage_gb'] if baseline_snap else 0.0
+                
                 daily_h_usage = 0.0
                 daily_m_usage = 0.0
 
-                # محاسبه مصرف تفاضلی در طول روز
                 for snap in daily_snaps:
                     current_h = snap['hiddify_usage_gb'] or 0.0
                     current_m = snap['marzban_usage_gb'] or 0.0
-
-                    # محاسبه تفاضل
+                    
                     h_diff = current_h - last_h
                     m_diff = current_m - last_m
 
-                    # اگر منفی شد (ریست)، فقط مقدار فعلی را اضافه کن
-                    if h_diff < 0:
-                        h_diff = current_h
-                    if m_diff < 0:
-                        m_diff = current_m
+                    is_h_reset = h_diff < -0.01
+                    is_m_reset = m_diff < -0.01
 
-                    daily_h_usage += max(0, h_diff)
-                    daily_m_usage += max(0, m_diff)
+                    # فقط مصرف مثبت را اضافه کن
+                    if not is_h_reset:
+                        daily_h_usage += h_diff
+                    if not is_m_reset:
+                        daily_m_usage += m_diff
 
-                    # آپدیت last برای اسنپ‌شات بعدی
-                    last_h = current_h
-                    last_m = current_m
+                    if not is_h_reset:
+                        last_h = current_h
+                    if not is_m_reset:
+                        last_m = current_m
 
                 history.append({
                     "date": target_date,
-                    "hiddify_usage": round(daily_h_usage, 2),
-                    "marzban_usage": round(daily_m_usage, 2),
-                    "total_usage": round(daily_h_usage + daily_m_usage, 2)
+                    "hiddify_usage": round(max(0, daily_h_usage), 2),
+                    "marzban_usage": round(max(0, daily_m_usage), 2),
+                    "total_usage": round(max(0, daily_h_usage) + max(0, daily_m_usage), 2)
                 })
 
         return history
@@ -1977,72 +1965,77 @@ class DatabaseManager:
             rows = c.execute("SELECT id, user_id FROM user_uuids WHERE is_active=1").fetchall()
             return [dict(r) for r in rows]
 
-    def get_weekly_top_consumers_report(self) -> dict:
+    def get_weekly_top_consumers_report(self, limit=10):
         """
-        (نسخه کاملاً اصلاح شده) گزارش هفتگی ادمین با محاسبه صحیح هفته شمسی
+        (نسخه نهایی و کاملاً تصحیح شده) گزارش پرمصرف‌ترین کاربران هفته را با استفاده از
+        منطق دقیق روزانه محاسبه می‌کند تا با گزارش‌های شخصی کاربران همخوانی داشته باشد.
         """
-        report = {'top_10_overall': [], 'top_daily': {}}
+        now = datetime.now(pytz.timezone('Asia/Tehran'))
+        # شنبه به عنوان شروع هفته در نظر گرفته می‌شود (weekday() -> 0=Monday, 5=Saturday, 6=Sunday)
+        # برای تطابق با منطقه ایران، شنبه را روز شروع هفته در نظر می‌گیریم
+        days_since_saturday = (now.weekday() + 2) % 7
+        week_start_date = (now - timedelta(days=days_since_saturday)).date()
         
-        all_bot_users = {u['user_id']: u for u in self.get_all_bot_users()}
-        all_active_uuids = self.get_all_active_uuids_with_user_id()
+        users_weekly_usage = {}
         
-        usage_by_user_id = {
-            user_id: {'daily_usages': [0.0] * 7, 'name': info.get('first_name', f'کاربر {user_id}')}
-            for user_id, info in all_bot_users.items()
-        }
+        # ✅ FIX: استفاده از نام صحیح تابع که در دیتابیس شما وجود دارد
+        all_uuids = self.get_all_active_uuids_with_user_id()
 
-        # 🔧 FIX: استفاده از تابع کمکی برای محاسبه شروع هفته
-        week_start_utc = self.get_week_start_utc()
-        
-        logger.info(f"📅 Weekly report - Week start UTC: {week_start_utc}")
+        for uuid_info in all_uuids:
+            # بر اساس ساختار تابع شما، کلیدها ممکن است متفاوت باشند.
+            # این ساختار بر اساس حدس خطا است
+            user_id = uuid_info.get('user_id')
+            user_name = uuid_info.get('user_name') or uuid_info.get('name', 'N/A')
+            uuid_id = uuid_info.get('id')
 
-        # برای هر uuid فعال، تاریخچه مصرف هفتگی را می‌گیریم
-        for uuid_info in all_active_uuids:
-            uuid_id = uuid_info['id']
-            user_id = uuid_info['user_id']
-            
-            if user_id not in usage_by_user_id:
+            if not all([user_id, uuid_id]):
                 continue
 
-            # استفاده از تابع اصلاح شده محاسبه روزانه
+            # استفاده از تابع دقیق و اصلاح‌شده برای محاسبه مصرف هفتگی
             daily_history = self.get_user_daily_usage_history_by_panel(uuid_id, days=7)
             
-            for daily_item in daily_history:
-                # تبدیل تاریخ میلادی به شمسی برای پیدا کردن index روز
-                target_date_jalali = jdatetime.date.fromgregorian(date=daily_item['date'])
-                day_index = target_date_jalali.weekday()  # شنبه=0, یکشنبه=1, ...
-                
-                # جمع کردن مصرف این uuid در این روز
-                usage_by_user_id[user_id]['daily_usages'][day_index] += daily_item['total_usage']
-
-        # محاسبه مجموع هفتگی و مرتب‌سازی
-        for user_id in usage_by_user_id:
-            usage_by_user_id[user_id]['weekly_total'] = sum(usage_by_user_id[user_id]['daily_usages'])
-
-        sorted_weekly = sorted(usage_by_user_id.values(), key=lambda item: item['weekly_total'], reverse=True)
-        
-        report['top_10_overall'] = [
-            {'name': data['name'], 'total_usage': data['weekly_total']}
-            for data in sorted_weekly[:10] if data['weekly_total'] > 0.01
-        ]
-
-        # پیدا کردن قهرمان هر روز (شنبه تا جمعه)
-        day_names_fa = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه']
-        for i in range(7):
-            daily_leaderboard = sorted(
-                usage_by_user_id.values(),
-                key=lambda x: x['daily_usages'][i],
-                reverse=True
+            # فقط تاریخ‌های هفته جاری را در نظر بگیر
+            weekly_total_usage = sum(
+                day['total_usage'] for day in daily_history 
+                if day['date'] >= week_start_date
             )
-            if daily_leaderboard and daily_leaderboard[0]['daily_usages'][i] > 0.01:
-                top_user = daily_leaderboard[0]
-                report['top_daily'][i] = {
-                    'day_name': day_names_fa[i],
-                    'name': top_user['name'],
-                    'usage': top_user['daily_usages'][i]
-                }
 
-        return report
+            if user_id not in users_weekly_usage:
+                users_weekly_usage[user_id] = {'name': user_name, 'usage': 0.0}
+            
+            # اگر نام کاربر جدید کامل‌تر است، آن را آپدیت کن
+            if user_name != 'N/A' and users_weekly_usage[user_id]['name'] == 'N/A':
+                users_weekly_usage[user_id]['name'] = user_name
+                
+            users_weekly_usage[user_id]['usage'] += weekly_total_usage
+
+        # مرتب‌سازی کاربران بر اساس مصرف
+        sorted_users = sorted(
+            [
+                {'name': data['name'], 'usage': round(data['usage'], 2)} 
+                for uid, data in users_weekly_usage.items() if data['usage'] > 0.01
+            ], 
+            key=lambda x: x['usage'], 
+            reverse=True
+        )
+        
+        top_consumers = sorted_users[:limit]
+        
+        # محاسبه قهرمان هر روز هفته
+        daily_champions = {}
+        for i in range(7):
+            target_date = (now - timedelta(days=i)).date()
+            if target_date < week_start_date:
+                break
+            
+            daily_winner = self.get_top_consumer_for_date(target_date)
+            if daily_winner:
+                daily_champions[target_date] = daily_winner
+
+        return {
+            'top_consumers': top_consumers,
+            'daily_champions': daily_champions
+        }
 
     def add_achievement_points(self, user_id: int, points: int):
             """امتیاز به حساب یک کاربر اضافه می‌کند."""
