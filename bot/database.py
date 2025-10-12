@@ -1968,35 +1968,48 @@ class DatabaseManager:
 
     def get_weekly_top_consumers_report(self) -> Dict[str, Any]:
         """
-        گزارش هفتگی مصرف را با خروجی هماهنگ با فرمت‌کننده تولید می‌کند.
+        گزارش هفتگی مصرف را با خروجی دقیقاً هماهنگ با فرمت‌کننده تولید می‌کند
+        و نام کاربران را مستقیماً از دیتابیس استخراج می‌نماید.
         """
         logger.info("Starting weekly top consumers report generation...")
         tehran_tz = pytz.timezone("Asia/Tehran")
 
         with self._conn() as c:
+            # --- مرحله ۱: بررسی وجود داده‌های اولیه ---
             last_snapshot_str_tuple = c.execute("SELECT MAX(taken_at) FROM usage_snapshots").fetchone()
             if not last_snapshot_str_tuple or not last_snapshot_str_tuple[0]:
                 logger.warning("No data in usage_snapshots table. Returning empty report.")
-                return {'top_10_consumers': [], 'daily_champions': []} # اصلاح شده برای خروجی خالی
+                return {'top_10_overall': [], 'top_daily': {}}
 
             last_snapshot_str = last_snapshot_str_tuple[0]
-            logger.info(f"Latest snapshot found at: {last_snapshot_str}")
-
             try:
-                last_snapshot_utc = datetime.fromisoformat(last_snapshot_str)
+                last_snapshot_utc = datetime.fromisoformat(last_snapshot_str.replace('Z', '+00:00'))
             except Exception as e:
                 logger.error(f"Could not parse date '{last_snapshot_str}'. Error: {e}")
-                return {'top_10_consumers': [], 'daily_champions': []} # اصلاح شده برای خروجی خالی
+                return {'top_10_overall': [], 'top_daily': {}}
 
             report_base_date = last_snapshot_utc.astimezone(tehran_tz).date()
-            logger.info(f"Report base date (Tehran time): {report_base_date}")
+            
+            # --- مرحله ۲: استخراج نام کاربران ---
+            # این بخش مشکل نمایش نام‌ها را حل می‌کند
+            user_info_map = {}
+            try:
+                # تلاش برای خواندن نام‌ها از جدول users
+                users_from_db = c.execute("SELECT id, name FROM users WHERE is_active = 1").fetchall()
+                for user in users_from_db:
+                    user_info_map[user['id']] = user['name']
+                logger.info(f"Successfully fetched {len(user_info_map)} active user names.")
+            except Exception:
+                logger.warning("Could not fetch user names from 'users' table. User names might be generic.")
 
-            weekly_usage_data = {}
-            daily_winners = []
+            # --- مرحله ۳: محاسبه مصرف ---
             all_uuids = self.get_all_active_uuids_with_user_id()
             if not all_uuids:
                 logger.warning("No active UUIDs found. Returning empty report.")
-                return {'top_10_consumers': [], 'daily_champions': []} # اصلاح شده برای خروجی خالی
+                return {'top_10_overall': [], 'top_daily': {}}
+            
+            weekly_usage_data = {}
+            daily_winners_list = []
 
             logger.info(f"Calculating usage for {len(all_uuids)} active UUIDs over 7 days.")
 
@@ -2004,22 +2017,24 @@ class DatabaseManager:
                 target_date = report_base_date - timedelta(days=i)
                 day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=tehran_tz).astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
-                
+                day_start_str = day_start_utc.strftime('%Y-%m-%d %H:%M:%S')
+                day_end_str = day_end_utc.strftime('%Y-%m-%d %H:%M:%S')
+
                 daily_top_consumer = {'name': None, 'usage': 0.0}
 
                 for uuid_info in all_uuids:
                     uuid_id = uuid_info['id']
-                    user_id = uuid_info['user_id']
-                    user_name = uuid_info.get('name', f"User {user_id}")
+                    user_key = uuid_info['user_id']
+                    # **اصلاح کلیدی:** نام کاربر را از دیکشنری که ساختیم می‌خوانیم
+                    user_name = user_info_map.get(user_key, uuid_info.get('name', f"User {user_key}"))
 
                     baseline_snap = c.execute(
-                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND datetime(taken_at) < datetime(?) ORDER BY taken_at DESC LIMIT 1",
-                        (uuid_id, day_start_utc.isoformat())
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_start_str)
                     ).fetchone()
-
                     last_snap = c.execute(
-                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND datetime(taken_at) < datetime(?) ORDER BY taken_at DESC LIMIT 1",
-                        (uuid_id, day_end_utc.isoformat())
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_end_str)
                     ).fetchone()
 
                     if not last_snap: continue
@@ -2033,27 +2048,35 @@ class DatabaseManager:
                     m_usage = m_end - m_start if m_end >= m_start else m_end
                     total_daily_usage = max(0, h_usage) + max(0, m_usage)
 
-                    if total_daily_usage > 0:
-                        if user_id not in weekly_usage_data:
-                            weekly_usage_data[user_id] = {'name': user_name, 'usage': 0.0}
-                        weekly_usage_data[user_id]['usage'] += total_daily_usage
+                    if total_daily_usage > 0.001:
+                        if user_key not in weekly_usage_data:
+                            weekly_usage_data[user_key] = {'name': user_name, 'total_usage': 0.0}
+                        weekly_usage_data[user_key]['total_usage'] += total_daily_usage
                     
                     if total_daily_usage > daily_top_consumer['usage']:
                         daily_top_consumer['name'] = user_name
                         daily_top_consumer['usage'] = total_daily_usage
 
                 if daily_top_consumer['name']:
-                    daily_winners.append({'date': target_date, 'name': daily_top_consumer['name'], 'usage': daily_top_consumer['usage']})
+                    daily_winners_list.append({
+                        'date': target_date, 
+                        'name': daily_top_consumer['name'], 
+                        'usage': daily_top_consumer['usage']
+                    })
         
-        sorted_consumers = sorted(weekly_usage_data.values(), key=lambda x: x['usage'], reverse=True)
-        daily_winners.sort(key=lambda x: x['date'])
-
-        logger.info(f"Report generation finished. Found {len(sorted_consumers)} top consumers and {len(daily_winners)} daily winners.")
+        # --- مرحله ۴: آماده‌سازی خروجی نهایی ---
+        sorted_consumers = sorted(weekly_usage_data.values(), key=lambda x: x['total_usage'], reverse=True)
         
-        # --- این بخش اصلاح نهایی است ---
+        daily_winners_dict = {}
+        for winner in daily_winners_list:
+            day_index = winner['date'].weekday()
+            daily_winners_dict[day_index] = winner
+        
+        logger.info(f"Report generation finished. Found {len(sorted_consumers)} top consumers and {len(daily_winners_dict)} daily winners.")
+        
         return {
-            'top_10_consumers': sorted_consumers[:10],
-            'daily_champions': daily_winners
+            'top_10_overall': sorted_consumers[:10],
+            'top_daily': daily_winners_dict
         }
 
     def add_achievement_points(self, user_id: int, points: int):
