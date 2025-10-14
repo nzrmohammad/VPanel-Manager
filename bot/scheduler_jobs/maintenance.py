@@ -77,44 +77,6 @@ def update_online_reports(bot) -> None:
             else:
                 logger.error(f"Scheduler: Failed to update online report for chat {msg_info['chat_id']}: {e}")
 
-def nightly_baseline_reset(bot) -> None:
-    """
-    Creates a new baseline snapshot for all active users shortly after midnight.
-    This ensures accurate daily usage tracking.
-    """
-    logger.info("SCHEDULER: Running nightly baseline reset for usage stats.")
-    db = Database()
-    try:
-        all_users_info = combined_handler.get_all_users_combined()
-        if not all_users_info:
-            logger.warning("NIGHTLY RESET: Could not fetch any user info from panels. Aborting baseline reset.")
-            return
-
-        user_info_map = {user['uuid']: user for user in all_users_info if user.get('uuid')}
-        
-        # با توجه به کد شما، تابع all_active_uuids لیست کاملی از کاربران فعال را برمی‌گرداند
-        all_active_db_users = list(db.all_active_uuids())
-        
-        reset_count = 0
-        for u_row in all_active_db_users:
-            user_id = u_row['id']
-            uuid_str = u_row['uuid']
-            
-            if uuid_str in user_info_map:
-                info = user_info_map[uuid_str]
-                breakdown = info.get('breakdown', {})
-                
-                # محاسبه مجموع مصرف از تمام پنل‌های هر نوع
-                h_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'hiddify')
-                m_usage = sum(p.get('data', {}).get('current_usage_GB', 0.0) for p in breakdown.values() if p.get('type') == 'marzban')
-                
-                db.add_usage_snapshot(user_id, h_usage, m_usage)
-                reset_count += 1
-        
-        logger.info(f"NIGHTLY RESET: Successfully created new baseline snapshots for {reset_count} active users.")
-    except Exception as e:
-        logger.error(f"NIGHTLY RESET: A critical error occurred during the baseline reset job: {e}", exc_info=True)
-
 def sync_users_with_panels(bot):
     """
     (نسخه اصلاح شده با اجرای غیرمسدود دیتابیس)

@@ -27,8 +27,9 @@ class UsageDB(DatabaseManager):
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
         """
-        مصرف روزانه کاربر را از نیمه‌شب به وقت تهران محاسبه می‌کند.
-        این تابع با مقایسه آخرین اسنپ‌شات کلی با آخرین اسنپ‌شاتِ قبل از امروز کار می‌کند.
+        (نسخه اصلاح شده نهایی)
+        مصرف روزانه کاربر را از نیمه‌شب به وقت تهران به صورت دقیق محاسبه می‌کند.
+        این نسخه جدید، حالت‌های مختلف (مانند نبودن baseline) را مدیریت می‌کند.
         """
         try:
             tehran_tz = pytz.timezone("Asia/Tehran")
@@ -37,11 +38,19 @@ class UsageDB(DatabaseManager):
             today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
             with self._conn() as c:
+                # آخرین اسنپ‌شات از قبل از امروز (به عنوان baseline اصلی)
                 baseline_snap = c.execute(
                     "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                     (uuid_id, today_midnight_utc)
                 ).fetchone()
 
+                # اولین اسنپ‌شات امروز (به عنوان baseline جایگزین)
+                first_today_snap = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1",
+                    (uuid_id, today_midnight_utc)
+                ).fetchone()
+
+                # آخرین اسنپ‌شات کلی (برای محاسبه مصرف نهایی)
                 last_snap = c.execute(
                     "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? ORDER BY taken_at DESC LIMIT 1",
                     (uuid_id,)
@@ -50,10 +59,24 @@ class UsageDB(DatabaseManager):
                 if not last_snap:
                     return {'hiddify': 0.0, 'marzban': 0.0}
 
-                h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] is not None else 0.0
-                m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] is not None else 0.0
                 h_end = last_snap['hiddify_usage_gb'] or 0.0
                 m_end = last_snap['marzban_usage_gb'] or 0.0
+                h_start, m_start = 0.0, 0.0
+
+                if baseline_snap:
+                    # بهترین حالت: baseline از روز قبل وجود دارد
+                    h_start = baseline_snap['hiddify_usage_gb'] or 0.0
+                    m_start = baseline_snap['marzban_usage_gb'] or 0.0
+                elif first_today_snap:
+                    # حالت دوم: baseline از امروز صبح استفاده می‌شود
+                    h_start = first_today_snap['hiddify_usage_gb'] or 0.0
+                    m_start = first_today_snap['marzban_usage_gb'] or 0.0
+                else:
+                    # اگر هیچ اسنپ‌شاتی امروز یا قبل از آن وجود نداشته باشد، مصرف صفر است
+                     return {'hiddify': 0.0, 'marzban': 0.0}
+
+
+                # مدیریت حالت ریست شدن حجم (وقتی مصرف پایانی کمتر از مصرف اولیه است)
                 h_usage = h_end - h_start if h_end >= h_start else h_end
                 m_usage = m_end - m_start if m_end >= m_start else m_end
 
@@ -71,12 +94,9 @@ class UsageDB(DatabaseManager):
     def get_user_daily_usage_history_by_panel(self, uuid_id: int, days: int = 7) -> list:
         """
         (نسخه اصلاح‌شده نهایی)
-        محاسبه مصرف روزانه واقعی کاربر به تفکیک پنل‌ها (هیددیفای / مرزبان).
-        مصرف هر روز فقط بر اساس تفاضل snapshot انتهای روز و ابتدای روز محاسبه می‌شود،
-        بدون جمع‌شدن با روزهای قبل، با مدیریت هوشمند ریست API.
+        محاسبه مصرف روزانه واقعی کاربر به تفکیک پنل‌ها با مدیریت هوشمند ریست API.
         """
         logger.info(f"Generating daily usage history for UUID {uuid_id} (last {days} days)...")
-
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_in_tehran = datetime.now(tehran_tz)
         history = []
@@ -91,72 +111,38 @@ class UsageDB(DatabaseManager):
                 day_end_utc = day_start_utc + timedelta(days=1)
 
                 try:
-                    # Snapshot قبل از شروع روز
                     baseline_snap = c.execute(
-                        """SELECT hiddify_usage_gb, marzban_usage_gb 
-                        FROM usage_snapshots 
-                        WHERE uuid_id = ? AND taken_at < ? 
-                        ORDER BY taken_at DESC LIMIT 1""",
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                         (uuid_id, day_start_utc)
                     ).fetchone()
 
-                    # Snapshot تا انتهای روز
                     end_snap = c.execute(
-                        """SELECT hiddify_usage_gb, marzban_usage_gb 
-                        FROM usage_snapshots 
-                        WHERE uuid_id = ? AND taken_at < ?
-                        ORDER BY taken_at DESC LIMIT 1""",
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                         (uuid_id, day_end_utc)
                     ).fetchone()
 
                     if not end_snap:
-                        history.append({
-                            "date": target_date,
-                            "hiddify_usage": 0.0,
-                            "marzban_usage": 0.0,
-                            "total_usage": 0.0
-                        })
+                        history.append({"date": target_date, "hiddify_usage": 0.0, "marzban_usage": 0.0, "total_usage": 0.0})
                         continue
 
-                    # baseline مقادیر اولیه
                     h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] is not None else 0.0
                     m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] is not None else 0.0
                     h_end = end_snap['hiddify_usage_gb'] if end_snap and end_snap['hiddify_usage_gb'] is not None else 0.0
                     m_end = end_snap['marzban_usage_gb'] if end_snap and end_snap['marzban_usage_gb'] is not None else 0.0
 
-                    # تشخیص ریست API
-                    is_h_reset = h_end < h_start
-                    is_m_reset = m_end < m_start
-
-                    # محاسبه مصرف روزانه واقعی
-                    daily_h_usage = h_end - h_start if not is_h_reset else h_end
-                    daily_m_usage = m_end - m_start if not is_m_reset else m_end
-
-                    daily_h_usage = max(0.0, daily_h_usage)
-                    daily_m_usage = max(0.0, daily_m_usage)
+                    daily_h_usage = h_end - h_start if h_end >= h_start else h_end
+                    daily_m_usage = m_end - m_start if m_end >= m_start else m_end
 
                     history.append({
                         "date": target_date,
-                        "hiddify_usage": round(daily_h_usage, 2),
-                        "marzban_usage": round(daily_m_usage, 2),
-                        "total_usage": round(daily_h_usage + daily_m_usage, 2)
+                        "hiddify_usage": round(max(0.0, daily_h_usage), 2),
+                        "marzban_usage": round(max(0.0, daily_m_usage), 2),
+                        "total_usage": round(max(0.0, daily_h_usage) + max(0.0, daily_m_usage), 2)
                     })
-
                 except Exception as e:
                     logger.error(f"Failed to calculate daily usage for {target_date}: {e}")
-                    history.append({
-                        "date": target_date,
-                        "hiddify_usage": 0.0,
-                        "marzban_usage": 0.0,
-                        "total_usage": 0.0
-                    })
-
-        logger.info(f"Daily usage history generation completed for UUID {uuid_id}. {len(history)} days processed.")
+                    history.append({"date": target_date, "hiddify_usage": 0.0, "marzban_usage": 0.0, "total_usage": 0.0})
         return history
-
-    def get_usage_by_time_of_day(self, uuid_id: int) -> Dict[str, float]:
-        # ... (کد این تابع از فایل فعلی شما بدون تغییر باقی می‌ماند)
-        pass
 
     def delete_all_daily_snapshots(self) -> int:
         """تمام اسنپ‌شات‌های مصرف امروز (به وقت UTC) را برای همه کاربران حذف می‌کند."""
@@ -226,9 +212,8 @@ class UsageDB(DatabaseManager):
         return intervals
 
     def get_all_daily_usage_since_midnight(self) -> Dict[str, Dict[str, float]]:
-        """مصرف روزانه تمام کاربران فعال را محاسبه می‌کند."""
         usage_map = {}
-        all_uuids = self.get_all_user_uuids()  # این تابع باید در UserDB باشد
+        all_uuids = self.get_all_user_uuids()
         for u in all_uuids:
             if u.get('is_active'):
                 usage_map[u['uuid']] = self.get_usage_since_midnight(u['id'])
