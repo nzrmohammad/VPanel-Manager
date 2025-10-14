@@ -38,7 +38,7 @@ class SchedulerManager:
 
         # --- زمان‌بندی تمام وظایف از ماژول‌های مربوطه ---
         schedule.every().day.at("00:01", self.tz_str).do(self._run_job, maintenance.nightly_baseline_reset)
-        schedule.every(1).hours.at(":05").do(self._run_job, maintenance.hourly_snapshots)
+        schedule.every(1).hours.at(":35").do(self._run_job, maintenance.hourly_snapshots)
         schedule.every().day.at("09:00", self.tz_str).do(self._run_job, rewards.notify_admin_of_upcoming_event)
         schedule.every().saturday.at("09:30", self.tz_str).do(self._run_job, rewards.send_weekly_admin_digest)
         schedule.every().day.at("20:00", self.tz_str).do(self._run_job, rewards.award_daily_lucky_badge)

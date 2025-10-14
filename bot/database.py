@@ -303,55 +303,46 @@ class DatabaseManager:
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
         """
-        Calculates daily usage by comparing the first and last snapshot of the day.
-        This version includes detailed logging for debugging purposes.
+        (نسخه نهایی و اصلاح شده)
+        مصرف روزانه را با مقایسه آخرین اسنپ‌شات کلی با آخرین اسنپ‌شاتِ قبل از امروز محاسبه می‌کند.
         """
-        logger = logging.getLogger(__name__)
-        
         try:
             tehran_tz = pytz.timezone("Asia/Tehran")
             now_in_tehran = datetime.now(tehran_tz)
             today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
             today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
-            logger.info(f"DB: Calculating daily usage for uuid_id: {uuid_id} since {today_midnight_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-
             with self._conn() as c:
-                # Get the first snapshot of today (the baseline)
-                first_snap = c.execute(
-                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1",
+                # نقطه شروع: آخرین اسنپ‌شات ثبت شده قبل از شروع امروز
+                baseline_snap = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                     (uuid_id, today_midnight_utc)
                 ).fetchone()
 
-                # Get the latest snapshot of today
+                # نقطه پایان: آخرین اسنپ‌شات ثبت شده برای کاربر (در هر زمانی)
                 last_snap = c.execute(
-                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
-                    (uuid_id, today_midnight_utc)
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? ORDER BY taken_at DESC LIMIT 1",
+                    (uuid_id,)
                 ).fetchone()
 
-                logger.info(f"[UUID: {uuid_id}] First snapshot of day: {dict(first_snap) if first_snap else 'None'}")
-                logger.info(f"[UUID: {uuid_id}] Last snapshot of day: {dict(last_snap) if last_snap else 'None'}")
-
-                if not first_snap or not last_snap:
+                if not last_snap:
+                    # اگر هیچ اسنپ‌شاتی برای کاربر وجود ندارد، مصرف او صفر است
                     return {'hiddify': 0.0, 'marzban': 0.0}
 
-                h_start = first_snap['hiddify_usage_gb'] or 0.0
-                m_start = first_snap['marzban_usage_gb'] or 0.0
+                # اگر هیچ اسنپ‌شاتی از قبل وجود نداشته (کاربر جدید)، نقطه شروع صفر است
+                h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] is not None else 0.0
+                m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] is not None else 0.0
+
                 h_end = last_snap['hiddify_usage_gb'] or 0.0
                 m_end = last_snap['marzban_usage_gb'] or 0.0
 
-                # Handle panel data reset (if total usage decreases, it means reset)
+                # مدیریت حالت ریست شدن حجم (وقتی مصرف پایانی کمتر از مصرف اولیه است)
                 h_usage = h_end - h_start if h_end >= h_start else h_end
                 m_usage = m_end - m_start if m_end >= m_start else m_end
-                
-                final_h_usage = max(0, h_usage)
-                final_m_usage = max(0, m_usage)
-                
-                logger.info(f"[UUID: {uuid_id}] Calculated daily usage (H/M): {final_h_usage:.3f} GB / {final_m_usage:.3f} GB")
-                
-                return {'hiddify': final_h_usage, 'marzban': final_m_usage}
+
+                return {'hiddify': max(0, h_usage), 'marzban': max(0, m_usage)}
         except Exception as e:
-            logger.error(f"DB: Error calculating daily usage for uuid_id {uuid_id}: {e}", exc_info=True)
+            logger.error(f"DB: Error calculating robust daily usage for uuid_id {uuid_id}: {e}", exc_info=True)
             return {'hiddify': 0.0, 'marzban': 0.0}
 
     def get_week_start_utc(self) -> datetime:
@@ -942,58 +933,26 @@ class DatabaseManager:
 
     def get_all_daily_usage_since_midnight(self) -> Dict[str, Dict[str, float]]:
         """
-        (نسخه نهایی) مصرف روزانه تمام UUID ها را از نیمه‌شب به صورت یک‌جا و با مدیریت ریست شدن حجم محاسبه می‌کند.
+        (نسخه اصلاح شده و قابل اطمینan)
+        مصرف روزانه تمام UUID ها را از نیمه‌شب با فراخوانی تابع دقیق get_usage_since_midnight محاسبه می‌کند.
         """
-        tehran_tz = pytz.timezone("Asia/Tehran")
-        today_midnight_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
-        today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
-
-        query = """
-            WITH LastSnapshots AS (
-                SELECT
-                    s.uuid_id,
-                    MAX(CASE WHEN s.taken_at >= ? THEN s.taken_at END) as last_ts_today,
-                    MAX(CASE WHEN s.taken_at < ? THEN s.taken_at END) as last_ts_yesterday
-                FROM usage_snapshots s
-                GROUP BY s.uuid_id
-            ),
-            RelevantSnapshots AS (
-                SELECT
-                    ls.uuid_id,
-                    s_today.hiddify_usage_gb as h_end,
-                    s_today.marzban_usage_gb as m_end,
-                    COALESCE(s_yesterday.hiddify_usage_gb, s_first_today.hiddify_usage_gb, 0) as h_start,
-                    COALESCE(s_yesterday.marzban_usage_gb, s_first_today.marzban_usage_gb, 0) as m_start
-                FROM LastSnapshots ls
-                JOIN usage_snapshots s_today ON ls.uuid_id = s_today.uuid_id AND ls.last_ts_today = s_today.taken_at
-                LEFT JOIN usage_snapshots s_yesterday ON ls.uuid_id = s_yesterday.uuid_id AND ls.last_ts_yesterday = s_yesterday.taken_at
-                LEFT JOIN (
-                    SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM (
-                        SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at, ROW_NUMBER() OVER(PARTITION BY uuid_id ORDER BY taken_at) as rn
-                        FROM usage_snapshots WHERE taken_at >= ?
-                    ) WHERE rn = 1
-                ) s_first_today ON ls.uuid_id = s_first_today.uuid_id
-            )
-            SELECT
-                uu.uuid,
-                rs.h_end, rs.m_end,
-                rs.h_start, rs.m_start
-            FROM user_uuids uu
-            JOIN RelevantSnapshots rs ON uu.id = rs.uuid_id
-            WHERE uu.is_active = 1;
-        """
-
+        logger.info("DB: Calculating daily usage for ALL users with the new robust method.")
         usage_map = {}
-        with self.write_conn() as c:
-            rows = c.execute(query, (today_midnight_utc, today_midnight_utc, today_midnight_utc)).fetchall()
-            for row in rows:
-                h_start, m_start = (row['h_start'] or 0.0), (row['m_start'] or 0.0)
-                h_end, m_end = (row['h_end'] or 0.0), (row['m_end'] or 0.0)
+        
+        # ابتدا تمام UUID های فعال را به همراه id داخلی آنها دریافت می‌کنیم
+        all_uuids = self.get_all_user_uuids() # This function already exists and gets all uuids
 
-                h_usage = h_end if h_end < h_start else h_end - h_start
-                m_usage = m_end if m_end < m_start else m_end - m_start
-
-                usage_map[row['uuid']] = {'hiddify': max(0, h_usage), 'marzban': max(0, m_usage)}
+        for u in all_uuids:
+            if not u.get('is_active'):
+                continue
+            
+            uuid_id = u['id']
+            uuid_str = u['uuid']
+            
+            # برای هر کاربر، تابع دقیق و تست شده مصرف روزانه را فراخوانی می‌کنیم
+            daily_usage = self.get_usage_since_midnight(uuid_id)
+            usage_map[uuid_str] = daily_usage
+            
         return usage_map
 
     def get_daily_usage_summary(self, days: int = 7) -> List[Dict[str, Any]]:

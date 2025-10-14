@@ -3,7 +3,7 @@ from datetime import datetime
 import pytz
 import asyncio
 import time
-from ..database import Database
+from ..database import DatabaseManager as Database
 
 from telebot import apihelper
 
