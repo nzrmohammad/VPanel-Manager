@@ -390,7 +390,7 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
 
 
 def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
-    """(نسخه نهایی) خرید را نهایی کرده و آن را به عنوان یک اعلان در پنل وب کاربر نیز ثبت می‌کند."""
+    """(نسخه اصلاح شده) خرید را نهایی کرده و حجم و روز را به صورت همزمان اعمال می‌کند."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
 
@@ -428,21 +428,46 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
     plan_type = plan_to_buy.get('type')
     
+    # --- START: REFACTORED LOGIC ---
     if plan_type == 'combined':
-        if add_days > 0:
-            combined_handler.modify_user_on_all_panels(user_main_uuid, add_days=add_days)
         add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
-        add_gb_fr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
-        if add_gb_de > 0: combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_de, target_panel_type='hiddify')
-        if add_gb_fr > 0: combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb_fr, target_panel_type='marzban')
+        add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
+        
+        # یکپارچه کردن تماس برای پنل Hiddify
+        if add_gb_de > 0 or add_days > 0:
+            combined_handler.modify_user_on_all_panels(
+                identifier=user_main_uuid, 
+                add_gb=add_gb_de, 
+                add_days=add_days, 
+                target_panel_type='hiddify'
+            )
+            
+        # یکپارچه کردن تماس برای پنل Marzban
+        if add_gb_fr_tr > 0 or add_days > 0:
+            combined_handler.modify_user_on_all_panels(
+                identifier=user_main_uuid, 
+                add_gb=add_gb_fr_tr, 
+                add_days=add_days, 
+                target_panel_type='marzban'
+            )
     else:
+        # منطق برای پلن‌های اختصاصی (بدون تغییر، اما ساختار بهبود یافته)
         target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
         volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         volume_key = volume_key_map.get(plan_type)
+        
+        add_gb = 0
         if volume_key:
             add_gb = parse_volume_string(plan_to_buy.get(volume_key, '0'))
-            if add_gb > 0 or add_days > 0:
-                combined_handler.modify_user_on_all_panels(user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel)
+        
+        if add_gb > 0 or add_days > 0:
+            combined_handler.modify_user_on_all_panels(
+                identifier=user_main_uuid, 
+                add_gb=add_gb, 
+                add_days=add_days, 
+                target_panel_type=target_panel
+            )
+    # --- END: REFACTORED LOGIC ---
     
     db.apply_access_template(uuid_id, plan_to_buy['type'])
     info_after = combined_handler.get_combined_user_info(user_main_uuid)

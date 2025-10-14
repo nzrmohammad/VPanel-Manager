@@ -188,6 +188,12 @@ class UserDB(DatabaseManager):
             row = c.execute("SELECT * FROM user_uuids WHERE user_id=? AND id=? AND is_active=1", (user_id, uuid_id)).fetchone()
             return dict(row) if row else None
 
+    def get_uuid_id_by_uuid(self, uuid_str: str) -> Optional[int]:
+        """Finds the internal ID of a UUID record."""
+        with self._conn() as c:
+            row = c.execute("SELECT id FROM user_uuids WHERE uuid = ?", (uuid_str,)).fetchone()
+            return row['id'] if row else None
+
     def deactivate_uuid(self, uuid_id: int) -> bool:
         """یک UUID را غیرفعال می‌کند."""
         with self._conn() as c:
