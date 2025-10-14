@@ -273,42 +273,27 @@ def modify_user_on_all_panels(
                     logger.info(f"📅 Adding {add_days} days to Hiddify plan")
                     current_package_days = user_panel_data.get('package_days', 0)
                     last_reset_date_str = user_panel_data.get('last_reset_time')
+                    
+                    expire_days = user_panel_data.get('expire')
                     is_expired = True
+                    if expire_days is not None and expire_days > 0:
+                        is_expired = False
 
                     logger.info(f"   Current package_days: {current_package_days}")
                     logger.info(f"   Last reset time: {last_reset_date_str}")
+                    logger.info(f"   Expire days: {expire_days}") # Added for debugging
 
-                    if last_reset_date_str and current_package_days > 0:
-                        try:
-                            last_reset_date = datetime.fromisoformat(last_reset_date_str.replace('Z', '+00:00'))
-                            if last_reset_date.tzinfo is None:
-                                last_reset_date = last_reset_date.replace(tzinfo=timezone.utc)
-                            
-                            expiry_date = last_reset_date + timedelta(days=current_package_days)
-                            now_utc = datetime.now(timezone.utc)
-                            
-                            logger.info(f"   Expiry date: {expiry_date}")
-                            logger.info(f"   Current time: {now_utc}")
-                            
-                            if expiry_date > now_utc:
-                                is_expired = False
-                                logger.info(f"   ✅ Plan is ACTIVE (expires in {(expiry_date - now_utc).days} days)")
-                            else:
-                                logger.info(f"   ❌ Plan is EXPIRED ({(now_utc - expiry_date).days} days ago)")
-                        except (ValueError, TypeError) as e:
-                            logger.warning(f"   ⚠️  Could not parse last_reset_time: {e}. Assuming plan is active to be safe.")
-                            is_expired = False
-                    else:
-                        logger.info("   ⚠️  No last_reset_time or package_days=0, assuming expired")
-                    
-                    if is_expired:
-                        logger.info(f"   🆕 Setting NEW plan: package_days={add_days}, start_date=TODAY")
-                        payload['package_days'] = add_days
-                        payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
-                    else:
+                    if not is_expired:
+                        logger.info(f"   ✅ Plan is ACTIVE (expires in {expire_days} days)")
                         new_package_days = current_package_days + add_days
                         logger.info(f"   ➕ EXTENDING plan: package_days={current_package_days} + {add_days} = {new_package_days}")
                         payload['package_days'] = new_package_days
+                    else:
+                        logger.info("   ⚠️  No last_reset_time or package_days=0, assuming expired")
+                        logger.info(f"   🆕 Setting NEW plan: package_days={add_days}, start_date=TODAY")
+                        payload['package_days'] = add_days
+                        payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
+
 
                 # --- GB Calculation Logic ---
                 if add_gb > 0:
@@ -397,6 +382,7 @@ def modify_user_on_all_panels(
     logger.info(f"╚═══════════════════════════════════════════════════════════")
     
     return any_success
+
 
 def delete_user_from_all_panels(identifier: str) -> bool:
     """کاربر را از تمام پنل‌هایی که در آن وجود دارد حذف می‌کند."""
