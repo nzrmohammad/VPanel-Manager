@@ -75,7 +75,7 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
 
     uuid_str = info.get('uuid')
     if uuid_str:
-        uuid_id = db.get_uuid_id_by_uuid(uuid_str)
+        uuid_id = db.get_user_id_by_uuid(uuid_str)
         if uuid_id:
             user_agents = db.get_user_agents_for_uuid(uuid_id)
             if user_agents:

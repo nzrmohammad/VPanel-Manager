@@ -31,24 +31,22 @@ class UserDB(DatabaseManager):
                 self._user_cache[user_id] = user_data
             return user_data
 
-    def add_or_update_user(self, user_id: int, username: str, first_name: str, last_name: str):
+    def add_or_update_user(self, user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> bool:
         """
-        یک کاربر را به دیتابیس اضافه یا اطلاعات او را به‌روزرسانی می‌کند.
+        Adds a user if they don't exist, or updates their info.
+        Returns True if the user was newly created, False otherwise.
         """
         with self._conn() as c:
+            existing_user = c.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            logger.info(f"DB: Checking user {user_id}. Exists before this operation: {bool(existing_user)}")
+
             c.execute(
-                """
-                INSERT INTO users (user_id, username, first_name, last_name, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    username=excluded.username,
-                    first_name=excluded.first_name,
-                    last_name=excluded.last_name;
-                """,
-                (user_id, username, first_name, last_name, int(time.time()))
+                "INSERT INTO users(user_id, username, first_name, last_name) VALUES(?,?,?,?) "
+                "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name, last_name=excluded.last_name",
+                (user_id, username, first, last),
             )
-        if user_id in self._user_cache:
-            del self._user_cache[user_id]
+            self.clear_user_cache(user_id)
+            return not existing_user
 
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         """تنظیمات مختلف کاربر را برمی‌گرداند."""
