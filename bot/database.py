@@ -8,11 +8,15 @@ from .db.usage import UsageDB
 from .db.wallet import WalletDB
 from .db.achievement import AchievementDB
 from .db.panel import PanelDB
+from .db.financials import FinancialsDB  # <--- اضافه شد
+from .db.transfer import TransferDB      # <--- اضافه شد
+from .db.notifications import NotificationsDB # <--- اضافه شد
+
 
 logger = logging.getLogger(__name__)
 
 # کلاس اصلی دیتابیس که از تمام کلاس‌های دیگر ارث‌بری می‌کند
-class Database(UserDB, UsageDB, WalletDB, AchievementDB, PanelDB):
+class Database(UserDB, UsageDB, WalletDB, AchievementDB, PanelDB, FinancialsDB, TransferDB, NotificationsDB):
     """
     کلاس جامع برای مدیریت دیتابیس.
     این کلاس تمام کلاس‌های مدیریتی دیگر را ترکیب کرده و یک نقطه دسترسی واحد
