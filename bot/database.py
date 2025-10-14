@@ -303,39 +303,56 @@ class DatabaseManager:
 
     def get_usage_since_midnight(self, uuid_id: int) -> Dict[str, float]:
         """
-        (نسخه نهایی و اصلاح شده) مصرف روزانه را با مقایسه اولین و آخرین اسنپ‌شات امروز محاسبه می‌کند.
+        Calculates daily usage by comparing the first and last snapshot of the day.
+        This version includes detailed logging for debugging purposes.
         """
-        tehran_tz = pytz.timezone("Asia/Tehran")
-        now_in_tehran = datetime.now(tehran_tz)
-        today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
+        logger = logging.getLogger(__name__)
+        
+        try:
+            tehran_tz = pytz.timezone("Asia/Tehran")
+            now_in_tehran = datetime.now(tehran_tz)
+            today_midnight_tehran = now_in_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
-        with self._conn() as c:
-            # پیدا کردن اولین آمار ثبت شده از نیمه‌شب به بعد (نقطه شروع امروز)
-            first_snap_today = c.execute(
-                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1",
-                (uuid_id, today_midnight_utc)
-            ).fetchone()
+            logger.info(f"DB: Calculating daily usage for uuid_id: {uuid_id} since {today_midnight_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
-            # پیدا کردن آخرین آمار ثبت شده (وضعیت فعلی)
-            last_snap_today = c.execute(
-                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
-                (uuid_id, today_midnight_utc)
-            ).fetchone()
+            with self._conn() as c:
+                # Get the first snapshot of today (the baseline)
+                first_snap = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC LIMIT 1",
+                    (uuid_id, today_midnight_utc)
+                ).fetchone()
 
-            if not first_snap_today or not last_snap_today:
-                return {'hiddify': 0.0, 'marzban': 0.0}
+                # Get the latest snapshot of today
+                last_snap = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
+                    (uuid_id, today_midnight_utc)
+                ).fetchone()
 
-            start_h = first_snap_today['hiddify_usage_gb'] or 0.0
-            start_m = first_snap_today['marzban_usage_gb'] or 0.0
+                logger.info(f"[UUID: {uuid_id}] First snapshot of day: {dict(first_snap) if first_snap else 'None'}")
+                logger.info(f"[UUID: {uuid_id}] Last snapshot of day: {dict(last_snap) if last_snap else 'None'}")
 
-            end_h = last_snap_today['hiddify_usage_gb'] or 0.0
-            end_m = last_snap_today['marzban_usage_gb'] or 0.0
+                if not first_snap or not last_snap:
+                    return {'hiddify': 0.0, 'marzban': 0.0}
 
-            usage_h = end_h - start_h
-            usage_m = end_m - start_m
+                h_start = first_snap['hiddify_usage_gb'] or 0.0
+                m_start = first_snap['marzban_usage_gb'] or 0.0
+                h_end = last_snap['hiddify_usage_gb'] or 0.0
+                m_end = last_snap['marzban_usage_gb'] or 0.0
 
-            return {'hiddify': max(0, usage_h), 'marzban': max(0, usage_m)}
+                # Handle panel data reset (if total usage decreases, it means reset)
+                h_usage = h_end - h_start if h_end >= h_start else h_end
+                m_usage = m_end - m_start if m_end >= m_start else m_end
+                
+                final_h_usage = max(0, h_usage)
+                final_m_usage = max(0, m_usage)
+                
+                logger.info(f"[UUID: {uuid_id}] Calculated daily usage (H/M): {final_h_usage:.3f} GB / {final_m_usage:.3f} GB")
+                
+                return {'hiddify': final_h_usage, 'marzban': final_m_usage}
+        except Exception as e:
+            logger.error(f"DB: Error calculating daily usage for uuid_id {uuid_id}: {e}", exc_info=True)
+            return {'hiddify': 0.0, 'marzban': 0.0}
 
     def get_week_start_utc(self) -> datetime:
         """
