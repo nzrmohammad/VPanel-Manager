@@ -4,7 +4,7 @@ from .hiddify_api_handler import HiddifyAPIHandler
 from .marzban_api_handler import MarzbanAPIHandler
 from .database import db
 from .utils import validate_uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -210,19 +210,22 @@ def modify_user_on_all_panels(
     add_days: int = 0,
     set_gb: Optional[float] = None,
     set_days: Optional[int] = None,
-    target_panel_type: Optional[str] = None  # <-- پارامتر جدید اینجاست
+    target_panel_type: Optional[str] = None
 ) -> bool:
     """
-    (نسخه اصلاح شده)
+    ✅ نسخه نهایی اصلاح شده با لاگ کامل
     کاربر را با منطق صحیح ویرایش می‌کند.
     اگر target_panel_type مشخص شده باشد، تغییرات فقط روی آن نوع پنل اعمال می‌شود.
     """
-    logger.info(f"--- Starting user modification for identifier: {identifier} ---")
-    logger.info(f"Inputs: add_gb={add_gb}, add_days={add_days}, set_gb={set_gb}, set_days={set_days}, target_panel='{target_panel_type}'")
+    logger.info(f"╔═══════════════════════════════════════════════════════════")
+    logger.info(f"║ Starting user modification for identifier: {identifier}")
+    logger.info(f"║ Inputs: add_gb={add_gb}, add_days={add_days}, set_gb={set_gb}, set_days={set_days}")
+    logger.info(f"║ Target panel type: {target_panel_type or 'ALL'}")
+    logger.info(f"╚═══════════════════════════════════════════════════════════")
 
     user_info = get_combined_user_info(identifier)
     if not user_info:
-        logger.error(f"User with identifier '{identifier}' not found. Aborting modification.")
+        logger.error(f"❌ User with identifier '{identifier}' not found. Aborting modification.")
         return False
 
     all_panels_map = {p['name']: p for p in db.get_active_panels()}
@@ -232,89 +235,167 @@ def modify_user_on_all_panels(
         panel_type = panel_details.get('type')
 
         if target_panel_type and panel_type != target_panel_type:
-            logger.info(f"Skipping panel '{panel_name}' because its type '{panel_type}' does not match target '{target_panel_type}'.")
+            logger.info(f"⏭️  Skipping panel '{panel_name}' (type: '{panel_type}') - doesn't match target '{target_panel_type}'")
             continue
 
+        logger.info(f"🔄 Processing panel '{panel_name}' (type: '{panel_type}')")
+        
         panel_config = all_panels_map.get(panel_name)
-        if not panel_config: continue
+        if not panel_config:
+            logger.warning(f"⚠️  Panel config not found for '{panel_name}'")
+            continue
 
         handler = _get_handler_for_panel(panel_config)
-        if not handler: continue
+        if not handler:
+            logger.warning(f"⚠️  Could not create handler for '{panel_name}'")
+            continue
 
         user_panel_data = panel_details.get('data', {})
         
-        # منطق اعمال تغییرات برای Hiddify و Marzban بدون تغییر باقی می‌ماند
         if panel_type == 'hiddify' and user_info.get('uuid'):
-            logger.info(f"Processing Hiddify panel '{panel_name}' for user {user_info['uuid']}")
+            logger.info(f"🇩🇪 Processing Hiddify panel '{panel_name}' for user {user_info['uuid']}")
             
             payload = {}
             is_setting_new_plan = set_days is not None or set_gb is not None
 
             if is_setting_new_plan:
+                logger.info("📝 Setting NEW plan (using set_days/set_gb)")
                 payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
                 if set_days is not None:
                     payload['package_days'] = set_days
+                    logger.info(f"   ├─ package_days = {set_days} (NEW)")
                 if set_gb is not None:
                     payload['usage_limit_GB'] = set_gb
+                    logger.info(f"   └─ usage_limit_GB = {set_gb} GB (NEW)")
+            else:
+                # --- Day Calculation Logic ---
+                if add_days > 0:
+                    logger.info(f"📅 Adding {add_days} days to Hiddify plan")
+                    current_package_days = user_panel_data.get('package_days', 0)
+                    last_reset_date_str = user_panel_data.get('last_reset_time')
+                    is_expired = True
+
+                    logger.info(f"   Current package_days: {current_package_days}")
+                    logger.info(f"   Last reset time: {last_reset_date_str}")
+
+                    if last_reset_date_str and current_package_days > 0:
+                        try:
+                            last_reset_date = datetime.fromisoformat(last_reset_date_str.replace('Z', '+00:00'))
+                            if last_reset_date.tzinfo is None:
+                                last_reset_date = last_reset_date.replace(tzinfo=timezone.utc)
+                            
+                            expiry_date = last_reset_date + timedelta(days=current_package_days)
+                            now_utc = datetime.now(timezone.utc)
+                            
+                            logger.info(f"   Expiry date: {expiry_date}")
+                            logger.info(f"   Current time: {now_utc}")
+                            
+                            if expiry_date > now_utc:
+                                is_expired = False
+                                logger.info(f"   ✅ Plan is ACTIVE (expires in {(expiry_date - now_utc).days} days)")
+                            else:
+                                logger.info(f"   ❌ Plan is EXPIRED ({(now_utc - expiry_date).days} days ago)")
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"   ⚠️  Could not parse last_reset_time: {e}. Assuming plan is active to be safe.")
+                            is_expired = False
+                    else:
+                        logger.info("   ⚠️  No last_reset_time or package_days=0, assuming expired")
+                    
+                    if is_expired:
+                        logger.info(f"   🆕 Setting NEW plan: package_days={add_days}, start_date=TODAY")
+                        payload['package_days'] = add_days
+                        payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
+                    else:
+                        new_package_days = current_package_days + add_days
+                        logger.info(f"   ➕ EXTENDING plan: package_days={current_package_days} + {add_days} = {new_package_days}")
+                        payload['package_days'] = new_package_days
+
+                # --- GB Calculation Logic ---
+                if add_gb > 0:
+                    current_limit_gb = user_panel_data.get('usage_limit_GB', 0)
+                    new_limit_gb = current_limit_gb + add_gb
+                    logger.info(f"💾 Adding {add_gb} GB: {current_limit_gb} + {add_gb} = {new_limit_gb} GB")
+                    payload['usage_limit_GB'] = new_limit_gb
             
-            elif add_days > 0:
-                payload['package_days'] = add_days
-                payload['start_date'] = datetime.now().strftime('%Y-%m-%d')
-            
-            elif add_gb > 0:
-                current_limit_gb = user_panel_data.get('usage_limit_GB', 0)
-                payload['usage_limit_GB'] = current_limit_gb + add_gb
-            
-            logger.info(f"Constructed Hiddify payload: {payload}")
+            logger.info(f"📤 Final Hiddify payload: {payload}")
 
             if payload:
                 if handler.modify_user(user_info['uuid'], payload):
                     any_success = True
-                    logger.info(f"Successfully modified user on Hiddify panel '{panel_name}'.")
+                    logger.info(f"✅ Successfully modified user on Hiddify panel '{panel_name}'")
                 else:
-                    logger.error(f"Failed to modify user on Hiddify panel '{panel_name}'.")
+                    logger.error(f"❌ Failed to modify user on Hiddify panel '{panel_name}'")
             else:
-                logger.info("No changes to apply for Hiddify panel.")
+                logger.info("⚠️  No changes to apply for Hiddify panel")
 
         elif panel_type == 'marzban' and user_panel_data.get('username'):
             marzban_username = user_panel_data['username']
+            logger.info(f"🌍 Processing Marzban panel '{panel_name}' for user '{marzban_username}'")
+            
             current_data = handler.get_user_by_username(marzban_username)
             if not current_data:
-                logger.error(f"Could not retrieve current data for Marzban user '{marzban_username}'. Skipping.")
+                logger.error(f"❌ Could not retrieve current data for Marzban user '{marzban_username}'. Skipping.")
                 continue
 
-            current_limit_bytes = current_data.get('usage_limit_bytes', 0)
+            current_limit_bytes = current_data.get('data_limit', 0)
+            current_limit_gb = current_limit_bytes / (1024**3) if current_limit_bytes else 0
             current_expire_ts = current_data.get('expire')
+            
+            logger.info(f"   Current data_limit: {current_limit_gb:.2f} GB ({current_limit_bytes} bytes)")
+            logger.info(f"   Current expire timestamp: {current_expire_ts}")
+            
             marzban_payload = {}
             
             if set_gb is not None:
-                marzban_payload['data_limit'] = int(set_gb * (1024**3))
+                new_limit_bytes = int(set_gb * (1024**3))
+                logger.info(f"📝 Setting NEW data_limit: {set_gb} GB ({new_limit_bytes} bytes)")
+                marzban_payload['data_limit'] = new_limit_bytes
             elif add_gb > 0:
-                 marzban_payload['data_limit'] = current_limit_bytes + int(add_gb * (1024**3))
+                add_bytes = int(add_gb * (1024**3))
+                new_limit_bytes = current_limit_bytes + add_bytes
+                new_limit_gb = new_limit_bytes / (1024**3)
+                logger.info(f"💾 Adding {add_gb} GB: {current_limit_gb:.2f} + {add_gb} = {new_limit_gb:.2f} GB")
+                marzban_payload['data_limit'] = new_limit_bytes
             
             if set_days is not None:
                 new_expire_ts = int((datetime.now() + timedelta(days=set_days)).timestamp())
+                logger.info(f"📝 Setting NEW expire: {set_days} days from now (timestamp: {new_expire_ts})")
                 marzban_payload['expire'] = new_expire_ts
             elif add_days > 0:
-                 start_date = datetime.now()
-                 if current_expire_ts and current_expire_ts > start_date.timestamp():
-                     start_date = datetime.fromtimestamp(current_expire_ts)
-                 new_expire_date = start_date + timedelta(days=add_days)
-                 marzban_payload['expire'] = int(new_expire_date.timestamp())
+                start_date = datetime.now()
+                if current_expire_ts and current_expire_ts > start_date.timestamp():
+                    start_date = datetime.fromtimestamp(current_expire_ts)
+                    logger.info(f"📅 Plan is active, extending from current expiry: {start_date}")
+                else:
+                    logger.info(f"📅 Plan is expired/new, starting from now: {start_date}")
+                
+                new_expire_date = start_date + timedelta(days=add_days)
+                new_expire_ts = int(new_expire_date.timestamp())
+                logger.info(f"   Adding {add_days} days: new expiry = {new_expire_date} (timestamp: {new_expire_ts})")
+                marzban_payload['expire'] = new_expire_ts
 
+            logger.info(f"📤 Final Marzban payload: {marzban_payload}")
+            
             if marzban_payload and handler.modify_user(marzban_username, data=marzban_payload):
                 any_success = True
+                logger.info(f"✅ Successfully modified user on Marzban panel '{panel_name}'")
+            else:
+                logger.error(f"❌ Failed to modify user on Marzban panel '{panel_name}'")
     
     if any_success and (add_days > 0 or set_days is not None):
         uuid_to_check = user_info.get('uuid')
         if uuid_to_check:
-            uuid_record = db.uuid_by_uuid(uuid_to_check)
+            uuid_record = db.get_user_uuid_record(uuid_to_check)
             if uuid_record:
                 uuid_id = uuid_record['id']
                 db.reset_renewal_reminder_sent(uuid_id)
-                logger.info(f"Renewal reminder flag reset for user {user_info.get('name')} due to manual day/plan change.")
-            
-    logger.info(f"--- Finished user modification for identifier: {identifier}. Overall success: {any_success} ---")
+                logger.info(f"🔔 Renewal reminder flag reset for user {user_info.get('name')}")
+    
+    logger.info(f"╔═══════════════════════════════════════════════════════════")
+    logger.info(f"║ Finished user modification for identifier: {identifier}")
+    logger.info(f"║ Overall success: {any_success}")
+    logger.info(f"╚═══════════════════════════════════════════════════════════")
+    
     return any_success
 
 def delete_user_from_all_panels(identifier: str) -> bool:
