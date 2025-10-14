@@ -19,7 +19,7 @@ class UsageDB(DatabaseManager):
 
     def add_usage_snapshot(self, uuid_id: int, hiddify_usage: float, marzban_usage: float) -> None:
         """یک اسنپ‌شات جدید از مصرف کاربر ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "INSERT INTO usage_snapshots (uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at) VALUES (?, ?, ?, ?)",
                 (uuid_id, hiddify_usage, marzban_usage, datetime.now(pytz.utc))
@@ -161,7 +161,7 @@ class UsageDB(DatabaseManager):
     def delete_all_daily_snapshots(self) -> int:
         """تمام اسنپ‌شات‌های مصرف امروز (به وقت UTC) را برای همه کاربران حذف می‌کند."""
         today_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at >= ?", (today_start_utc,))
             deleted_count = cursor.rowcount
             logger.info(f"ADMIN ACTION: Deleted {deleted_count} daily snapshots for all users.")
@@ -170,7 +170,7 @@ class UsageDB(DatabaseManager):
     def delete_old_snapshots(self, days_to_keep: int = 3) -> int:
         """Deletes usage snapshots older than a specified number of days."""
         time_limit = datetime.now(pytz.utc) - timedelta(days=days_to_keep)
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM usage_snapshots WHERE taken_at < ?", (time_limit,))
             logger.info(f"Cleaned up {cursor.rowcount} old usage snapshots (older than {days_to_keep} days).")
             return cursor.rowcount
@@ -437,7 +437,7 @@ class UsageDB(DatabaseManager):
             WHERE taken_at >= ?
             GROUP BY day_of_week, hour_of_day
         """
-        with self.write_conn() as c:
+        with self._conn() as c:
             rows = c.execute(query, (time_limit,)).fetchall()
             return [dict(r) for r in rows]
 
@@ -454,7 +454,7 @@ class UsageDB(DatabaseManager):
             GROUP BY date
             ORDER BY date ASC;
         """
-        with self.write_conn() as c:
+        with self._conn() as c:
             rows = c.execute(query, (date_limit,)).fetchall()
             return [dict(r) for r in rows]
 
@@ -485,7 +485,7 @@ class UsageDB(DatabaseManager):
         time_limit = datetime.now(pytz.utc) - timedelta(days=days)
         tehran_tz = pytz.timezone("Asia/Tehran")
 
-        with self.write_conn() as c:
+        with self._conn() as c:
             query = """
                 SELECT hiddify_usage_gb, marzban_usage_gb, taken_at
                 FROM usage_snapshots
@@ -559,7 +559,7 @@ class UsageDB(DatabaseManager):
         
         total_usage = 0.0
         
-        with self.write_conn() as c:
+        with self._conn() as c:
             snapshots = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? ORDER BY taken_at ASC", (uuid_id, previous_week_start_utc, current_week_start_utc)).fetchall()
             
             last_snap_before = c.execute("SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", (uuid_id, previous_week_start_utc)).fetchone()
@@ -589,7 +589,7 @@ class UsageDB(DatabaseManager):
         days_since_saturday = (today_jalali.weekday() + 1) % 7
         week_start_utc = (datetime.now(tehran_tz) - timedelta(days=days_since_saturday)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
 
-        with self.write_conn() as c:
+        with self._conn() as c:
             for uuid_record in user_uuids:
                 uuid_id = uuid_record['id']
                 
@@ -617,7 +617,7 @@ class UsageDB(DatabaseManager):
 
         weekly_usage_by_uuid = {}
 
-        with self.write_conn() as c:
+        with self._conn() as c:
             all_snapshots_query = "SELECT uuid_id, hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE taken_at >= ? ORDER BY uuid_id, taken_at ASC;"
             all_week_snapshots = c.execute(all_snapshots_query, (week_start_utc,)).fetchall()
 

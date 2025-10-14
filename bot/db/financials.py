@@ -140,7 +140,7 @@ class FinancialsDB(DatabaseManager):
 
     def delete_user_payment_history(self, uuid_id: int) -> int:
         """تمام رکوردهای پرداخت یک UUID خاص را حذف کرده و تعداد ردیف‌های حذف شده را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM payments WHERE uuid_id = ?", (uuid_id,))
             return cursor.rowcount
             
@@ -148,7 +148,7 @@ class FinancialsDB(DatabaseManager):
 
     def add_monthly_cost(self, year: int, month: int, cost: float, description: str) -> bool:
         """یک هزینه ماهانه جدید ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 c.execute(
                     "INSERT INTO monthly_costs (year, month, cost, description) VALUES (?, ?, ?, ?)",
@@ -176,7 +176,7 @@ class FinancialsDB(DatabaseManager):
 
     def delete_monthly_cost(self, cost_id: int) -> bool:
         """یک هزینه ماهانه را با شناسه آن حذف می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM monthly_costs WHERE id = ?", (cost_id,))
             return cursor.rowcount > 0
 
@@ -237,7 +237,7 @@ class FinancialsDB(DatabaseManager):
 
     def delete_transaction(self, transaction_id: int) -> bool:
         """یک تراکنش خاص را از تاریخچه کیف پول حذف می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM wallet_transactions WHERE id = ?", (transaction_id,))
             return cursor.rowcount > 0
 

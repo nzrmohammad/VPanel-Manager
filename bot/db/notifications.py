@@ -22,7 +22,7 @@ class NotificationsDB(DatabaseManager):
         یک هشدار ارسال شده برای کاربر را ثبت یا به‌روزرسانی می‌کند.
         این کار از ارسال هشدارهای تکراری جلوگیری می‌کند.
         """
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "INSERT INTO warning_log (uuid_id, warning_type, sent_at) VALUES (?, ?, ?) "
                 "ON CONFLICT(uuid_id, warning_type) DO UPDATE SET sent_at=excluded.sent_at",
@@ -67,7 +67,7 @@ class NotificationsDB(DatabaseManager):
 
     def add_sent_report(self, user_id: int, message_id: int) -> None:
         """یک رکورد برای پیام گزارش ارسال شده (برای حذف خودکار در آینده) ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "INSERT INTO sent_reports (user_id, message_id) VALUES (?, ?)",
                 (user_id, message_id)
@@ -88,14 +88,14 @@ class NotificationsDB(DatabaseManager):
 
     def delete_sent_report_record(self, record_id: int) -> None:
         """یک رکورد را از جدول sent_reports پس از حذف پیام، پاک می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("DELETE FROM sent_reports WHERE id = ?", (record_id,))
             
     # --- توابع مربوط به اعلان‌های عمومی (Notifications) ---
 
     def create_notification(self, user_id: int, title: str, message: str, category: str = 'info') -> None:
         """یک اعلان جدید برای نمایش در پنل وب کاربر در دیتابیس ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "INSERT INTO notifications (user_id, title, message, category) VALUES (?, ?, ?, ?)",
                 (user_id, title, message, category)
@@ -118,7 +118,7 @@ class NotificationsDB(DatabaseManager):
 
     def mark_notification_as_read(self, notification_id: int, user_id: int) -> bool:
         """یک اعلان خاص را به عنوان خوانده شده علامت می‌زند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute(
                 "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
                 (notification_id, user_id)
@@ -127,7 +127,7 @@ class NotificationsDB(DatabaseManager):
 
     def mark_all_notifications_as_read(self, user_id: int) -> int:
         """تمام اعلان‌های خوانده نشده یک کاربر را خوانده شده می‌کند و تعداد آنها را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute(
                 "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
                 (user_id,)

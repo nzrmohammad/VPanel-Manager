@@ -20,7 +20,7 @@ class PanelDB(DatabaseManager):
 
     def add_panel(self, name: str, panel_type: str, api_url: str, token1: str, token2: Optional[str] = None) -> bool:
         """یک پنل جدید به دیتابیس اضافه می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 c.execute(
                     "INSERT INTO panels (name, panel_type, api_url, api_token1, api_token2) VALUES (?, ?, ?, ?, ?)",
@@ -45,13 +45,13 @@ class PanelDB(DatabaseManager):
 
     def delete_panel(self, panel_id: int) -> bool:
         """یک پنل را با شناسه آن حذف می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM panels WHERE id = ?", (panel_id,))
             return cursor.rowcount > 0
 
     def toggle_panel_status(self, panel_id: int) -> bool:
         """وضعیت فعال/غیرفعال یک پنل را تغییر می‌دهد."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("UPDATE panels SET is_active = 1 - is_active WHERE id = ?", (panel_id,))
             return cursor.rowcount > 0
 
@@ -69,7 +69,7 @@ class PanelDB(DatabaseManager):
 
     def update_panel_name(self, panel_id: int, new_name: str) -> bool:
         """نام یک پنل مشخص را به‌روزرسانی می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 cursor = c.execute("UPDATE panels SET name = ? WHERE id = ?", (new_name, panel_id))
                 return cursor.rowcount > 0
@@ -81,7 +81,7 @@ class PanelDB(DatabaseManager):
 
     def add_marzban_mapping(self, hiddify_uuid: str, marzban_username: str) -> bool:
         """یک ارتباط جدید بین UUID هیدیفای و یوزرنیم مرزبان اضافه می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 c.execute("INSERT OR REPLACE INTO marzban_mapping (hiddify_uuid, marzban_username) VALUES (?, ?)", (hiddify_uuid.lower(), marzban_username))
                 return True
@@ -109,7 +109,7 @@ class PanelDB(DatabaseManager):
 
     def delete_marzban_mapping(self, hiddify_uuid: str) -> bool:
         """یک ارتباط را با استفاده از UUID هیدیفای حذف می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             res = c.execute("DELETE FROM marzban_mapping WHERE hiddify_uuid = ?", (hiddify_uuid.lower(),))
             return res.rowcount > 0
 
@@ -119,14 +119,14 @@ class PanelDB(DatabaseManager):
         """لیستی از رشته‌های کانفیگ را به صورت دسته‌ای اضافه می‌کند."""
         if not templates:
             return 0
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.cursor()
             cursor.executemany("INSERT INTO config_templates (template_str) VALUES (?)", [(tpl,) for tpl in templates])
             return cursor.rowcount
 
     def update_template(self, template_id: int, new_template_str: str) -> bool:
         """محتوای یک قالب کانفیگ را به‌روزرسانی می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("UPDATE config_templates SET template_str = ? WHERE id = ?", (new_template_str, template_id))
             return cursor.rowcount > 0
 
@@ -144,22 +144,22 @@ class PanelDB(DatabaseManager):
 
     def toggle_template_status(self, template_id: int):
         """وضعیت فعال/غیرفعال یک قالب را تغییر می‌دهد."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("UPDATE config_templates SET is_active = 1 - is_active WHERE id = ?", (template_id,))
 
     def delete_template(self, template_id: int):
         """یک قالب کانفیگ را حذف می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("DELETE FROM config_templates WHERE id = ?", (template_id,))
 
     def toggle_template_special(self, template_id: int):
         """وضعیت "ویژه" بودن یک قالب را تغییر می‌دهد."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("UPDATE config_templates SET is_special = 1 - is_special WHERE id = ?", (template_id,))
     
     def toggle_template_random_pool(self, template_id: int) -> bool:
         """وضعیت عضویت یک قالب در استخر تصادفی را تغییر می‌دهد."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("UPDATE config_templates SET is_random_pool = 1 - is_random_pool WHERE id = ?", (template_id,))
             return cursor.rowcount > 0
 
@@ -167,12 +167,12 @@ class PanelDB(DatabaseManager):
         """نوع سرور یک قالب را تنظیم می‌کند."""
         if server_type not in ['de', 'fr', 'tr', 'us', 'ro', 'none']:
             return
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("UPDATE config_templates SET server_type = ? WHERE id = ?", (server_type, template_id))
 
     def reset_templates_table(self):
         """تمام قالب‌ها را حذف و شمارنده ID را ریست می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("DELETE FROM config_templates;")
             c.execute("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'config_templates';")
         logger.info("Config templates table has been reset.")
@@ -186,7 +186,7 @@ class PanelDB(DatabaseManager):
             logging.error(f"Access template '{plan_category}' not found, and no default template is set.")
             return False
 
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("""
                 UPDATE user_uuids SET
                     has_access_de = ?, has_access_fr = ?, has_access_tr = ?,
@@ -214,7 +214,7 @@ class PanelDB(DatabaseManager):
 
     def add_user_config(self, user_uuid_id: int, template_id: int, generated_uuid: str) -> None:
         """یک رکورد جدید برای UUID تولید شده ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "INSERT INTO user_generated_configs (user_uuid_id, template_id, generated_uuid) VALUES (?, ?, ?)",
                 (user_uuid_id, template_id, generated_uuid)

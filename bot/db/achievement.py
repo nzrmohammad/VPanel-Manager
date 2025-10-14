@@ -15,7 +15,7 @@ class AchievementDB(DatabaseManager):
 
     def add_achievement(self, user_id: int, badge_code: str) -> bool:
         """یک دستاورد جدید برای کاربر ثبت می‌کند و در صورت موفقیت (عدم تکرار) True برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 c.execute(
                     "INSERT INTO user_achievements (user_id, badge_code) VALUES (?, ?)",
@@ -34,13 +34,13 @@ class AchievementDB(DatabaseManager):
 
     def add_achievement_points(self, user_id: int, points: int):
         """امتیاز به حساب دستاوردهای یک کاربر اضافه می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("UPDATE users SET achievement_points = achievement_points + ? WHERE user_id = ?", (points, user_id))
         self.clear_user_cache(user_id)
 
     def spend_achievement_points(self, user_id: int, points: int) -> bool:
         """امتیاز را از حساب کاربر کم می‌کند و موفقیت عملیات را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             current_points_row = c.execute("SELECT achievement_points FROM users WHERE user_id = ?", (user_id,)).fetchone()
             if current_points_row and current_points_row['achievement_points'] >= points:
                 c.execute("UPDATE users SET achievement_points = achievement_points - ? WHERE user_id = ?", (points, user_id))
@@ -50,7 +50,7 @@ class AchievementDB(DatabaseManager):
 
     def log_shop_purchase(self, user_id: int, item_key: str, cost: int):
         """یک خرید از فروشگاه دستاوردها را در دیتابیس ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("INSERT INTO achievement_shop_log (user_id, item_key, cost) VALUES (?, ?, ?)", (user_id, item_key, cost))
 
     def get_achievement_leaderboard(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -82,14 +82,14 @@ class AchievementDB(DatabaseManager):
 
     def reset_all_achievement_points(self) -> int:
         """امتیاز تمام کاربران را به صفر ریست کرده و تعداد کاربران آپدیت شده را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("UPDATE users SET achievement_points = 0;")
             self._user_cache.clear()
             return cursor.rowcount
 
     def delete_all_achievements(self) -> int:
         """تمام رکوردهای دستاوردهای کسب شده را حذف کرده و تعداد ردیف‌های حذف شده را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM user_achievements;")
             return cursor.rowcount
 
@@ -122,7 +122,7 @@ class AchievementDB(DatabaseManager):
     def log_weekly_champion_win(self, user_id: int):
         """یک رکورد برای قهرمانی هفتگی کاربر ثبت می‌کند."""
         today = datetime.now(self.pytz.utc).date()
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("INSERT INTO weekly_champion_log (user_id, win_date) VALUES (?, ?)", (user_id, today))
 
     def count_consecutive_weekly_wins(self, user_id: int) -> int:
@@ -186,7 +186,7 @@ class AchievementDB(DatabaseManager):
     
     def add_achievement_request(self, user_id: int, badge_code: str) -> int:
         """یک درخواست نشان جدید ثبت کرده و شناسه آن را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("INSERT INTO achievement_requests (user_id, badge_code) VALUES (?, ?)", (user_id, badge_code))
             return cursor.lastrowid
 
@@ -198,7 +198,7 @@ class AchievementDB(DatabaseManager):
 
     def update_achievement_request_status(self, request_id: int, status: str, admin_id: int):
         """وضعیت یک درخواست نشان را به‌روزرسانی می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "UPDATE achievement_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
                 (status, admin_id, datetime.now(self.pytz.utc), request_id)
@@ -231,7 +231,7 @@ class AchievementDB(DatabaseManager):
         table_name = table_map.get(gift_type)
         if not table_name: return
 
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 f"INSERT OR IGNORE INTO {table_name} (user_id, gift_year) VALUES (?, ?)",
                 (user_id, year)

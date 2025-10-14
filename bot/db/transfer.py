@@ -16,7 +16,7 @@ class TransferDB(DatabaseManager):
 
     def log_traffic_transfer(self, sender_uuid_id: int, receiver_uuid_id: int, panel_type: str, amount_gb: float):
         """یک رکورد جدید برای انتقال ترافیک ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute(
                 "INSERT INTO traffic_transfers (sender_uuid_id, receiver_uuid_id, panel_type, amount_gb, transferred_at) VALUES (?, ?, ?, ?, ?)",
                 (sender_uuid_id, receiver_uuid_id, panel_type, amount_gb, datetime.now(pytz.utc))
@@ -43,6 +43,6 @@ class TransferDB(DatabaseManager):
 
     def delete_transfer_history(self, sender_uuid_id: int) -> int:
         """تمام تاریخچه انتقال یک کاربر خاص را برای ریست کردن محدودیت حذف می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute("DELETE FROM traffic_transfers WHERE sender_uuid_id = ?", (sender_uuid_id,))
             return cursor.rowcount

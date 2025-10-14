@@ -18,7 +18,7 @@ class WalletDB(DatabaseManager):
         موجودی کیف پول کاربر را به‌روز کرده و یک تراکنش ثبت می‌کند.
         در صورت موفقیت True و در غیر این صورت False برمی‌گرداند.
         """
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 # ابتدا موجودی فعلی را برای بررسی واکشی می‌کنیم
                 current_balance_row = c.execute("SELECT wallet_balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
@@ -53,7 +53,7 @@ class WalletDB(DatabaseManager):
         """
         موجودی کیف پول کاربر را به یک مقدار مشخص تغییر داده و تراکنش را ثبت می‌کند.
         """
-        with self.write_conn() as c:
+        with self._conn() as c:
             try:
                 current_balance_row = c.execute("SELECT wallet_balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
                 if current_balance_row is None:
@@ -84,7 +84,7 @@ class WalletDB(DatabaseManager):
 
     def create_charge_request(self, user_id: int, amount: float, message_id: int) -> int:
         """یک درخواست شارژ جدید ثبت کرده و شناسه آن را برمی‌گرداند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             cursor = c.execute(
                 "INSERT INTO charge_requests (user_id, amount, message_id) VALUES (?, ?, ?)",
                 (user_id, amount, message_id)
@@ -108,7 +108,7 @@ class WalletDB(DatabaseManager):
 
     def update_charge_request_status(self, request_id: int, is_pending: bool):
         """وضعیت یک درخواست شارژ را به‌روزرسانی می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("UPDATE charge_requests SET is_pending = ? WHERE id = ?", (int(is_pending), request_id))
 
     def get_all_users_with_balance(self) -> List[Dict[str, Any]]:
@@ -121,7 +121,7 @@ class WalletDB(DatabaseManager):
 
     def reset_all_wallet_balances(self) -> int:
         """موجودی کیف پول تمام کاربران را صفر کرده و تمام تاریخچه تراکنش‌ها را پاک می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("DELETE FROM wallet_transactions;")
             c.execute("DELETE FROM charge_requests;")
             cursor = c.execute("UPDATE users SET wallet_balance = 0;")
