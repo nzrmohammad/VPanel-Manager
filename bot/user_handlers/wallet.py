@@ -389,7 +389,6 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     _safe_edit(uid, call.message.message_id, confirm_text, reply_markup=kb)
 
 
-# تابع execute_purchase اصلاح شده
 def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     """(نسخه نهایی) خرید را نهایی کرده و آن را به عنوان یک اعلان در پنل وب کاربر نیز ثبت می‌کند."""
     uid = call.from_user.id
@@ -424,7 +423,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
 
     db.add_payment_record(uuid_id)
     payment_count = len(db.get_user_payment_history(uuid_id))
-    _check_and_apply_loyalty_reward(uid, uuid_id, user_main_uuid, call.from_user.first_name)
+    # _check_and_apply_loyalty_reward(uid, uuid_id, user_main_uuid, call.from_user.first_name)
 
     add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
     plan_type = plan_to_buy.get('type')

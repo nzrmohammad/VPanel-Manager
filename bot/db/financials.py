@@ -1,7 +1,7 @@
 # bot/db/financials.py
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 
 from .base import DatabaseManager
@@ -19,9 +19,9 @@ class FinancialsDB(DatabaseManager):
 
     def add_payment_record(self, uuid_id: int) -> bool:
         """یک رکورد پرداخت جدید برای یک UUID مشخص ثبت می‌کند."""
-        with self.write_conn() as c:
+        with self._conn() as c:
             c.execute("INSERT INTO payments (uuid_id, payment_date) VALUES (?, ?)",
-                      (uuid_id, datetime.now(self.pytz.utc)))
+                      (uuid_id, datetime.now(timezone.utc)))
             return True
 
     def get_payment_counts(self) -> Dict[str, int]:
