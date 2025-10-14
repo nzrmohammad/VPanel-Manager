@@ -3,6 +3,7 @@
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
 import logging
 import secrets
 import pytz
@@ -416,4 +417,107 @@ class UserDB(DatabaseManager):
         """لیست کاربرانی که توسط یک کاربر خاص معرفی شده‌اند را برمی‌گرداند."""
         with self.write_conn() as c:
             rows = c.execute("SELECT user_id, first_name, referral_reward_applied FROM users WHERE referred_by_user_id = ?", (referrer_user_id,)).fetchall()
+            return [dict(r) for r in rows]
+        
+
+    def get_user_ids_by_uuids(self, uuids: List[str]) -> List[int]:
+        if not uuids: return []
+        placeholders = ','.join('?' for _ in uuids)
+        query = f"SELECT DISTINCT user_id FROM user_uuids WHERE uuid IN ({placeholders})"
+        with self._conn() as c:
+            rows = c.execute(query, uuids).fetchall()
+            return [row['user_id'] for row in rows]
+
+    def purge_user_by_telegram_id(self, user_id: int) -> bool:
+        """یک کاربر را به طور کامل از جدول users و تمام جداول وابسته حذف می‌کند."""
+        with self.write_conn() as c:
+            cursor = c.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            self.clear_user_cache(user_id)
+            return cursor.rowcount > 0
+
+    def create_login_token(self, user_uuid: str) -> str:
+        """یک توکن یکبار مصرف برای ورود به پنل وب ایجاد می‌کند."""
+        token = secrets.token_urlsafe(32)
+        with self.write_conn() as c:
+            c.execute("INSERT INTO login_tokens (token, uuid) VALUES (?, ?)", (token, user_uuid))
+        return token
+
+    def validate_login_token(self, token: str) -> Optional[str]:
+        """یک توکن را اعتبارسنجی کرده و در صورت اعتبار، UUID کاربر را برمی‌گرداند."""
+        five_minutes_ago = datetime.now(pytz.utc) - timedelta(minutes=5)
+        with self.write_conn() as c:
+            c.execute("DELETE FROM login_tokens WHERE created_at < ?", (five_minutes_ago,))
+            row = c.execute("SELECT uuid FROM login_tokens WHERE token = ?", (token,)).fetchone()
+            if row:
+                c.execute("DELETE FROM login_tokens WHERE token = ?", (token,))
+                return row['uuid']
+        return None
+
+    def update_auto_renew_setting(self, user_id: int, status: bool):
+        """وضعیت تمدید خودکار را برای کاربر به‌روز می‌کند."""
+        with self.write_conn() as c:
+            c.execute("UPDATE users SET auto_renew = ? WHERE user_id = ?", (int(status), user_id))
+        self.clear_user_cache(user_id)
+
+    def get_all_active_uuids_with_user_id(self) -> List[Dict[str, Any]]:
+        with self._conn() as c:
+            rows = c.execute("SELECT id, user_id FROM user_uuids WHERE is_active=1").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_all_user_uuids_and_panel_data(self) -> List[Dict[str, Any]]:
+        query = """
+            WITH LastSnapshots AS (
+                SELECT uuid_id, MAX(taken_at) as last_taken_at
+                FROM usage_snapshots GROUP BY uuid_id
+            )
+            SELECT
+                uu.uuid, uu.user_id, uu.name,
+                COALESCE(s.hiddify_usage_gb, 0) as used_traffic_hiddify,
+                COALESCE(s.marzban_usage_gb, 0) as used_traffic_marzban,
+                s.taken_at as last_online_jalali
+            FROM user_uuids uu
+            LEFT JOIN LastSnapshots ls ON uu.id = ls.uuid_id
+            LEFT JOIN usage_snapshots s ON ls.uuid_id = s.uuid_id AND ls.last_taken_at = s.taken_at
+            WHERE uu.is_active = 1;
+        """
+        with self._conn() as c:
+            rows = c.execute(query).fetchall()
+            return [dict(r) for r in rows]
+
+    def add_or_update_user_from_panel(self, uuid: str, name: str, telegram_id: Optional[int], **kwargs):
+        with self.write_conn() as c:
+            uuid_row = c.execute("SELECT id FROM user_uuids WHERE uuid = ?", (uuid,)).fetchone()
+            if not uuid_row:
+                logger.info(f"SYNCER: Skipping update for UUID {uuid} as it's not in bot DB.")
+                return
+
+            uuid_id = uuid_row['id']
+            c.execute("UPDATE user_uuids SET name = ? WHERE id = ?", (name, uuid_id))
+            
+            # Note: Snapshot logic is removed as it's now in the sync job itself.
+            if telegram_id:
+                self.add_or_update_user(telegram_id, None, name, None)
+            logger.debug(f"SYNCER: Updated data for UUID {uuid}.")
+
+    def get_todays_birthdays(self) -> list:
+        today = datetime.now(pytz.utc)
+        today_month_day = f"{today.month:02d}-{today.day:02d}"
+        with self._conn() as c:
+            rows = c.execute("SELECT user_id FROM users WHERE strftime('%m-%d', birthday) = ?", (today_month_day,)).fetchall()
+            return [row['user_id'] for row in rows]
+
+    def count_vip_users(self) -> int:
+        with self.write_conn() as c:
+            row = c.execute("SELECT COUNT(id) as count FROM user_uuids WHERE is_active = 1 AND is_vip = 1").fetchone()
+            return row['count'] if row else 0
+
+    def get_new_vips_last_7_days(self) -> list[dict]:
+        seven_days_ago = datetime.now(pytz.utc) - timedelta(days=7)
+        query = """
+            SELECT u.user_id, u.first_name
+            FROM users u JOIN user_uuids uu ON u.user_id = uu.user_id
+            WHERE uu.is_vip = 1 AND uu.updated_at >= ?
+        """
+        with self._conn() as c:
+            rows = c.execute(query, (seven_days_ago,)).fetchall()
             return [dict(r) for r in rows]

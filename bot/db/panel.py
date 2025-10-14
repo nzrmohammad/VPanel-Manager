@@ -202,3 +202,27 @@ class PanelDB(DatabaseManager):
             ))
         logging.info(f"Access template '{plan_category}' applied for uuid_id {uuid_id}.")
         return True
+    
+    def get_user_config(self, user_uuid_id: int, template_id: int) -> dict | None:
+        """کانفیگ تولید شده برای یک کاربر و یک الگوی خاص را بازیابی می‌کند."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM user_generated_configs WHERE user_uuid_id = ? AND template_id = ?",
+                (user_uuid_id, template_id)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def add_user_config(self, user_uuid_id: int, template_id: int, generated_uuid: str) -> None:
+        """یک رکورد جدید برای UUID تولید شده ثبت می‌کند."""
+        with self.write_conn() as c:
+            c.execute(
+                "INSERT INTO user_generated_configs (user_uuid_id, template_id, generated_uuid) VALUES (?, ?, ?)",
+                (user_uuid_id, template_id, generated_uuid)
+            )
+
+    def get_templates_by_pool_status(self) -> tuple[list[dict], list[dict]]:
+        """قالب‌ها را به دو دسته عضو و غیرعضو در استخر تصادفی تقسیم می‌کند."""
+        all_templates = self.get_active_config_templates()
+        random_pool = [tpl for tpl in all_templates if tpl.get('is_random_pool')]
+        fixed_pool = [tpl for tpl in all_templates if not tpl.get('is_random_pool')]
+        return random_pool, fixed_pool

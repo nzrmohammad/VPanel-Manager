@@ -203,3 +203,36 @@ class AchievementDB(DatabaseManager):
                 "UPDATE achievement_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
                 (status, admin_id, datetime.now(self.pytz.utc), request_id)
             )
+
+    def check_if_gift_given(self, user_id: int, gift_type: str, year: int) -> bool:
+        """بررسی می‌کند که آیا هدیه‌ای در سال جاری به کاربر داده شده است یا خیر."""
+        table_map = {
+            'birthday': 'birthday_gift_log',
+            'anniversary_1': 'anniversary_gift_log',
+            # ... سایر انواع هدیه
+        }
+        table_name = table_map.get(gift_type)
+        if not table_name: return False
+        
+        with self._conn() as c:
+            row = c.execute(
+                f"SELECT 1 FROM {table_name} WHERE user_id = ? AND gift_year = ?",
+                (user_id, year)
+            ).fetchone()
+            return row is not None
+
+    def log_gift_given(self, user_id: int, gift_type: str, year: int):
+        """ثبت می‌کند که هدیه‌ای در سال جاری به کاربر داده شده است."""
+        table_map = {
+            'birthday': 'birthday_gift_log',
+            'anniversary_1': 'anniversary_gift_log',
+            # ... سایر انواع هدیه
+        }
+        table_name = table_map.get(gift_type)
+        if not table_name: return
+
+        with self.write_conn() as c:
+            c.execute(
+                f"INSERT OR IGNORE INTO {table_name} (user_id, gift_year) VALUES (?, ?)",
+                (user_id, year)
+            )
