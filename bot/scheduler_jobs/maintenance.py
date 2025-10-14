@@ -3,7 +3,7 @@ from datetime import datetime
 import pytz
 import asyncio
 import time
-from ..database import DatabaseManager as Database
+from ..database import db as Database # <--- این خط را جایگزین کنید
 
 from telebot import apihelper
 
