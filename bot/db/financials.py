@@ -5,7 +5,6 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 
-from ..utils import load_service_plans, parse_volume_string
 from ..combined_handler import get_combined_user_info
 from .base import DatabaseManager
 
@@ -100,7 +99,8 @@ class FinancialsDB(DatabaseManager):
 
     def get_user_latest_plan_price(self, uuid_id: int) -> Optional[int]:
         """قیمت آخرین پلن کاربر را با مقایسه حجم فعلی او با پلن‌ها تخمین می‌زند."""
-        
+        from ..utils import load_service_plans, parse_volume_string
+
         with self._conn() as conn:
             uuid_row = conn.execute("SELECT uuid FROM user_uuids WHERE id = ?", (uuid_id,)).fetchone()
         

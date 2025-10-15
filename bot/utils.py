@@ -7,7 +7,6 @@ from typing import Union, Optional, Dict, Any
 import pytz
 import jdatetime
 from .config import PROGRESS_COLORS
-from .database import db
 import urllib.parse
 from .config import LOYALTY_REWARDS
 
@@ -355,6 +354,7 @@ def days_until_next_birthday(birthday: Optional[date]) -> Optional[int]:
     return (next_birthday - today).days
 
 def get_processed_user_data(uuid: str) -> Optional[dict]:
+    from .database import db
     from .combined_handler import get_combined_user_info
     info = get_combined_user_info(uuid)
     if not info:
@@ -396,6 +396,7 @@ def get_processed_user_data(uuid: str) -> Optional[dict]:
     return processed_info
 
 def create_info_config(user_uuid: str) -> Optional[str]:
+    from .database import db
     from . import combined_handler
     import urllib.parse
 
@@ -455,6 +456,7 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     return f"vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?type=ws&path=/&security=tls#{encoded_name}"
 
 def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> list[str]:
+    from .database import db
     from . import combined_handler
     import urllib.parse
     import random
@@ -533,10 +535,12 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
     return processed_configs
 
 def set_template_server_type_service(template_id: int, server_type: str):
+    from .database import db
     db.set_template_server_type(template_id, server_type)
     return True
 
 def reset_all_templates():
+    from .database import db
     """سرویس برای ریست کردن جدول قالب‌های کانفیگ."""
     logger.info("Executing service to reset all config templates.")
     db.reset_templates_table()
@@ -557,6 +561,7 @@ def save_service_plans(plans: list) -> bool:
 
 
 def get_loyalty_progress_message(user_id: int) -> Optional[Dict[str, Any]]:
+    from .database import db
     """
     اطلاعات پیشرفت کاربر در برنامه وفاداری را به صورت دیکشنری برمی‌گرداند.
     """
