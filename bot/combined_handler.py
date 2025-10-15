@@ -2,7 +2,6 @@
 from typing import Optional, Dict, Any, List
 from .hiddify_api_handler import HiddifyAPIHandler
 from .marzban_api_handler import MarzbanAPIHandler
-from .database import db
 from .utils import validate_uuid
 from datetime import datetime, timedelta, timezone
 import logging
@@ -52,6 +51,7 @@ def _process_and_merge_user_data(all_users_map: dict) -> List[Dict[str, Any]]:
     return processed_list
 
 def get_all_users_combined() -> List[Dict[str, Any]]:
+    from .database import db
     """اطلاعات کاربران را از تمام پنل‌های فعال دریافت و ترکیب می‌کند."""
     logger.info("COMBINED_HANDLER: Fetching users from all active panels.")
     all_users_map = {}
@@ -128,6 +128,7 @@ def get_all_users_combined() -> List[Dict[str, Any]]:
 
 
 def get_combined_user_info(identifier: str) -> Optional[Dict[str, Any]]:
+    from .database import db
     """اطلاعات یک کاربر خاص را از تمام پنل‌های فعال دریافت می‌کند."""
     is_uuid = validate_uuid(identifier)
     all_panels = db.get_active_panels()
@@ -213,6 +214,7 @@ def modify_user_on_all_panels(
     set_days: Optional[int] = None,
     target_panel_type: Optional[str] = None
 ) -> bool:
+    from .database import db
     """
     (نسخه نهایی و کاملاً اصلاح شده)
     تغییرات کاربر را به صورت اتمی برای هر پنل اعمال می‌کند.
@@ -331,6 +333,7 @@ def modify_user_on_all_panels(
 
 
 def delete_user_from_all_panels(identifier: str) -> bool:
+    from .database import db
     """کاربر را از تمام پنل‌هایی که در آن وجود دارد حذف می‌کند."""
     user_info = get_combined_user_info(identifier)
     if not user_info: return False

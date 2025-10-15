@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pytz
 import os
 from .config import MARZBAN_API_BASE_URL, MARZBAN_API_USERNAME, MARZBAN_API_PASSWORD, API_TIMEOUT, api_cache
-from .database import db
 from cachetools import cached
 from typing import Dict, Any, Optional
 
@@ -145,6 +144,7 @@ class MarzbanAPIHandler:
                 return None
         
     def get_user_info(self, uuid: str) -> dict | None:
+        from .database import db
         """Gets a single user's details from Marzban by their Hiddify UUID."""
         if not self.access_token:
             if not self._get_access_token():
@@ -158,6 +158,7 @@ class MarzbanAPIHandler:
 
     @cached(api_cache)
     def get_all_users(self) -> list[dict]:
+            from .database import db
             all_users_raw = self._request("GET", "/users")
             if not all_users_raw or 'users' not in all_users_raw:
                 return []
@@ -198,6 +199,7 @@ class MarzbanAPIHandler:
             return normalized_users
         
     def get_user_by_username(self, username: str) -> dict | None:
+        from .database import db
         user = self._request("GET", f"/user/{username}")
         if not user: return None
 
