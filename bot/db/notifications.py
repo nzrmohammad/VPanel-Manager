@@ -133,3 +133,20 @@ class NotificationsDB(DatabaseManager):
                 (user_id,)
             )
             return cursor.rowcount
+        
+    def add_or_update_scheduled_message(self, job_type: str, chat_id: int, message_id: int):
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO scheduled_messages(job_type, chat_id, message_id) VALUES(?,?,?) "
+                "ON CONFLICT(job_type, chat_id) DO UPDATE SET message_id=excluded.message_id, created_at=CURRENT_TIMESTAMP",
+                (job_type, chat_id, message_id)
+            )
+
+    def get_scheduled_messages(self, job_type: str) -> List[Dict[str, Any]]:
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM scheduled_messages WHERE job_type=?", (job_type,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_scheduled_message(self, job_id: int):
+        with self._conn() as c:
+            c.execute("DELETE FROM scheduled_messages WHERE id=?", (job_id,))

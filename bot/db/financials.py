@@ -1,9 +1,12 @@
 # bot/db/financials.py
 
 import logging
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 
+from ..utils import load_service_plans, parse_volume_string
+from ..combined_handler import get_combined_user_info
 from .base import DatabaseManager
 
 logger = logging.getLogger(__name__)
@@ -97,10 +100,10 @@ class FinancialsDB(DatabaseManager):
 
     def get_user_latest_plan_price(self, uuid_id: int) -> Optional[int]:
         """قیمت آخرین پلن کاربر را با مقایسه حجم فعلی او با پلن‌ها تخمین می‌زند."""
-        from ..utils import load_service_plans, parse_volume_string
-        from ..combined_handler import get_combined_user_info
         
-        uuid_row = self._conn().execute("SELECT uuid FROM user_uuids WHERE id = ?", (uuid_id,)).fetchone()
+        with self._conn() as conn:
+            uuid_row = conn.execute("SELECT uuid FROM user_uuids WHERE id = ?", (uuid_id,)).fetchone()
+        
         if not uuid_row: return None
 
         user_info = get_combined_user_info(uuid_row['uuid'])
@@ -111,9 +114,6 @@ class FinancialsDB(DatabaseManager):
 
         for plan in all_plans:
             plan_total_volume = 0
-            # منطق محاسبه حجم کل پلن بر اساس نوع آن
-            # این بخش ممکن است نیاز به تطبیق با ساختار فایل plans.json شما داشته باشد
-            # در اینجا یک پیاده‌سازی نمونه آورده شده است
             if plan.get('type') == 'combined':
                 vol_de = parse_volume_string(plan.get('volume_de', '0'))
                 vol_fr = parse_volume_string(plan.get('volume_fr', '0'))
@@ -155,7 +155,7 @@ class FinancialsDB(DatabaseManager):
                     (year, month, cost, description)
                 )
                 return True
-            except self.IntegrityError:
+            except sqlite3.IntegrityError:
                 logger.warning(f"Cost entry for {year}-{month} with description '{description}' already exists.")
                 return False
 

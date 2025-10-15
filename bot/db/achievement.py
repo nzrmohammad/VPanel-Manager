@@ -1,5 +1,6 @@
 # bot/db/achievement.py
 
+import pytz
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import logging
@@ -102,9 +103,9 @@ class AchievementDB(DatabaseManager):
             
     def get_daily_achievements(self) -> List[Dict[str, Any]]:
         """کاربرانی که امروز دستاوردی کسب کرده‌اند را به همراه جزئیات برمی‌گرداند."""
-        tehran_tz = self.pytz.timezone("Asia/Tehran")
-        today_midnight_tehran = self.datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
-        today_midnight_utc = today_midnight_tehran.astimezone(self.pytz.utc)
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        today_midnight_tehran = datetime.now(tehran_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_midnight_utc = today_midnight_tehran.astimezone(pytz.utc)
 
         query = """
             SELECT u.user_id, u.first_name, ua.badge_code
@@ -116,6 +117,7 @@ class AchievementDB(DatabaseManager):
         with self._conn() as c:
             rows = c.execute(query, (today_midnight_utc,)).fetchall()
             return [dict(r) for r in rows]
+
 
     # --- توابع مربوط به قهرمانی هفتگی و قرعه‌کشی ---
 
