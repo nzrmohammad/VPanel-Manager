@@ -66,6 +66,17 @@ class DatabaseManager:
             cursor.execute(query, params)
             return cursor.lastrowid
 
+    def check_connection(self) -> bool:
+            """Checks if the database connection is alive and well."""
+            try:
+                # یک کوئری ساده برای اطمینان از باز بودن و سالم بودن اتصال
+                with self._conn() as c:
+                    c.execute("SELECT 1")
+                return True
+            except sqlite3.Error as e:
+                logger.error(f"Database connection check failed: {e}", exc_info=True)
+                return False
+
     def clear_user_cache(self, user_id: int):
         """
         کش یک کاربر خاص را پاک می‌کند.

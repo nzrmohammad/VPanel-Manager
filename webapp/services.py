@@ -162,7 +162,7 @@ def get_dashboard_data():
         total_usage_today_gb = 0
 
     try:
-        daily_usage_summary = db.get_daily_usage_summary(days=7)
+        daily_usage_summary = db.get_daily_usage_summary()
     except Exception as e:
         logger.error(f"Failed to get daily usage summary: {e}", exc_info=True)
         daily_usage_summary = []
@@ -205,13 +205,16 @@ def get_dashboard_data():
         found_today = False
         for item in daily_usage_summary:
             if item['date'] == today_str:
-                item['total_gb'] = round(total_usage_today_gb, 2)
+                # 🔧 FIX: Update the correct key for today's usage
+                item['total_usage'] = round(total_usage_today_gb, 2)
                 found_today = True
                 break
         if not found_today:
-             daily_usage_summary.append({'date': today_str, 'total_gb': round(total_usage_today_gb, 2)})
-             
-        usage_chart_data = { "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d'), include_time=False) for item in daily_usage_summary], "data": [item['total_gb'] for item in daily_usage_summary]}
+             # 🔧 FIX: Append today's usage with the correct key
+             daily_usage_summary.append({'date': today_str, 'total_usage': round(total_usage_today_gb, 2)})
+
+        # 🔧 FIX: Use the correct key 'total_usage' to build the chart data
+        usage_chart_data = { "labels": [to_shamsi(datetime.strptime(item['date'], '%Y-%m-%d'), include_time=False) for item in daily_usage_summary], "data": [item['total_usage'] for item in daily_usage_summary]}
     else: 
         usage_chart_data = {"labels": [], "data": []}
     
