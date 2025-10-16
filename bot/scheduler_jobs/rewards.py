@@ -647,7 +647,7 @@ def award_daily_lucky_badge(bot):
             JOIN usage_snapshots us ON uu.id = us.uuid_id
             WHERE us.taken_at >= ?
         """
-        with db.write_conn() as c:
+        with db._conn() as c:
             active_users_last_week = [row['user_id'] for row in c.execute(query, (seven_days_ago,)).fetchall()]
 
         if len(active_users_last_week) < 3:

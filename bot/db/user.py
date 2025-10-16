@@ -493,7 +493,7 @@ class UserDB(DatabaseManager):
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
-    def add_or_update_user_from_panel(self, uuid: str, name: str, telegram_id: Optional[int], **kwargs):
+    def add_or_update_user_from_panel(self, uuid: str, name: str, telegram_id: Optional[int], expire_days_hiddify: Optional[int], expire_days_marzban: Optional[int], last_online_jalali: Optional[datetime], used_traffic_hiddify: float, used_traffic_marzban: float):
         with self._conn() as c:
             uuid_row = c.execute("SELECT id FROM user_uuids WHERE uuid = ?", (uuid,)).fetchone()
             if not uuid_row:

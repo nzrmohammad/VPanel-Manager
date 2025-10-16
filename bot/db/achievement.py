@@ -4,6 +4,7 @@ import pytz
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import logging
+import sqlite3
 
 from .base import DatabaseManager
 
@@ -23,7 +24,7 @@ class AchievementDB(DatabaseManager):
                     (user_id, badge_code)
                 )
                 return True
-            except self.IntegrityError:  # Handles UNIQUE constraint violation
+            except sqlite3.IntegrityError:  # Handles UNIQUE constraint violation
                 logger.info(f"User {user_id} already has achievement {badge_code}.")
                 return False
 
