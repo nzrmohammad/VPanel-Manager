@@ -244,7 +244,7 @@ ACCESS_TEMPLATES = {
     },
 
     # --- پلن ترکیبی (آلمان، فرانسه، ترکیه) ---
-    'hybrid': {
+    'combined': {
         'has_access_de': True, 'has_access_fr': True, 'has_access_tr': True, 
         'has_access_us': False, # ❗️ آمریکا غیرفعال است
         'has_access_ro': False   # ❗️ رومانی را هم طبق کد شما اضافه کردم
@@ -253,8 +253,8 @@ ACCESS_TEMPLATES = {
     # --- قالب پیش‌فرض ---
     # اگر پلنی خارج از دسته‌های بالا ساخته شود، همه دسترسی‌ها را فعال می‌کند
     'default': {
-        'has_access_de': True, 'has_access_fr': True, 'has_access_tr': True, 
-        'has_access_us': True, 'has_access_ro': True
+        'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 
+        'has_access_us': False, 'has_access_ro': False
     }
 }
 

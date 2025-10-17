@@ -646,6 +646,40 @@ class UsageDB(DatabaseManager):
         
         return list(weekly_usage_by_user_id.values())
 
+    def get_weekly_usage_by_time_of_day(self, uuid):
+        """
+        مصرف هفتگی کاربر را به تفکیک ساعات روز محاسبه می‌کند. (نسخه اصلاح شده)
+        """
+        time_slots = {
+            'morning': (6, 12), 'afternoon': (12, 18),
+            'evening': (18, 24), 'night': (0, 6)
+        }
+        usage_stats = { 'morning': 0, 'afternoon': 0, 'evening': 0, 'night': 0 }
+
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        query = "SELECT usage, timestamp FROM usage_history WHERE uuid = ? AND timestamp >= ?"
+        params = (uuid, seven_days_ago.strftime('%Y-%m-%d %H:%M:%S'))
+
+        try:
+            # --- این بخش اصلاح شده است ---
+            # مستقیماً کوئری را برای خواندن اجرا می‌کنیم
+            records = self.execute_query(query, params, fetch_all=True)
+
+            if records:
+                for usage, timestamp_str in records:
+                    timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                    hour = timestamp.hour
+                    for slot, (start, end) in time_slots.items():
+                        if start <= hour < end:
+                            usage_stats[slot] += usage
+                            break
+            
+            return usage_stats
+
+        except Exception as e:
+            print(f"خطا در دریافت آمار هفتگی (usage.py): {e}")
+            return usage_stats
+
     def get_previous_day_total_usage(self) -> float:
         """مجموع مصرف کل در روز گذشته را برمی‌گرداند."""
         yesterday_summary = self.get_daily_usage_summary(days=2)
