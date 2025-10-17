@@ -501,15 +501,48 @@ class UsageDB(DatabaseManager):
 
             return {'total': total_usage, 'night': night_usage}
         
-    def count_recently_active_users(self, days: int = 7) -> int:
-        """تعداد کاربرانی که در N روز گذشته فعال بوده‌اند را می‌شمارد."""
-        n_days_ago = datetime.now(pytz.utc) - timedelta(days=days)
-        with self._conn() as c:
-            row = c.execute(
-                "SELECT COUNT(DISTINCT uuid_id) FROM usage_snapshots WHERE taken_at >= ?",
-                (n_days_ago,)
-            ).fetchone()
-            return row[0] if row else 0
+    def count_recently_active_users(self, all_users_data: list, minutes: int = 15) -> dict:
+        """
+        (نسخه نهایی و اصلاح شده) تعداد کاربران آنلاینی که در N دقیقه گذشته فعالیت داشته‌اند را
+        بر اساس داده‌های مستقیم از پنل‌ها محاسبه می‌کند.
+        """
+        results = {'hiddify': 0, 'marzban_fr': 0, 'marzban_tr': 0, 'marzban_us': 0}
+        time_limit = datetime.now(pytz.utc) - timedelta(minutes=minutes)
+
+        for user in all_users_data:
+            last_online = user.get('last_online')
+            if not (user.get('is_active') and last_online and isinstance(last_online, datetime)):
+                continue
+
+            # Ensure last_online is timezone-aware for correct comparison
+            last_online_aware = last_online if last_online.tzinfo else pytz.utc.localize(last_online)
+
+            if last_online_aware >= time_limit:
+                # Check which panel this user was active on based on the breakdown
+                breakdown = user.get('breakdown', {})
+                
+                h_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'hiddify'), None)
+                m_online = next((p['data'].get('last_online') for p in breakdown.values() if p.get('type') == 'marzban'), None)
+                
+                # Determine the most recent panel activity
+                if h_online and (not m_online or h_online >= m_online):
+                    results['hiddify'] += 1
+                elif m_online:
+                    # To be more precise, you need to know which marzban server they connected to.
+                    # This requires more specific data from the panel not currently available.
+                    # As a fallback, we increment all accessible marzban servers.
+                    user_record = self.get_user_uuid_record(user.get('uuid', ''))
+                    if user_record:
+                        if user_record.get('has_access_fr'):
+                            results['marzban_fr'] += 1
+                        if user_record.get('has_access_tr'):
+                            results['marzban_tr'] += 1
+                        if user_record.get('has_access_us'):
+                            results['marzban_us'] += 1
+                        if user_record.get('has_access_ro'):
+                            results['marzban_us'] += 1    
+        return results
+
 
     def get_weekly_top_consumers_report(self) -> List[Dict[str, Any]]:
         """گزارش هفتگی پرمصرف‌ترین کاربران را برمی‌گرداند."""
