@@ -300,6 +300,7 @@
     #user-access-management .data-table td:nth-of-type(6)::before { content: 'فرانسه 🇫🇷'; }
     #user-access-management .data-table td:nth-of-type(7)::before { content: 'ترکیه 🇹🇷'; }
     #user-access-management .data-table td:nth-of-type(8)::before { content: 'آمریکا 🇺🇸'; }
+    #user-access-management .data-table td:nth-of-type(9)::before { content: 'رومانی 🇷🇴'; }
 
     #user-access-management .data-table td > span {
         text-align: left;

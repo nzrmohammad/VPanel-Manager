@@ -98,9 +98,12 @@
                             <td><span>{{ user.first_name or 'کاربر' }} (<code>{{ user.user_id }}</code>)</span></td>
                             <td><span>{{ user.config_name }}</span></td>
                             <td class="panel-display-cell">
-                                <span>
+                                <span style="font-size: 1.1em;">
                                     {% if user.has_access_de %}🇩🇪{% endif %}
-                                    {% if user.is_on_marzban %} 🇫🇷{% endif %}
+                                    {% if user.has_access_fr %}🇫🇷{% endif %}
+                                    {% if user.has_access_tr %}🇹🇷{% endif %}
+                                    {% if user.has_access_us %}🇺🇸{% endif %}
+                                    {% if user.has_access_ro %}🇷🇴{% endif %}
                                 </span>
                             </td>
                             <td class="access-toggle-cell">
