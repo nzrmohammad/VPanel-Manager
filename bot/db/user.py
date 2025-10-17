@@ -295,7 +295,7 @@ class UserDB(DatabaseManager):
             SELECT
                 u.user_id, u.first_name, u.username,
                 uu.id as uuid_id, uu.name as config_name, uu.uuid, uu.is_vip,
-                uu.has_access_de, uu.has_access_fr, uu.has_access_tr, uu.has_access_us,
+                uu.has_access_de, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_ro,
                 CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
             FROM users u
             JOIN user_uuids uu ON u.user_id = uu.user_id
@@ -309,7 +309,7 @@ class UserDB(DatabaseManager):
 
     def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
         """دسترسی کاربر به یک سرور خاص را به‌روزرسانی می‌کند."""
-        if server not in ['de', 'fr', 'tr', 'us']:
+        if server not in ['de', 'fr', 'tr', 'us', 'ro']:
             return False
         column_name = f"has_access_{server}"
         with self._conn() as c:
@@ -318,7 +318,7 @@ class UserDB(DatabaseManager):
             
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
-        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False}
+        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False}
         user_uuids = self.uuids(user_id)
         if user_uuids:
             # دسترسی بر اساس اولین اکانت ثبت شده تعیین می‌شود
@@ -328,6 +328,7 @@ class UserDB(DatabaseManager):
                 access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
                 access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
                 access_rights['has_access_us'] = first_uuid_record.get('has_access_us', False)
+                access_rights['has_access_ro'] = first_uuid_record.get('has_access_ro', False)
         return access_rights
 
     # --- توابع مربوط به دستگاه‌های کاربر (User Agents) ---

@@ -482,6 +482,7 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     has_access_us = user_record.get('has_access_us', False)
+    has_access_ro = user_record.get('has_access_ro', False)
     is_user_vip = user_record.get('is_vip', False)
     user_name = user_record.get('name', 'کاربر')
 
@@ -499,7 +500,8 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
            (server_type == 'de' and not has_access_de) or \
            (server_type == 'fr' and not has_access_fr) or \
            (server_type == 'tr' and not has_access_tr) or \
-           (server_type == 'us' and not has_access_us):
+           (server_type == 'us' and not has_access_us) or \
+           (server_type == 'ro' and not has_access_ro):
             continue
         eligible_templates.append(tpl)
 
