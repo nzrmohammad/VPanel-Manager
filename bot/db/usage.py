@@ -220,35 +220,46 @@ class UsageDB(DatabaseManager):
         return usage_map
 
     def get_daily_usage_summary(self) -> List[Dict[str, Any]]:
-        """خلاصه مصرف روزانه کل سیستم برای ۷ روز گذشته را برمی‌گرداند."""
-        today = datetime.now(pytz.timezone('Asia/Tehran')).date()
+        """(نسخه اصلاح شده) خلاصه مصرف روزانه کل سیستم برای ۷ روز گذشته را با منطق پایتون محاسبه می‌کند."""
+        tehran_tz = pytz.timezone('Asia/Tehran')
+        today = datetime.now(tehran_tz).date()
         summary = []
-        for i in range(7):
-            date_to_check = today - timedelta(days=i)
-            start_of_day_utc = datetime(date_to_check.year, date_to_check.month, date_to_check.day, tzinfo=pytz.timezone('Asia/Tehran')).astimezone(pytz.utc)
-            end_of_day_utc = start_of_day_utc + timedelta(days=1)
-            
-            with self._conn() as c:
-                row = c.execute(
-                    """
-                    SELECT SUM(daily_h_usage), SUM(daily_m_usage) FROM (
-                        SELECT
-                            MAX(CASE WHEN taken_at < ? THEN hiddify_usage_gb ELSE 0 END) as h_start,
-                            MAX(CASE WHEN taken_at < ? THEN hiddify_usage_gb ELSE NULL END) as h_end,
-                            MAX(CASE WHEN taken_at < ? THEN marzban_usage_gb ELSE 0 END) as m_start,
-                            MAX(CASE WHEN taken_at < ? THEN marzban_usage_gb ELSE NULL END) as m_end,
-                            (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as daily_h_usage,
-                            (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as daily_m_usage
-                        FROM usage_snapshots
-                        WHERE uuid_id IN (SELECT id FROM user_uuids WHERE is_active = 1)
-                        AND taken_at >= ? AND taken_at < ?
-                        GROUP BY uuid_id
-                    )
-                    """, (end_of_day_utc, end_of_day_utc, end_of_day_utc, end_of_day_utc, start_of_day_utc, end_of_day_utc)
-                ).fetchone()
-                total_usage = (row[0] or 0) + (row[1] or 0)
-                summary.append({"date": date_to_check.strftime('%Y-%m-%d'), "total_usage": total_usage})
-        return summary
+        all_active_uuids = [u['id'] for u in self.get_all_active_uuids_with_user_id()]
+
+        with self._conn() as c:
+            for i in range(7):
+                date_to_check = today - timedelta(days=i)
+                day_start_utc = datetime(date_to_check.year, date_to_check.month, date_to_check.day, tzinfo=tehran_tz).astimezone(pytz.utc)
+                day_end_utc = day_start_utc + timedelta(days=1)
+                
+                total_day_usage = 0.0
+                for uuid_id in all_active_uuids:
+                    baseline_snap = c.execute(
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_start_utc)
+                    ).fetchone()
+                    
+                    end_snap = c.execute(
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_end_utc)
+                    ).fetchone()
+
+                    if not end_snap:
+                        continue
+
+                    h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] is not None else 0.0
+                    m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] is not None else 0.0
+                    h_end = end_snap['hiddify_usage_gb'] if end_snap and end_snap['hiddify_usage_gb'] is not None else 0.0
+                    m_end = end_snap['marzban_usage_gb'] if end_snap and end_snap['marzban_usage_gb'] is not None else 0.0
+                    
+                    h_usage = h_end - h_start if h_end >= h_start else h_end
+                    m_usage = m_end - m_start if m_end >= m_start else m_end
+                    
+                    total_day_usage += max(0, h_usage) + max(0, m_usage)
+                
+                summary.append({"date": date_to_check.strftime('%Y-%m-%d'), "total_usage": total_day_usage})
+                
+        return sorted(summary, key=lambda x: x['date'])
     
     def get_new_users_per_month_stats(self) -> Dict[str, int]:
         """آمار کاربران جدید در هر ماه را برمی‌گرداند."""
@@ -306,16 +317,14 @@ class UsageDB(DatabaseManager):
 
     def get_daily_usage_per_panel(self, days: int = 30) -> list[dict[str, Any]]:
         """
-        (نسخه کاملاً اصلاح شده) مصرف روزانه را به تفکیک هر پنل محاسبه می‌کند
+        (نسخه کاملاً اصلاح شده) مصرف روزانه را به تفکیک هر پنل با منطق صحیح محاسبه می‌کند
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         end_date = datetime.now(tehran_tz)
         
-        # لیست تمام کاربران فعال
         all_uuids = self.get_all_active_uuids_with_user_id()
         uuid_ids = [u['id'] for u in all_uuids]
 
-        # دیکشنری برای نگهداری مصرف روزانه
         daily_summary = {}
 
         with self._conn() as c:
@@ -332,68 +341,36 @@ class UsageDB(DatabaseManager):
                 day_total_h_gb = 0.0
                 day_total_m_gb = 0.0
 
-                # برای هر کاربر
                 for uuid_id in uuid_ids:
-                    # 🔧 FIX: دریافت آخرین اسنپ‌شات قبل از این روز (baseline)
                     baseline_snap = c.execute(
-                        """SELECT hiddify_usage_gb, marzban_usage_gb 
-                        FROM usage_snapshots 
-                        WHERE uuid_id = ? AND taken_at < ? 
-                        ORDER BY taken_at DESC LIMIT 1""",
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                         (uuid_id, day_start_utc)
                     ).fetchone()
 
-                    # اولین اسنپ‌شات روز
-                    first_snap = c.execute(
-                        """SELECT hiddify_usage_gb, marzban_usage_gb 
-                        FROM usage_snapshots 
-                        WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? 
-                        ORDER BY taken_at ASC LIMIT 1""",
-                        (uuid_id, day_start_utc, day_end_utc)
+                    end_snap = c.execute(
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_end_utc)
                     ).fetchone()
 
-                    # آخرین اسنپ‌شات روز
-                    last_snap = c.execute(
-                        """SELECT hiddify_usage_gb, marzban_usage_gb 
-                        FROM usage_snapshots 
-                        WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? 
-                        ORDER BY taken_at DESC LIMIT 1""",
-                        (uuid_id, day_start_utc, day_end_utc)
-                    ).fetchone()
-
-                    if not first_snap or not last_snap:
+                    if not end_snap:
                         continue
 
-                    # 🔧 FIX: اگر baseline داریم، از آن استفاده کن، وگرنه از صفر
-                    if baseline_snap:
-                        h_start = baseline_snap['hiddify_usage_gb'] or 0.0
-                        m_start = baseline_snap['marzban_usage_gb'] or 0.0
-                    else:
-                        h_start = 0.0
-                        m_start = 0.0
-
-                    h_end = last_snap['hiddify_usage_gb'] or 0.0
-                    m_end = last_snap['marzban_usage_gb'] or 0.0
+                    h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] is not None else 0.0
+                    m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] is not None else 0.0
+                    h_end = end_snap['hiddify_usage_gb'] if end_snap and end_snap['hiddify_usage_gb'] is not None else 0.0
+                    m_end = end_snap['marzban_usage_gb'] if end_snap and end_snap['marzban_usage_gb'] is not None else 0.0
                     
-                    # محاسبه تفاضل با چک ریست شدن
-                    h_diff = h_end - h_start
-                    m_diff = m_end - m_start
-
-                    # اگر منفی شد (ریست شده)، فقط مقدار نهایی را حساب کن
-                    if h_diff < 0:
-                        h_diff = h_end
-                    if m_diff < 0:
-                        m_diff = m_end
-
-                    day_total_h_gb += max(0, h_diff)
-                    day_total_m_gb += max(0, m_diff)
+                    h_usage = h_end - h_start if h_end >= h_start else h_end
+                    m_usage = m_end - m_start if m_end >= m_start else m_end
+                    
+                    day_total_h_gb += max(0, h_usage)
+                    day_total_m_gb += max(0, m_usage)
 
                 daily_summary[date_str] = {
                     'total_h_gb': round(day_total_h_gb, 2),
                     'total_m_gb': round(day_total_m_gb, 2)
                 }
 
-        # مرتب‌سازی نهایی
         result = []
         for i in range(days):
             target_date = (end_date - timedelta(days=i)).date()
@@ -405,7 +382,7 @@ class UsageDB(DatabaseManager):
                 'total_m_gb': data['total_m_gb']
             })
 
-        return result[::-1]  # معکوس کردن برای ترتیب زمانی صحیح
+        return sorted(result, key=lambda x: x['date'])
 
     def get_activity_heatmap_data(self) -> List[Dict[str, Any]]:
         """
