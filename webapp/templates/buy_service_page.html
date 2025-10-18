@@ -4,6 +4,7 @@
 
 {% block extra_css %}
 <style>
+    /* --- استایل‌های اصلی شما --- */
     .plan-price {
         font-size: 1.5rem;
         font-weight: bold;
@@ -103,6 +104,27 @@
     .faq-item.active .faq-question i { transform: rotate(180deg); }
     .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out; }
     .faq-answer p { padding: 0 1.5rem 1.25rem; margin-top: 0; color: var(--text-secondary); line-height: 1.8; }
+    
+    /* --- استایل برای کارت پلن‌ها و نشان پیشنهاد --- */
+    .info-card.panel-card {
+        position: relative; /* برای جای‌گیری نشان پیشنهاد*/
+        overflow: hidden;   /* برای جای‌گیری نشان پیشنهاد*/
+    }
+    .recommendation-badge {
+        position: absolute;
+        top: 12px;
+        right: -55px;
+        background: var(--accent-color);
+        color: #fff;
+        padding: 5px 50px;
+        transform: rotate(45deg);
+        font-size: 0.75rem;
+        font-weight: 500;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
 </style>
 {% endblock %}
 
@@ -137,17 +159,23 @@
             <div class="recommendation-panel">
             {% if recommended_plan %}
                 <div class="info-card panel-card">
-                    <div class="panel-header" style="justify-content: center; padding-bottom: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
-                        <h4 style="color: var(--accent-color); font-weight: bold;">پلن پیشنهادی ما</h4>
+                     <div class="panel-header" style="justify-content: center; padding-bottom: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <h4 style="color: var(--accent-color); font-weight: bold;">پلن پیشنهادی</h4>
                     </div>
-                     <p style="font-size: 0.85rem; text-align: center; color: var(--text-secondary); margin-top:-0.5rem; margin-bottom: 1.5rem;">بر اساس مصرف <b>{{ "%.1f"|format(actual_last_30_days_usage) }} گیگابایتی</b> شما در این دوره</p>
+                     <p style="font-size: 0.85rem; text-align: center; color: var(--text-secondary); margin-top:-0.5rem; margin-bottom: 1.5rem;">بر اساس مصرف <b>{{ "%.1f"|format(actual_last_30_days_usage) }} گیگابایتی</b> شما</p>
                     
                     <ul class="server-stats" style="margin-top: 0;">
                         <li><div class="stat-label"><span>نام پلن</span></div><span class="stat-value">{{ recommended_plan.name }}</span></li>
                         
                         {% if recommended_plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ recommended_plan.total_volume }}</span></li>{% endif %}
                         {% if recommended_plan.volume_de %}<li><div class="stat-label"><span>حجم <span class="fi fi-de"></span></span></div><span class="stat-value">{{ recommended_plan.volume_de }}</span></li>{% endif %}
-                        {% if recommended_plan.volume_fr %}<li><div class="stat-label"><span>حجم <span class="fi fi-fr"></span><span class="fi fi-tr"></span><span class="fi fi-us"></span></span></div><span class="stat-value">{{ recommended_plan.volume_fr }}</span></li>{% endif %}
+                        
+                        {% if recommended_plan.volume_fr %}
+                            <li>
+                                <div class="stat-label"><span>حجم <span class="fi fi-fr"></span><span class="fi fi-tr"></span></span></div>
+                                <span class="stat-value">{{ recommended_plan.volume_fr }}</span>
+                            </li>
+                        {% endif %}
 
                         {% if recommended_plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ recommended_plan.duration }}</span></li>{% endif %}
                     </ul>
@@ -169,11 +197,29 @@
     <section class="details-grid">
         {% for plan in combined_plans %}
         <div class="info-card panel-card">
+            {# --- START: اضافه کردن نشان پیشنهاد برای پلن Silver --- #}
+            {% if 'Silver 🥈' in plan.name %}
+            <div class="recommendation-badge">
+                <i class="ri-sparkling-2-fill"></i> پیشنهاد ما
+            </div>
+            {% endif %}
+            {# --- END: اضافه کردن نشان پیشنهاد --- #}
             <div class="panel-header"><h4>{{ plan.name.replace('🥉', '').replace('🥈', '').replace('🥇', '').replace('✨', '').replace('💎', '') }} {% if '🥉' in plan.name %}🥉{% elif '🥈' in plan.name %}🥈{% elif '🥇' in plan.name %}🥇{% elif '✨' in plan.name %}✨{% elif '💎' in plan.name %}💎{% endif %}</h4></div>
             <ul class="server-stats">
                 {% if plan.total_volume %}<li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم کل</span></div><span class="stat-value">{{ plan.total_volume }}</span></li>{% endif %}
                 {% if plan.volume_de %}<li><div class="stat-label"><span>حجم <span class="fi fi-de"></span></span></div><span class="stat-value">{{ plan.volume_de }}</span></li>{% endif %}
-                {% if plan.volume_fr %}<li><div class="stat-label"><span>حجم <span class="fi fi-fr"></span><span class="fi fi-tr"></span><span class="fi fi-us"></span></span></div><span class="stat-value">{{ plan.volume_fr }}</span></li>{% endif %}
+                
+                {# --- START: اصلاح نمایش پرچم‌ها فقط برای فرانسه و ترکیه --- #}
+                {% if plan.volume_fr %}
+                    <li>
+                        <div class="stat-label">
+                            <span>حجم <span class="fi fi-fr"></span><span class="fi fi-tr"></span></span>
+                        </div>
+                        <span class="stat-value">{{ plan.volume_fr }}</span>
+                    </li>
+                {% endif %}
+                 {# --- END: اصلاح نمایش --- #}
+
                 {% if plan.duration %}<li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>{% endif %}
             </ul>
             <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
@@ -188,18 +234,18 @@
     <section class="details-grid">
         {% for plan in dedicated_plans %}
         <div class="info-card panel-card">
-            {# --- START: کد نهایی و اصلاح شده برای نمایش پرچم در پلن‌های اختصاصی --- #}
             <div class="panel-header">
-                <h4>{{ plan.name | replace(' DE ', '') | replace(' FR ', '') | replace(' TR ', '') | replace(' US ', '') | replace('🇩🇪', '') | replace('🇫🇷', '') | replace('🇹🇷', '') | replace('🇺🇸', '') }}</h4>
-                {% if 'DE' in plan.name %}<span class="fi fi-de"></span>
-                {% elif 'FR' in plan.name %}<span class="fi fi-fr"></span>
-                {% elif 'TR' in plan.name %}<span class="fi fi-tr"></span>
-                {% elif 'US' in plan.name %}<span class="fi fi-us"></span>
-                {% endif %}
+                <h4>{{ plan.name.replace('DE', '').replace('FR', '').replace('TR', '').replace('US', '').replace('RO', '').strip() }}</h4>
+                <div class="plan-flags">
+                    {% if 'DE' in plan.name or plan.volume_de %}<span class="fi fi-de"></span>{% endif %}
+                    {% if 'FR' in plan.name or plan.volume_fr %}<span class="fi fi-fr"></span>{% endif %}
+                    {% if 'TR' in plan.name or plan.volume_tr %}<span class="fi fi-tr"></span>{% endif %}
+                    {% if 'US' in plan.name or plan.volume_us %}<span class="fi fi-us"></span>{% endif %}
+                    {% if 'RO' in plan.name or plan.volume_ro %}<span class="fi fi-ro"></span>{% endif %}
+                </div>
             </div>
-            {# --- END: کد نهایی و اصلاح شده --- #}
             <ul class="server-stats">
-                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr or plan.volume_tr or plan.volume_us }}</span></li>
+                <li><div class="stat-label"><i class="ri-database-2-line"></i><span>حجم</span></div><span class="stat-value">{{ plan.volume_de or plan.volume_fr or plan.volume_tr or plan.volume_us or plan.volume_ro }}</span></li>
                 <li><div class="stat-label"><i class="ri-time-line"></i><span>مدت زمان</span></div><span class="stat-value">{{ plan.duration }}</span></li>
             </ul>
             <div class="plan-price">{{ "{:,.0f}".format(plan.price) }} <small>تومان</small></div>
@@ -214,11 +260,15 @@
         <h3 class="section-title" style="text-align: center;">سوالات متداول</h3>
         <div class="faq-item">
             <div class="faq-question"><span>تفاوت پلن‌های ترکیبی و اختصاصی چیست؟</span><i class="ri-arrow-down-s-line"></i></div>
-            <div class="faq-answer"><p>پلن‌های <strong>ترکیبی</strong> به شما از چندین سرور (آلمان، فرانسه، ترکیه، آمریکا) حجم می‌دهند که برای انعطاف‌پذیری بیشتر عالی است. پلن‌های <strong>اختصاصی</strong> فقط روی یک سرور تمرکز دارند و معمولا برای کاربرانی مناسب هستند که می‌دانند کدام کشور برای اینترنت آن‌ها پایداری بهتری دارد.</p></div>
+            <div class="faq-answer"><p>پلن‌های <strong>ترکیبی</strong> به شما از چندین سرور (آلمان، فرانسه، ترکیه) حجم می‌دهند که برای انعطاف‌پذیری بیشتر عالی است. پلن‌های <strong>اختصاصی</strong> فقط روی یک سرور تمرکز دارند و معمولا برای کاربرانی مناسب هستند که می‌دانند کدام کشور برای اینترنت آن‌ها پایداری بهتری دارد.</p></div>
         </div>
         <div class="faq-item">
             <div class="faq-question"><span>چطور بهترین پلن را انتخاب کنم؟</span><i class="ri-arrow-down-s-line"></i></div>
             <div class="faq-answer"><p>کارت <strong>آنالیز سرویس</strong> در بالای همین صفحه بهترین راهنما برای شماست. این کارت بر اساس مصرف واقعی شما، بهینه‌ترین پلن را پیشنهاد می‌دهد. اگر هم نیاز به مشاوره دارید، همیشه می‌توانید از طریق دکمه "خرید و مشاوره" با ما در تماس باشید.</p></div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-question"><span>دلیل قیمت بالای سرور رومانی چیست؟</span><i class="ri-arrow-down-s-line"></i></div>
+            <div class="faq-answer"><p>سرور رومانی به دلیل استفاده از <strong>IPهای خانگی (Residential)</strong> و عبور ترافیک از یک <strong>سرور واسط (تانل شده)</strong>، هزینه بالاتری دارد. این ویژگی‌ها باعث می‌شوند این سرور کیفیت و پایداری بسیار بالایی داشته باشد و برای کاربرانی که به دنبال بهترین تجربه ممکن هستند، ایده‌آل است.</p></div>
         </div>
     </div>
 {% endblock %}

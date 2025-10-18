@@ -526,11 +526,11 @@ class UsageDB(DatabaseManager):
         week_start_utc = self.get_week_start_utc()
         with self._conn() as c:
             rows = c.execute("""
-                SELECT u.name, SUM(s.h_usage + s.m_usage) as total_usage
+                SELECT u.first_name as name, SUM(s.h_usage + s.m_usage) as total_usage
                 FROM (
                     SELECT uuid_id,
-                           MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_usage,
-                           MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_usage
+                        MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_usage,
+                        MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_usage
                     FROM usage_snapshots
                     WHERE taken_at >= ?
                     GROUP BY uuid_id
@@ -646,39 +646,94 @@ class UsageDB(DatabaseManager):
         
         return list(weekly_usage_by_user_id.values())
 
-    def get_weekly_usage_by_time_of_day(self, uuid):
+    def get_weekly_usage_by_time_of_day(self, uuid_id: int) -> Dict[str, float]:
         """
-        مصرف هفتگی کاربر را به تفکیک ساعات روز محاسبه می‌کند. (نسخه اصلاح شده)
+        (نسخه نهایی و کاملاً اصلاح شده)
+        مصرف هفتگی کاربر را به تفکیک ساعات روز (به وقت تهران) با محاسبه دقیق از اسنپ‌شات‌ها محاسبه می‌کند.
         """
+        tehran_tz = pytz.timezone("Asia/Tehran")
         time_slots = {
             'morning': (6, 12), 'afternoon': (12, 18),
             'evening': (18, 24), 'night': (0, 6)
         }
-        usage_stats = { 'morning': 0, 'afternoon': 0, 'evening': 0, 'night': 0 }
+        usage_stats = { 'morning': 0.0, 'afternoon': 0.0, 'evening': 0.0, 'night': 0.0 }
+        
+        seven_days_ago_utc = datetime.now(pytz.utc) - timedelta(days=7)
+        
+        with self._conn() as c:
+            # دریافت آخرین اسنپ‌شات قبل از بازه ۷ روزه به عنوان نقطه شروع
+            last_snap_before = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                (uuid_id, seven_days_ago_utc)
+            ).fetchone()
 
-        seven_days_ago = datetime.now() - timedelta(days=7)
-        query = "SELECT usage, timestamp FROM usage_history WHERE uuid = ? AND timestamp >= ?"
-        params = (uuid, seven_days_ago.strftime('%Y-%m-%d %H:%M:%S'))
+            last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+            last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
 
-        try:
-            # --- این بخش اصلاح شده است ---
-            # مستقیماً کوئری را برای خواندن اجرا می‌کنیم
-            records = self.execute_query(query, params, fetch_all=True)
+            # دریافت تمام اسنپ‌شات‌های ۷ روز گذشته
+            snapshots = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC",
+                (uuid_id, seven_days_ago_utc)
+            ).fetchall()
 
-            if records:
-                for usage, timestamp_str in records:
-                    timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-                    hour = timestamp.hour
+            for snap in snapshots:
+                current_h = snap['hiddify_usage_gb'] or 0.0
+                current_m = snap['marzban_usage_gb'] or 0.0
+                
+                # محاسبه مصرف از اسنپ‌شات قبلی و مدیریت ریست شدن
+                h_diff = current_h - last_h if current_h >= last_h else current_h
+                m_diff = current_m - last_m if current_m >= last_m else current_m
+                total_diff = max(0, h_diff) + max(0, m_diff)
+
+                if total_diff > 0:
+                    snap_time_tehran = snap['taken_at'].astimezone(tehran_tz)
+                    hour = snap_time_tehran.hour
+                    
                     for slot, (start, end) in time_slots.items():
                         if start <= hour < end:
-                            usage_stats[slot] += usage
+                            usage_stats[slot] += total_diff
                             break
-            
-            return usage_stats
+                
+                last_h, last_m = current_h, current_m
 
-        except Exception as e:
-            print(f"خطا در دریافت آمار هفتگی (usage.py): {e}")
-            return usage_stats
+        return usage_stats
+    
+    def get_user_total_usage_in_last_n_days(self, uuid_id: int, days: int) -> float:
+        """مجموع کل مصرف یک کاربر خاص در N روز گذشته را با مدیریت ریست شدن حجم محاسبه می‌کند."""
+        n_days_ago = datetime.now(pytz.utc) - timedelta(days=days)
+        with self._conn() as c:
+            # پیدا کردن نقطه شروع مصرف از قبل از این بازه زمانی
+            baseline_snap = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                (uuid_id, n_days_ago)
+            ).fetchone()
+
+            # پیدا کردن آخرین نقطه مصرف ثبت شده
+            latest_snap = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at DESC LIMIT 1",
+                (uuid_id, n_days_ago)
+            ).fetchone()
+
+            if not latest_snap:
+                return 0.0
+
+            h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] is not None else 0.0
+            m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] is not None else 0.0
+            
+            # اگر اسنپ‌شات جدیدی در این دوره نباشد، از همان نقطه شروع استفاده کن
+            if not latest_snap:
+                latest_snap = baseline_snap
+                if not latest_snap:
+                    return 0.0
+
+            h_end = latest_snap['hiddify_usage_gb'] if latest_snap['hiddify_usage_gb'] is not None else 0.0
+            m_end = latest_snap['marzban_usage_gb'] if latest_snap['marzban_usage_gb'] is not None else 0.0
+
+            h_usage = h_end - h_start if h_end >= h_start else h_end
+            m_usage = m_end - m_start if m_end >= m_start else m_end
+
+            total_usage = max(0, h_usage) + max(0, m_usage)
+            return total_usage
 
     def get_previous_day_total_usage(self) -> float:
         """مجموع مصرف کل در روز گذشته را برمی‌گرداند."""

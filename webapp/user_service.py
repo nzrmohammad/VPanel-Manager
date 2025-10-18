@@ -14,32 +14,27 @@ logger = logging.getLogger(__name__)
 class UserService:
     @staticmethod
     def get_user_usage_stats(uuid_id):
-        tehran_tz = pytz.timezone("Asia/Tehran")
         labels, hiddify_data, marzban_data = [], [], []
         total_usage_7_days = 0
         
+        # فراخوانی تابع اصلاح شده از دیتابیس
+        history = db.get_user_daily_usage_history_by_panel(uuid_id, days=7)
+        
         daily_usages = {}
 
-        with db._conn() as c:
-            for i in range(6, -1, -1):
-                target_date = datetime.now(tehran_tz) - timedelta(days=i)
-                day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                day_end = day_start + timedelta(days=1)
-                day_start_utc, day_end_utc = day_start.astimezone(pytz.utc), day_end.astimezone(pytz.utc)
-                
-                query = "SELECT (MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb)) as h, (MAX(marzban_usage_gb) - MIN(marzban_usage_gb)) as m FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ?"
-                row = c.execute(query, (uuid_id, day_start_utc, day_end_utc)).fetchone()
-                
-                h_usage = max(0, row['h'] or 0) if row else 0
-                m_usage = max(0, row['m'] or 0) if row else 0
-                
-                labels.append(day_start.strftime('%m/%d'))
-                hiddify_data.append(round(h_usage, 2))
-                marzban_data.append(round(m_usage, 2))
-                total_usage_7_days += h_usage + m_usage
+        for record in history:
+            # فرمت کردن تاریخ برای نمایش در نمودار
+            labels.append(record['date'].strftime('%m/%d'))
+            
+            h_usage = record.get('hiddify_usage', 0)
+            m_usage = record.get('marzban_usage', 0)
+            
+            hiddify_data.append(round(h_usage, 2))
+            marzban_data.append(round(m_usage, 2))
+            
+            total_usage_7_days += h_usage + m_usage
+            daily_usages[record['date']] = {'hiddify_usage': h_usage, 'marzban_usage': m_usage}
 
-                daily_usages[target_date.date()] = {'hiddify_usage': h_usage, 'marzban_usage': m_usage}
-        
         avg_daily_usage = total_usage_7_days / 7 if total_usage_7_days > 0 else 0
         chart_data = {"labels": labels, "hiddify_data": hiddify_data, "marzban_data": marzban_data}
         
@@ -169,6 +164,9 @@ class UserService:
             user_id = user_basic.get('user_id')
             combined_info = get_combined_user_info(uuid) or {}
             
+            actual_last_30_days_usage = db.get_user_total_usage_in_last_n_days(uuid_id, 30)
+            recommended_plan, _ = UserService.recommend_plan(actual_last_30_days_usage)
+
             payment_history = db.get_user_payment_history(uuid_id)
             last_payment_shamsi, payment_count = "ثبت نشده", 0
             if payment_history:
@@ -184,9 +182,6 @@ class UserService:
             usage_today_dict = db.get_usage_since_midnight_by_uuid(uuid)
             
             chart_data, avg_daily_usage, daily_usages_for_summary = UserService.get_user_usage_stats(uuid_id)
-
-            remaining_gb = usage_limit - current_usage
-            days_to_depletion = (remaining_gb / avg_daily_usage) if avg_daily_usage > 0 and remaining_gb > 0 else 0
 
             is_active = uuid_record.get("is_active", 0) == 1
             expire_days = combined_info.get('expire')
@@ -240,6 +235,8 @@ class UserService:
                 "has_access_fr": uuid_record.get('has_access_fr', False),
                 "has_access_tr": uuid_record.get('has_access_tr', False),
                 "has_access_us": uuid_record.get('has_access_us', False),
+                "recommended_plan": recommended_plan,
+                "actual_last_30_days_usage": actual_last_30_days_usage,
             }
         except Exception as e:
             logger.error(f"خطا در دریافت داده‌های کاربر {uuid}: {e}", exc_info=True)
