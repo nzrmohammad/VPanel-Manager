@@ -521,27 +521,164 @@ class UsageDB(DatabaseManager):
         return results
 
 
-    def get_weekly_top_consumers_report(self) -> List[Dict[str, Any]]:
-        """گزارش هفتگی پرمصرف‌ترین کاربران را برمی‌گرداند."""
-        week_start_utc = self.get_week_start_utc()
+    def get_weekly_top_consumers_report(self) -> Dict[str, Any]:
+        """
+        گزارش هفتگی مصرف را تولید می‌کند و نام کاربران را مستقیماً از دیتابیس
+        می‌گیرد. (نسخهٔ اصلاح‌شده که با schema فعلی سازگار است)
+        خروجی:
+        {
+            'top_10_overall': [{'name': str, 'total_usage': float}, ...],
+            'top_daily': {0: {'date': date, 'name': str, 'usage': float}, ...}
+        }
+        """
+        logger.info("Starting weekly top consumers report generation (single-function approach)...")
+        tehran_tz = pytz.timezone("Asia/Tehran")
+
         with self._conn() as c:
-            rows = c.execute("""
-                SELECT u.first_name as name, SUM(s.h_usage + s.m_usage) as total_usage
-                FROM (
-                    SELECT uuid_id,
-                        MAX(hiddify_usage_gb) - MIN(hiddify_usage_gb) as h_usage,
-                        MAX(marzban_usage_gb) - MIN(marzban_usage_gb) as m_usage
-                    FROM usage_snapshots
-                    WHERE taken_at >= ?
-                    GROUP BY uuid_id
-                ) s
-                JOIN user_uuids uu ON s.uuid_id = uu.id
-                JOIN users u ON uu.user_id = u.id
-                GROUP BY u.id
-                ORDER BY total_usage DESC
-                LIMIT 10
-            """, (week_start_utc,)).fetchall()
-            return [dict(row) for row in rows]
+            # --- ۱. بررسی وجود اسنپ‌شات‌ها ---
+            last_snapshot_row = c.execute("SELECT MAX(taken_at) AS last_taken FROM usage_snapshots").fetchone()
+            if not last_snapshot_row or not last_snapshot_row['last_taken']:
+                logger.warning("No data in usage_snapshots table. Returning empty report.")
+                return {'top_10_overall': [], 'top_daily': {}}
+
+            # تلاش برای تبدیل تاریخ به datetime با تحمل فرمت‌های مختلف
+            last_taken_raw = last_snapshot_row['last_taken']
+            try:
+                # sqlite ممکنه رشته 'YYYY-MM-DD HH:MM:SS' برگردونه یا ISO با TZ
+                try:
+                    last_snapshot_utc = datetime.fromisoformat(str(last_taken_raw).replace('Z', '+00:00'))
+                except Exception:
+                    last_snapshot_utc = datetime.strptime(str(last_taken_raw), "%Y-%m-%d %H:%M:%S")
+                    # در صورت نبودن tz، در نظر می‌گیریم UTC است
+                    last_snapshot_utc = last_snapshot_utc.replace(tzinfo=pytz.utc)
+            except Exception as e:
+                logger.error(f"Could not parse last snapshot timestamp '{last_taken_raw}'. Error: {e}")
+                return {'top_10_overall': [], 'top_daily': {}}
+
+            report_base_date = last_snapshot_utc.astimezone(tehran_tz).date()
+
+            # --- ۲. ساخت نقشه نام کاربران (بر پایه users.user_id و user_uuids.name به عنوان fallback) ---
+            user_names_map = {}
+            try:
+                # استفاده از user_id از جدول users (ستون user_id موجود است) و fallback به user_uuids.name
+                rows = c.execute("""
+                    SELECT u.user_id AS user_id,
+                        COALESCE(u.first_name, u.username, uu.name, 'User ' || u.user_id) AS display_name
+                    FROM users u
+                    LEFT JOIN user_uuids uu ON uu.user_id = u.user_id AND uu.is_active = 1
+                    WHERE uu.is_active = 1 OR uu.is_active IS NULL
+                """).fetchall()
+
+                # تبدیل به دیکشنری user_id -> display_name
+                user_names_map = {row['user_id']: row['display_name'] for row in rows if row['user_id'] is not None}
+                logger.info(f"Successfully created a map for {len(user_names_map)} user display names.")
+            except Exception as e:
+                # مطابق لاگ‌هایی که فرستادی، پیام مشابه بنویسیم
+                logger.error(f"Failed to fetch user names. Report will use fallback names. Error: {e}")
+
+            # --- ۳. خواندن همه UUIDهای فعال (از generator all_active_uuids) ---
+            try:
+                all_uuids = list(self.all_active_uuids())
+            except Exception as e:
+                logger.error(f"Failed to retrieve active UUIDs: {e}")
+                return {'top_10_overall': [], 'top_daily': {}}
+
+            if not all_uuids:
+                logger.warning("No active UUIDs found. Returning empty report.")
+                return {'top_10_overall': [], 'top_daily': {}}
+
+            weekly_usage_data: Dict[int, Dict[str, Any]] = {}
+            daily_winners_list: list = []
+
+            logger.info(f"Calculating usage for {len(all_uuids)} active UUIDs over 7 days (base date: {report_base_date}).")
+
+            # --- ۴. محاسبه مصرف هر روز و تجمع هفتگی ---
+            for day_offset in range(7):
+                target_date = report_base_date - timedelta(days=day_offset)
+                # نیمه‌شب به وقت تهران برای آن روز
+                day_start_tehran = tehran_tz.localize(datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0))
+                day_start_utc = day_start_tehran.astimezone(pytz.utc)
+                day_end_utc = (day_start_tehran + timedelta(days=1)).astimezone(pytz.utc)
+
+                top_day = {'name': None, 'usage': 0.0}
+
+                for uuid_info in all_uuids:
+                    uuid_id = uuid_info.get('id')
+                    user_id = uuid_info.get('user_id')
+                    # نام کاربر: اول از user_names_map، در غیر اینصورت از فیلد name در user_uuids استفاده کن
+                    user_name = user_names_map.get(user_id) if user_id is not None else None
+                    if not user_name:
+                        user_name = uuid_info.get('name') or (f"User {user_id}" if user_id is not None else "Unknown")
+
+                    # گرفتن آخرین اسنپ‌شات قبل از شروع روز (baseline) و آخرین قبل از انتهای روز (end)
+                    baseline_row = c.execute(
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots "
+                        "WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_start_utc)
+                    ).fetchone()
+
+                    end_row = c.execute(
+                        "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots "
+                        "WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                        (uuid_id, day_end_utc)
+                    ).fetchone()
+
+                    if not end_row:
+                        continue
+
+                    h_start = baseline_row['hiddify_usage_gb'] if baseline_row and baseline_row['hiddify_usage_gb'] is not None else 0.0
+                    m_start = baseline_row['marzban_usage_gb'] if baseline_row and baseline_row['marzban_usage_gb'] is not None else 0.0
+                    h_end = end_row['hiddify_usage_gb'] if end_row and end_row['hiddify_usage_gb'] is not None else 0.0
+                    m_end = end_row['marzban_usage_gb'] if end_row and end_row['marzban_usage_gb'] is not None else 0.0
+
+                    # در صورت ریست شدن کانترها (مقدار انتهایی کمتر از شروع) از مقدار انتهایی به عنوان مصرف استفاده می‌کنیم
+                    h_usage = h_end - h_start if h_end >= h_start else h_end
+                    m_usage = m_end - m_start if m_end >= m_start else m_end
+                    total_daily_usage = max(0.0, h_usage) + max(0.0, m_usage)
+
+                    # جمع‌بندی هفتگی
+                    if total_daily_usage > 0.001:
+                        key = user_id if user_id is not None else (uuid_id or user_name)
+                        if key not in weekly_usage_data:
+                            weekly_usage_data[key] = {'name': user_name, 'total_usage': 0.0}
+                        weekly_usage_data[key]['total_usage'] += total_daily_usage
+
+                    # بررسی قهرمان روز
+                    if total_daily_usage > top_day['usage']:
+                        top_day['name'] = user_name
+                        top_day['usage'] = total_daily_usage
+
+                # ثبت قهرمان آن روز در صورت وجود
+                if top_day['name']:
+                    daily_winners_list.append({
+                        'date': target_date,
+                        'name': top_day['name'],
+                        'usage': top_day['usage']
+                    })
+
+            # --- ۵. مرتب‌سازی و آماده‌سازی خروجی نهایی ---
+            sorted_consumers = sorted(weekly_usage_data.values(), key=lambda x: x['total_usage'], reverse=True)
+            unique_consumers = []
+            seen_consumers = set() # (name, usage)
+            for consumer in sorted_consumers:
+                consumer_tuple = (consumer.get('name'), consumer.get('total_usage'))
+                if consumer_tuple not in seen_consumers:
+                    unique_consumers.append(consumer)
+                    seen_consumers.add(consumer_tuple)
+            # تبدیل لیست برندگان روزانه به دیکشنری با کلید ایندکس روز (شنبه=0 ... جمعه=6)
+            daily_winners_dict: Dict[int, Dict[str, Any]] = {}
+            for w in daily_winners_list:
+                # در جایی که تابع fmt_weekly_admin_summary ایندکس را (weekday+2) % 7 استفاده می‌کرد،
+                # همین تبدیل را اعمال می‌کنیم تا سازگاری حفظ شود.
+                day_index = (w['date'].weekday() + 2) % 7
+                daily_winners_dict[day_index] = w
+
+            logger.info(f"Report generation finished. Found {len(sorted_consumers)} top consumers and {len(daily_winners_dict)} daily winners.")
+
+            return {
+                'top_10_overall': unique_consumers[:10],
+                'top_daily': daily_winners_dict
+            }
 
     def get_previous_week_usage(self, uuid_id: int) -> float:
         """Calculates the total usage for a specific user for the previous week."""

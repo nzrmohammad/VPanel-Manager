@@ -160,7 +160,11 @@ def send_weekly_admin_summary(bot) -> None:
         top_users = report_data.get('top_10_overall', [])
         if top_users:
             all_bot_users_with_uuids = db.get_all_bot_users_with_uuids()
-            user_map = {user['config_name']: user['user_id'] for user in all_bot_users_with_uuids}
+            user_map = {}
+            for user in all_bot_users_with_uuids:
+                name = user.get('config_name')
+                if name and name not in user_map:
+                    user_map[name] = user['user_id']
 
             if len(top_users) > 0:
                 champion = top_users[0]

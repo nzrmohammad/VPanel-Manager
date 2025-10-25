@@ -1,7 +1,7 @@
 # bot/db/achievement.py
 
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 import logging
 import sqlite3
@@ -124,7 +124,7 @@ class AchievementDB(DatabaseManager):
 
     def log_weekly_champion_win(self, user_id: int):
         """یک رکورد برای قهرمانی هفتگی کاربر ثبت می‌کند."""
-        today = datetime.now(self.pytz.utc).date()
+        today = datetime.now(pytz.utc).date()
         with self._conn() as c:
             c.execute("INSERT INTO weekly_champion_log (user_id, win_date) VALUES (?, ?)", (user_id, today))
 
@@ -153,7 +153,7 @@ class AchievementDB(DatabaseManager):
     
     def get_lottery_participants(self) -> List[int]:
         """لیست شناسه‌های کاربری واجد شرایط برای قرعه‌کشی را برمی‌گرداند."""
-        thirty_days_ago = datetime.now(self.pytz.utc) - self.timedelta(days=30)
+        thirty_days_ago = datetime.now(pytz.utc) - timedelta(days=30)
         query = """
             SELECT DISTINCT u.user_id
             FROM users u
@@ -204,7 +204,7 @@ class AchievementDB(DatabaseManager):
         with self._conn() as c:
             c.execute(
                 "UPDATE achievement_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
-                (status, admin_id, datetime.now(self.pytz.utc), request_id)
+                (status, admin_id, datetime.now(pytz.utc), request_id)
             )
 
     def check_if_gift_given(self, user_id: int, gift_type: str, year: int) -> bool:
