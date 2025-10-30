@@ -163,6 +163,31 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             db.log_warning(uuid_id_in_db, 'expired')
                             db.create_notification(user_id_in_telegram, "اکانت منقضی شده", f"اعتبار اکانت «{user_name}» شما به پایان رسیده است.", "warning")
 
+
+                # --- (جدید) سناریوی ۲: هشدار ادمین برای "کاربر مردد" ---
+                # اگر سرویس کاربر همین امروز یا دیروز منقضی شده (0 یا -1 روز)
+                # و هنوز تمدید نکرده است، به ادمین اطلاع بده
+                if (expire_days is not None and -1 <= expire_days <= 0):
+                    # 48 ساعت فرصت می‌دهیم تا کاربر خودش تمدید کند، بعد هشدار می‌دهیم
+                    if not db.has_recent_warning(uuid_id_in_db, 'churn_alert_expired', hours=48):
+                        # (اختیاری ولی مهم) چک می‌کنیم که در ۲۴ ساعت گذشته تراکنش موفقی نداشته باشد
+                        if not db.check_recent_successful_payment(uuid_id_in_db, hours=24):
+                            alert_message = (
+                                f"⚠️ *هشدار ریزش مشتری (مردد)*\n\n"
+                                f"سرویس کاربر *{escape_markdown(user_name)}* (`{user_id_in_telegram}`) *دیروز/امروز* منقضی شده و هنوز تمدید نکرده است\\.\n\n"
+                                f"این بهترین زمان برای ارسال یک پیشنهاد تخفیف و بازگرداندن اوست\\."
+                            )
+                            kb_admin = types.InlineKeyboardMarkup(row_width=2)
+                            kb_admin.add(
+                                types.InlineKeyboardButton("👤 مشاهده کاربر", callback_data=f"admin:us:h:{uuid_str}"), # 'h' به عنوان پیش‌فرض
+                                types.InlineKeyboardButton("🎁 ارسال پیشنهاد تمدید", callback_data=f"admin:churn_send_offer:{user_id_in_telegram}")
+                            )
+                            for admin_id in ADMIN_IDS:
+                                send_warning_message(bot, admin_id, alert_message, reply_markup=kb_admin)
+                            
+                            db.log_warning(uuid_id_in_db, 'churn_alert_expired')
+                # --- پایان کد جدید ---
+                
                 # 4. ارسال هشدارهای اتمام حجم
                 breakdown = info.get('breakdown', {})
                 
@@ -184,7 +209,19 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                     db.log_warning(uuid_id_in_db, 'low_data_hiddify')
                                     db.create_notification(user_id_in_telegram, "هشدار اتمام حجم", f"بیش از {int(WARNING_USAGE_THRESHOLD)}% از حجم سرویس شما در سرور آلمان 🇩🇪 مصرف شده است.", "warning")
                             if usage >= limit and not hiddify_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_hiddify'):
-                                msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *آلمان 🇩🇪* به پایان رسیده و این سرور برای شما غیرفعال شده است\\.")
+                                
+                                # --- (جدید) افزودن ۱ گیگ حجم اضطراری ---
+                                try:
+                                    combined_handler.modify_user_on_all_panels(uuid_str, add_gb=1, target_panel_type='hiddify')
+                                    logger.info(f"Added 1GB grace data to user {uuid_str} (Hiddify)")
+                                except Exception as e:
+                                    logger.error(f"Failed to add grace data to {uuid_str} (Hiddify): {e}")
+                                # --- پایان بخش جدید ---
+
+                                msg = (f"🔴 *اتمام حجم*\n\n"
+                                       f"حجم سرویس شما در سرور *آلمان 🇩🇪* به پایان رسیده بود\\.\n\n"
+                                       f"🎁 *1 گیگابایت* حجم اضطراری برای شما فعال شد تا بتوانید به راحتی سرویس خود را تمدید کنید\\.")
+                                
                                 # ✨ ساخت دکمه‌ها
                                 kb = types.InlineKeyboardMarkup(row_width=2)
                                 kb.add(
@@ -226,7 +263,19 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                     db.create_notification(user_id_in_telegram, "هشدار اتمام حجم", f"بیش از {int(WARNING_USAGE_THRESHOLD)}% از حجم سرویس شما در سرور {server_display_name} مصرف شده است.", "warning")
                                     
                             if usage >= limit and not marzban_info.get('is_active') and not db.has_recent_warning(uuid_id_in_db, 'volume_depleted_marzban'):
-                                msg = (f"🔴 *اتمام حجم*\n\nحجم سرویس شما در سرور *{server_display_name}* به پایان رسیده و این سرور برای شما غیرفعال شده است\\.")
+
+                                # --- (جدید) افزودن ۱ گیگ حجم اضطراری ---
+                                try:
+                                    combined_handler.modify_user_on_all_panels(uuid_str, add_gb=1, target_panel_type='marzban')
+                                    logger.info(f"Added 1GB grace data to user {uuid_str} (Marzban)")
+                                except Exception as e:
+                                    logger.error(f"Failed to add grace data to {uuid_str} (Marzban): {e}")
+                                # --- پایان بخش جدید ---
+
+                                msg = (f"🔴 *اتمام حجم*\n\n"
+                                       f"حجم سرویس شما در سرور *{server_display_name}* به پایان رسیده بود\\.\n\n"
+                                       f"🎁 *1 گیگابایت* حجم اضطراری برای شما فعال شد تا بتوانید به راحتی سرویس خود را تمدید کنید\\.")
+                                
                                 # ✨ ساخت دکمه‌ها
                                 kb = types.InlineKeyboardMarkup(row_width=2)
                                 kb.add(
@@ -253,6 +302,32 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                                 "چند روز از آخرین اتصال شما می‌گذرد. در صورت وجود مشکل در اتصال، لطفاً با پشتیبانی تماس بگیرید.",
                                 "warning"
                             )
+                # --- (جدید) سناریوی ۱: هشدار ادمین برای "ناراضی خاموش" ---
+                # اگر کاربر اعتبار دارد (بیش از 3 روز) و حجم دارد (بیش از 1 گیگ)
+                # اما بیش از 4 روز است که وصل نشده، به ادمین هشدار بده
+                if (expire_days is not None and expire_days > 3 and
+                    info.get('remaining_GB', 0.0) > 1 and
+                    last_online and isinstance(last_online, datetime)):
+                    
+                    days_inactive = (now_utc.replace(tzinfo=None) - last_online.replace(tzinfo=None)).days
+                    
+                    if days_inactive >= 4 and not db.has_recent_warning(uuid_id_in_db, 'churn_alert_inactive', hours=72):
+                        alert_message = (
+                            f"⚠️ *هشدار ریزش مشتری (ناراضی خاموش)*\n\n"
+                            f"کاربر *{escape_markdown(user_name)}* (`{user_id_in_telegram}`) با وجود داشتن اعتبار، *{days_inactive} روز* است که متصل نشده است\\.\n\n"
+                            f"اعتبار: *{expire_days} روز* \\| حجم باقی‌مانده: *{info.get('remaining_GB', 0.0):.1f} GB*\n\n"
+                            f"این کاربر احتمالاً به مشکل خورده و نیاز به پیگیری دارد\\."
+                        )
+                        kb_admin = types.InlineKeyboardMarkup(row_width=2)
+                        kb_admin.add(
+                            types.InlineKeyboardButton("👤 مشاهده کاربر", callback_data=f"admin:us:h:{uuid_str}"), # 'h' به عنوان پیش‌فرض پنل
+                            types.InlineKeyboardButton("💬 ارسال پیام پیگیری", callback_data=f"admin:churn_contact_user:{user_id_in_telegram}")
+                        )
+                        for admin_id in ADMIN_IDS:
+                            send_warning_message(bot, admin_id, alert_message, reply_markup=kb_admin)
+                        
+                        db.log_warning(uuid_id_in_db, 'churn_alert_inactive')
+                # --- پایان کد جدید ---
 
                 # 6. ارسال هشدار مصرف غیرعادی روزانه به ادمین‌ها
                 if DAILY_USAGE_ALERT_THRESHOLD_GB > 0:

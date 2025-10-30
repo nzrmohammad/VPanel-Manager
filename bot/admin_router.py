@@ -20,6 +20,7 @@ from .admin_marzban_handlers import (_start_add_marzban_user_convo, initialize_m
 from .menu import menu
 from .utils import _safe_edit, escape_markdown
 from .database import db
+from . import user_router
 scheduler = None
 
 
@@ -38,7 +39,7 @@ def register_admin_handlers(bot, scheduler_instance):
     backup.initialize_backup_handlers(bot)
     plan_management.initialize_plan_management_handlers(bot, admin_conversations)
     panel_management.initialize_panel_management_handlers(bot, admin_conversations)
-    support.initialize_support_handlers(bot)
+    support.initialize_support_handlers(bot, user_router.admin_conversations)
     wallet_admin_handler.initialize_wallet_handlers(bot, admin_conversations)
 
     # ===================================================================
@@ -319,6 +320,9 @@ ADMIN_CALLBACK_HANDLERS = {
     "delete_all_devices_exec": user_management.handle_delete_all_devices_execute,
     "charge_confirm": wallet_admin_handler.handle_charge_request_callback,
     "charge_reject": wallet_admin_handler.handle_charge_request_callback,
+    'support_reply': support.prompt_for_reply,
+    'churn_contact_user': user_management.handle_churn_contact_user,
+    'churn_send_offer': user_management.handle_churn_send_offer,
     "manual_charge": wallet_admin_handler.handle_manual_charge_request,
     "manual_charge_exec": wallet_admin_handler.handle_manual_charge_execution,
     "manual_charge_cancel": wallet_admin_handler.handle_manual_charge_cancel,

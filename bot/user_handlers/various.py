@@ -90,12 +90,12 @@ def handle_support_request(call: types.CallbackQuery):
 
 def get_support_ticket_message(message: types.Message, original_msg_id: int):
     """
+    (نسخه نهایی با دکمه پاسخ)
     پیام کاربر را دریافت، برای ادمین‌ها فوروارد و تیکت را در DB ثبت می‌کند.
     """
     uid = message.from_user.id
     lang_code = db.get_user_language(uid)
 
-    # پیام "در حال ارسال" به کاربر
     _safe_edit(uid, original_msg_id, escape_markdown("⏳ در حال ارسال پیام شما به پشتیبانی..."), reply_markup=None)
 
     try:
@@ -103,7 +103,6 @@ def get_support_ticket_message(message: types.Message, original_msg_id: int):
         user_db_data = db.user(uid)
         wallet_balance = user_db_data.get('wallet_balance', 0.0) if user_db_data else 0.0
         
-        # --- ساخت پیام کامل برای ادمین ---
         caption_lines = [
             f"💬 *تیکت پشتیبانی جدید*",
             f"`──────────────────`",
@@ -118,40 +117,46 @@ def get_support_ticket_message(message: types.Message, original_msg_id: int):
         
         admin_caption = "\n".join(caption_lines)
         
-        sent_admin_message_id = None
+        # دیکشنری برای نگهداری {admin_id: message_id}
+        admin_message_ids = {} 
         
-        # ارسال پیام (چه متن، چه عکس و...) به همه ادمین‌ها
         for admin_id in ADMIN_IDS:
             try:
-                # پیام کاربر را به ادمین فوروارد می‌کنیم
                 forwarded_msg = bot.forward_message(admin_id, uid, message.message_id)
-                # اطلاعات کاربر را زیر آن ارسال می‌کنیم
                 admin_msg = bot.send_message(admin_id, admin_caption, parse_mode="MarkdownV2", 
                                              reply_to_message_id=forwarded_msg.message_id)
                 
-                # ما فقط به شناسه *یک* پیام نیاز داریم تا گفتگو را ردیابی کنیم
-                if not sent_admin_message_id:
-                    sent_admin_message_id = admin_msg.message_id
+                # (اصلاح شده) شناسه پیام هر ادمین را ذخیره می‌کنیم
+                admin_message_ids[admin_id] = admin_msg.message_id
             
             except Exception as e:
                 logger.error(f"Failed to forward support ticket to admin {admin_id}: {e}")
 
-        # --- ثبت تیکت در دیتابیس ---
-        if sent_admin_message_id:
-            ticket_id = db.create_support_ticket(uid, sent_admin_message_id)
+        if admin_message_ids:
+            # (اصلاح شده) از اولین شناسه پیام برای ثبت در DB استفاده می‌کنیم
+            first_admin_msg_id = list(admin_message_ids.values())[0]
+            ticket_id = db.create_support_ticket(uid, first_admin_msg_id)
             
-            # --- (مهم) شناسه تیکت را به پیام ادمین اضافه می‌کنیم ---
-            # این کار برای ردیابی پاسخ ادمین ضروری است
             final_admin_caption = f"🎫 *تیکت شماره:* `{ticket_id}`\n" + admin_caption
-            for admin_id in ADMIN_IDS:
-                try:
-                    # پیام اطلاعاتی که ارسال کردیم را ویرایش می‌کنیم تا شماره تیکت را شامل شود
-                    bot.edit_message_text(final_admin_caption, admin_id, sent_admin_message_id, 
-                                          parse_mode="MarkdownV2")
-                except Exception:
-                    pass # اگر ویرایش نشد، مهم نیست، ردیابی هنوز کار می‌کند
 
-        # --- اطلاع‌رسانی به کاربر ---
+            # --- (جدید) ساخت دکمه پاسخ ---
+            # ما به ticket_id برای بستن تیکت و uid برای ارسال پاسخ نیاز داریم
+            kb_admin = types.InlineKeyboardMarkup()
+            kb_admin.add(types.InlineKeyboardButton(
+                "✍️ پاسخ به این تیکت", 
+                callback_data=f"admin:support_reply:{ticket_id}:{uid}"
+            ))
+            # --------------------------------
+
+            # (اصلاح شده) پیام همه ادمین‌ها را ویرایش می‌کنیم تا شامل دکمه و شماره تیکت باشد
+            for admin_id, msg_id in admin_message_ids.items():
+                try:
+                    bot.edit_message_text(final_admin_caption, admin_id, msg_id, 
+                                          parse_mode="MarkdownV2", 
+                                          reply_markup=kb_admin) # <--- دکمه اضافه شد
+                except Exception:
+                    pass 
+
         success_prompt = escape_markdown("✅ پیام شما با موفقیت برای پشتیبانی ارسال شد. لطفاً منتظر پاسخ بمانید.")
         kb_back = types.InlineKeyboardMarkup().add(
             types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")

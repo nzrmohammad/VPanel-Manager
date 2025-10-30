@@ -8,7 +8,6 @@ from .menu import menu
 from .language import get_string
 from .utils import get_loyalty_progress_message, escape_markdown, _safe_edit
 from .user_handlers import account, info, settings, various, wallet, feedback
-from .admin_handlers.support import handle_admin_reply_to_ticket
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -119,7 +118,7 @@ def handle_user_callbacks(call: types.CallbackQuery):
         
     # --- Various/Other Callbacks ---
     if any(data.startswith(prefix) for prefix in ["support", "tutorial", "birthday_gift", "coming_soon", "request_service", "connection_doctor", "achievements", "shop:", "referral:", "show_features_guide", "back_to_start_menu"]):
-        if data == "support": various.handle_support_request(call)
+        if data == "support:new": various.handle_support_request(call)
         elif data.startswith("tutorial_os:"): various.show_tutorial_os_menu(call)
         elif data.startswith("tutorial_app:"): various.send_tutorial_link(call)
         elif data == "tutorials": various.show_tutorial_main_menu(call)
@@ -177,13 +176,6 @@ def register_user_handlers(b: telebot.TeleBot):
             db.set_referrer(uid, parts[1])
             
         go_back_to_main(message=message)
-
-    @bot.message_handler(
-        func=lambda m: m.reply_to_message is not None and m.from_user.id in ADMIN_IDS,
-        content_types=['text'] # فعلاً فقط پاسخ متنی
-    )
-    def admin_reply_handler(message: types.Message):
-        handle_admin_reply_to_ticket(message)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def language_callback(call: types.CallbackQuery):

@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+import pytz
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 
@@ -247,3 +248,31 @@ class FinancialsDB(DatabaseManager):
         with self._conn() as c:
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
+        
+    def check_recent_successful_payment(self, uuid_id: int, hours: int) -> bool:
+        """
+        بررسی می‌کند که آیا کاربر در X ساعت گذشته پرداخت موفقی داشته است یا خیر.
+        (شامل پرداخت دستی و خرید از کیف پول)
+        """
+        threshold_time = datetime.now(pytz.utc) - timedelta(hours=hours)
+        with self._conn() as c:
+            # 1. بررسی جدول payment_history (پرداخت‌های دستی ثبت شده توسط ادمین)
+            row = c.execute(
+                "SELECT 1 FROM payment_history WHERE uuid_id = ? AND payment_date >= ? LIMIT 1",
+                (uuid_id, threshold_time)
+            ).fetchone()
+            
+            # 2. بررسی جدول wallet_transactions (خرید با کیف پول یا تمدید خودکار)
+            if not row:
+                row = c.execute(
+                    """
+                    SELECT 1 FROM wallet_transactions wt
+                    JOIN user_uuids uu ON wt.user_id = uu.user_id
+                    WHERE uu.id = ? AND wt.transaction_date >= ? AND wt.type IN ('purchase', 'auto_renewal', 'addon_purchase', 'gift_purchase')
+                    LIMIT 1
+                    """,
+                    (uuid_id, threshold_time)
+                ).fetchone()
+
+            # اگر در هر کدام از جدول‌ها رکوردی پیدا شد، True برمی‌گرداند
+            return row is not None

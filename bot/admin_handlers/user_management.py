@@ -1580,3 +1580,82 @@ def handle_user_warning_menu(call: types.CallbackQuery, params: list):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"admin:us:{panel_short}:{identifier}"))
 
     _safe_edit(uid, msg_id, prompt, reply_markup=kb, parse_mode=None)
+
+def handle_churn_contact_user(call: types.CallbackQuery, params: list):
+    """
+    به کاربری که در خطر ریزش (ناراضی خاموش) است، پیام پیگیری ارسال می‌کند.
+    """
+    admin_id = call.from_user.id
+    try:
+        user_id = int(params[0])
+        user_info = db.user(user_id)
+        if not user_info:
+            bot.answer_callback_query(call.id, "❌ کاربر یافت نشد.", show_alert=True)
+            return
+
+        user_name = escape_markdown(user_info.get('first_name', 'کاربر گرامی'))
+        
+        # (جدید) برای ارسال پیام به کاربر، از تابع send_warning_message استفاده می‌کنیم
+        # که در ماژول warnings تعریف شده. آن را import کنید.
+        from ..scheduler_jobs.warnings import send_warning_message
+
+        message_to_user = (
+            f"سلام {user_name} عزیز\\،\n\n"
+            f"متوجه شدیم مدتی است که از سرویس خود استفاده نکرده‌اید\\. "
+            f"آیا در اتصال با مشکلی مواجه شده‌اید؟\n\n"
+            f"ما اینجا هستیم تا به شما کمک کنیم\\. می‌توانید مستقیماً از طریق دکمه زیر با پشتیبانی در تماس باشید\\."
+        )
+        
+        kb_user = types.InlineKeyboardMarkup()
+        kb_user.add(types.InlineKeyboardButton("💬 تماس با پشتیبانی", callback_data="support:new"))
+
+        if send_warning_message(bot, user_id, message_to_user, reply_markup=kb_user):
+            bot.answer_callback_query(call.id, f"✅ پیام پیگیری با موفقیت برای {user_name} ارسال شد.", show_alert=True)
+            # (اختیاری) دکمه‌های پیام ادمین را حذف می‌کنیم
+            bot.edit_message_reply_markup(admin_id, call.message.message_id, reply_markup=None)
+        else:
+            bot.answer_callback_query(call.id, "❌ خطا در ارسال پیام به کاربر.", show_alert=True)
+
+    except Exception as e:
+        logger.error(f"Error in handle_churn_contact_user: {e}", exc_info=True)
+        bot.answer_callback_query(call.id, "خطای داخلی رخ داد.", show_alert=True)
+
+
+def handle_churn_send_offer(call: types.CallbackQuery, params: list):
+    """
+    به کاربری که در خطر ریزش (مردد) است، پیام پیشنهاد تمدید ارسال می‌کند.
+    """
+    admin_id = call.from_user.id
+    try:
+        user_id = int(params[0])
+        user_info = db.user(user_id)
+        if not user_info:
+            bot.answer_callback_query(call.id, "❌ کاربر یافت نشد.", show_alert=True)
+            return
+
+        user_name = escape_markdown(user_info.get('first_name', 'کاربر گرامی'))
+
+        from ..scheduler_jobs.warnings import send_warning_message
+
+        message_to_user = (
+            f"سلام {user_name} عزیز\\،\n\n"
+            f"متوجه شدیم اعتبار سرویس شما به تازگی تمام شده است\\. "
+            f"از اینکه همراه ما بودید سپاسگزاریم\\.\n\n"
+            f"🎁 *هدیه بازگشت شما:*\n"
+            f"برای تمدید سرویس خود می‌توانید از دکمه «🛒 سرویس‌ها» اقدام کنید\\. "
+            f"ما برای قدردانی از همراهی شما، *۱۰٪* از مبلغ خریدتان را به *کیف پول* شما بازمی‌گردانیم\\."
+        )
+        
+        kb_user = types.InlineKeyboardMarkup()
+        kb_user.add(types.InlineKeyboardButton("🛒 مشاهده سرویس‌ها", callback_data="view_plans"))
+        kb_user.add(types.InlineKeyboardButton("💳 کیف پول من", callback_data="wallet:main"))
+
+        if send_warning_message(bot, user_id, message_to_user, reply_markup=kb_user):
+            bot.answer_callback_query(call.id, f"✅ پیام پیشنهاد تمدید برای {user_name} ارسال شد.", show_alert=True)
+            bot.edit_message_reply_markup(admin_id, call.message.message_id, reply_markup=None)
+        else:
+            bot.answer_callback_query(call.id, "❌ خطا در ارسال پیام به کاربر.", show_alert=True)
+            
+    except Exception as e:
+        logger.error(f"Error in handle_churn_send_offer: {e}", exc_info=True)
+        bot.answer_callback_query(call.id, "خطای داخلی رخ داد.", show_alert=True)
