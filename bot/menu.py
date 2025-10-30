@@ -15,7 +15,7 @@ class Menu:
         btn_quick_stats = types.InlineKeyboardButton(f"{EMOJIS['lightning']} {get_string('quick_stats', lang_code)}", callback_data="quick_stats")
         btn_services = types.InlineKeyboardButton(f"🛒 {get_string('view_plans', lang_code)}", callback_data="view_plans")
         btn_wallet = types.InlineKeyboardButton(f"💳 {get_string('wallet', lang_code)}", callback_data="wallet:main")
-        btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support")
+        btn_support = types.InlineKeyboardButton(f"💬 {get_string('support', lang_code)}", callback_data="support:new")
         btn_doctor = types.InlineKeyboardButton(f"🩺 {get_string('btn_connection_doctor', lang_code)}", callback_data="connection_doctor")
         btn_tutorials = types.InlineKeyboardButton(f"📚 {get_string('btn_tutorials', lang_code)}", callback_data="tutorials")
         btn_user_account = types.InlineKeyboardButton(f"👤 {get_string('user_account_page_title', lang_code)}", callback_data="user_account")
@@ -577,7 +577,8 @@ class Menu:
         kb.add(types.InlineKeyboardButton("🏆 رتبه‌بندی امتیازها", callback_data="admin:list:leaderboard:0"),
                 types.InlineKeyboardButton("📊 گزارش بر اساس پلن", callback_data="admin:user_analysis_menu"))
         kb.add(types.InlineKeyboardButton("📱 دستگاه‌های متصل", callback_data="admin:list_devices:0"),
-               types.InlineKeyboardButton("💸 گزارش مالی", callback_data="admin:financial_report")) # <-- دکمه جدید
+               types.InlineKeyboardButton("💸 گزارش مالی", callback_data="admin:financial_report"))
+        kb.add(types.InlineKeyboardButton("📊 بازخورد کاربران", callback_data="admin:list:feedback:0"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin:panel"))
         return kb
 
@@ -824,6 +825,20 @@ class Menu:
             kb.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
         
         kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
+        return kb
+    
+    def feedback_rating_menu(self) -> types.InlineKeyboardMarkup:
+        """منوی نظرسنجی رضایت (۱ تا ۵ ستاره) را ایجاد می‌کند."""
+        kb = types.InlineKeyboardMarkup(row_width=5)
+        buttons = [
+            types.InlineKeyboardButton("⭐️", callback_data="feedback:rating:1"),
+            types.InlineKeyboardButton("⭐️⭐️", callback_data="feedback:rating:2"),
+            types.InlineKeyboardButton("⭐️⭐️⭐️", callback_data="feedback:rating:3"),
+            types.InlineKeyboardButton("⭐️⭐️⭐️⭐️", callback_data="feedback:rating:4"),
+            types.InlineKeyboardButton("⭐️⭐️⭐️⭐️⭐️", callback_data="feedback:rating:5"),
+        ]
+        kb.add(*buttons)
+        kb.add(types.InlineKeyboardButton("✖️ علاقه‌ای ندارم", callback_data="feedback:cancel"))
         return kb
 
 menu = Menu()

@@ -1,9 +1,10 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import jdatetime
 from telebot import types, apihelper
+from ..menu import menu
 
 from bot import combined_handler
 from bot.database import db
@@ -252,3 +253,49 @@ def send_daily_achievements_report(bot) -> None:
 
     except Exception as e:
         logger.error(f"Failed to generate or process daily achievements report: {e}", exc_info=True)
+
+def send_monthly_satisfaction_survey(bot):
+    """
+    در آخرین جمعه هر ماه شمسی، پیام نظرسنجی رضایت را برای کاربران فعال ارسال می‌کند.
+    """
+    logger.info("SCHEDULER: Checking for monthly satisfaction survey...")
+    try:
+        # --- منطق بررسی آخرین جمعه شمسی ---
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
+        
+        # یک هفته به تاریخ فعلی اضافه کن
+        next_week_gregorian = now_gregorian + timedelta(days=7)
+        next_week_shamsi = jdatetime.datetime.fromgregorian(datetime=next_week_gregorian)
+
+        # اگر ماه شمسی هفته بعد با ماه شمسی الان فرق داشت،
+        # یعنی این آخرین جمعه ماه شمسی است
+        is_last_shamsi_friday = (now_shamsi.month != next_week_shamsi.month)
+        
+        if not is_last_shamsi_friday:
+            logger.info(f"SCHEDULER: It's a Friday, but not the last Shamsi Friday. Skipping monthly survey.")
+            return
+        # --- پایان منطق بررسی ---
+
+        logger.info("SCHEDULER: It's the last Shamsi Friday! Starting monthly satisfaction survey job...")
+        
+        user_ids = list(db.get_all_user_ids())
+        kb = menu.feedback_rating_menu()
+        prompt = "🗓 *گزارش ماهانه*\n\nچقدر از عملکرد و پایداری سرویس ما در این ماه راضی بودید؟\n\nلطفاً با انتخاب ستاره‌ها، به ما امتیاز دهید:"
+        
+        sent_count = 0
+        failed_count = 0
+        
+        for uid in user_ids:
+            try:
+                bot.send_message(uid, prompt, reply_markup=kb, parse_mode="Markdown")
+                sent_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to send feedback poll to user {uid}: {e}")
+                failed_count += 1
+        
+        logger.info(f"SCHEDULER: Monthly feedback poll finished. Sent: {sent_count}, Failed: {failed_count}")
+
+    except Exception as e:
+        logger.error(f"Error in scheduled job send_monthly_satisfaction_survey: {e}", exc_info=True)

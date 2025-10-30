@@ -58,6 +58,7 @@ class SchedulerManager:
         schedule.every().day.at("04:30", self.tz_str).do(self._run_job, rewards.check_auto_renewals_and_warnings)
         schedule.every(12).hours.do(self._run_job, maintenance.sync_users_with_panels)
         schedule.every(8).hours.do(self._run_job, maintenance.cleanup_old_reports)
+        schedule.every().friday.at("16:00", self.tz_str).do(self._run_job, reports.send_monthly_satisfaction_survey)
         schedule.every().day.at("04:00", self.tz_str).do(self._run_job, maintenance.run_monthly_vacuum)
         schedule.every().day.at("01:15", self.tz_str).do(self._run_job, financials.renew_monthly_costs_job)
         

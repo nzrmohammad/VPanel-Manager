@@ -6,6 +6,8 @@ import logging
 from .db.user import UserDB
 from .db.usage import UsageDB
 from .db.wallet import WalletDB
+from .db.feedback import FeedbackDB
+from .db.support import SupportDB
 from .db.achievement import AchievementDB
 from .db.panel import PanelDB
 from .db.financials import FinancialsDB
@@ -15,7 +17,7 @@ from .db.notifications import NotificationsDB
 logger = logging.getLogger(__name__)
 
 # کلاس اصلی دیتابیس که از تمام کلاس‌های دیگر ارث‌بری می‌کند
-class Database(UserDB, UsageDB, WalletDB, AchievementDB, PanelDB, FinancialsDB, TransferDB, NotificationsDB): # <--- کلاس جدید به لیست ارث‌بری اضافه شد
+class Database(UserDB, UsageDB, WalletDB, FeedbackDB, SupportDB, AchievementDB, PanelDB, FinancialsDB, TransferDB, NotificationsDB): # <--- کلاس جدید به لیست ارث‌بری اضافه شد
     """
     کلاس جامع برای مدیریت دیتابیس.
     """

@@ -130,6 +130,9 @@ def handle_paginated_list(call, params):
     elif list_type == "leaderboard":
         users = db.get_all_users_by_points()
 
+    elif list_type == "feedback":
+        return show_feedback_list(call, page)
+
     else:
         if panel_type:
             all_panels_map = {p['name']: p['panel_type'] for p in db.get_all_panels()}
@@ -677,3 +680,45 @@ def handle_do_delete_transaction(call, params):
     time.sleep(1.5) 
     
     handle_financial_details(call, params=[month_str, page, '1'])
+
+def show_feedback_list(call: types.CallbackQuery, page: int):
+    """
+    لیست بازخوردهای کاربران را به صورت صفحه‌بندی شده نمایش می‌دهد.
+    """
+    uid, msg_id = call.from_user.id, call.message.message_id
+    
+    try:
+        total_items = db.get_feedback_count()
+        feedbacks = db.get_paginated_feedback(page, PAGE_SIZE)
+
+        lines = [f"*{escape_markdown('📊 لیست بازخورد کاربران')}*"]
+        lines.append(f"`──────────────────`")
+
+        if not feedbacks:
+            lines.append(escape_markdown("هیچ بازخوردی برای نمایش وجود ندارد."))
+        else:
+            for item in feedbacks:
+                user_name = escape_markdown(item.get('first_name', 'ناشناس'))
+                user_id = item.get('user_id', 0)
+                rating = "⭐️" * item.get('rating', 0)
+                comment = escape_markdown(item.get('comment', ' نظری ثبت نشده '))
+                date_str = escape_markdown(to_shamsi(item.get('created_at'), include_time=True))
+                
+                lines.append(f"👤 *{user_name}* \\(`{user_id}`\\) \\| امتیاز: {rating}")
+                lines.append(f"💬 {comment}")
+                lines.append(f"_{date_str}_")
+                lines.append(f"`──────────────────`")
+
+        final_text = "\n".join(lines)
+        kb = menu.create_pagination_menu(
+            base_callback="admin:list:feedback",
+            current_page=page,
+            total_items=total_items,
+            back_callback="admin:reports_menu",
+            lang_code='fa'
+        )
+        _safe_edit(uid, msg_id, final_text, reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"Error in show_feedback_list: {e}", exc_info=True)
+        bot.answer_callback_query(call.id, "خطا در نمایش لیست بازخوردها", show_alert=True)

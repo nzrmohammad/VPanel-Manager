@@ -11,6 +11,7 @@ from .admin_handlers import (
     group_actions, 
     plan_management, 
     panel_management,
+    support,
     wallet as wallet_admin_handler
 )
 
@@ -37,6 +38,7 @@ def register_admin_handlers(bot, scheduler_instance):
     backup.initialize_backup_handlers(bot)
     plan_management.initialize_plan_management_handlers(bot, admin_conversations)
     panel_management.initialize_panel_management_handlers(bot, admin_conversations)
+    support.initialize_support_handlers(bot)
     wallet_admin_handler.initialize_wallet_handlers(bot, admin_conversations)
 
     # ===================================================================

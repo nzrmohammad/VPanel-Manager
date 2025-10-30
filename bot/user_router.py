@@ -7,7 +7,8 @@ from .config import ADMIN_IDS
 from .menu import menu
 from .language import get_string
 from .utils import get_loyalty_progress_message, escape_markdown, _safe_edit
-from .user_handlers import account, info, settings, various, wallet
+from .user_handlers import account, info, settings, various, wallet, feedback
+from .admin_handlers.support import handle_admin_reply_to_ticket
 
 logger = logging.getLogger(__name__)
 bot = None
@@ -25,6 +26,8 @@ def initialize_user_handlers(b_instance, conversations_dict):
     settings.initialize_handlers(b_instance)
     various.initialize_handlers(b_instance, conversations_dict)
     wallet.initialize_handlers(b_instance, conversations_dict)
+    feedback.initialize_handlers(b_instance, conversations_dict)
+
 
 
 def go_back_to_main(call: types.CallbackQuery = None, message: types.Message = None, original_msg_id: int = None):
@@ -141,6 +144,9 @@ def handle_user_callbacks(call: types.CallbackQuery):
     if data.startswith("wallet:"):
         wallet.handle_wallet_callbacks(call)
         return
+    
+    elif data.startswith("feedback:"):
+        feedback.handle_feedback_callbacks(call)
 
     # --- Fallback to Main Menu ---
     if data == "back":
@@ -171,6 +177,13 @@ def register_user_handlers(b: telebot.TeleBot):
             db.set_referrer(uid, parts[1])
             
         go_back_to_main(message=message)
+
+    @bot.message_handler(
+        func=lambda m: m.reply_to_message is not None and m.from_user.id in ADMIN_IDS,
+        content_types=['text'] # فعلاً فقط پاسخ متنی
+    )
+    def admin_reply_handler(message: types.Message):
+        handle_admin_reply_to_ticket(message)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_lang:'))
     def language_callback(call: types.CallbackQuery):

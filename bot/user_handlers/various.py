@@ -3,17 +3,20 @@ from telebot import types
 import jdatetime
 from datetime import datetime, timedelta
 import pytz
+import copy
 
 # --- Local Imports ---
 from ..database import db
 from ..menu import menu
 from ..utils import escape_markdown, _safe_edit
 from ..language import get_string
-from ..user_formatters import fmt_registered_birthday_info, fmt_referral_page
-from ..config import ADMIN_IDS, ADMIN_SUPPORT_CONTACT, TUTORIAL_LINKS, ACHIEVEMENTS
+from ..user_formatters import fmt_registered_birthday_info, fmt_referral_page, fmt_purchase_summary
+from ..admin_formatters import fmt_admin_purchase_notification
+from ..config import ADMIN_IDS, ADMIN_SUPPORT_CONTACT, TUTORIAL_LINKS, ACHIEVEMENTS, ACHIEVEMENT_SHOP_ITEMS
 from .. import combined_handler
 from ..hiddify_api_handler import HiddifyAPIHandler
 from ..marzban_api_handler import MarzbanAPIHandler
+from .wallet import _notify_user
 
 
 logger = logging.getLogger(__name__)
@@ -69,19 +72,95 @@ def show_features_guide(call: types.CallbackQuery):
 # =============================================================================
 
 def handle_support_request(call: types.CallbackQuery):
-    """پیام راهنمای تماس با پشتیبانی را نمایش می‌دهد."""
+    """(نسخه جدید) از کاربر می‌خواهد تا پیام پشتیبانی خود را ارسال کند."""
     uid, msg_id = call.from_user.id, call.message.message_id
     lang_code = db.get_user_language(uid)
-    admin_contact = escape_markdown(ADMIN_SUPPORT_CONTACT)
     
-    title = f'*{escape_markdown(get_string("support_guidance_title", lang_code))}*'
-    body_template = get_string('support_guidance_body', lang_code)
-    body = escape_markdown(body_template).replace(escape_markdown('{admin_contact}'), f'*{admin_contact}*')
+    prompt = (
+        f"*{escape_markdown('📝 ارسال تیکت پشتیبانی')}*\n\n"
+        f"{escape_markdown('لطفاً سوال یا مشکل خود را به صورت کامل در قالب یک پیام بنویسید و ارسال کنید.')}\n\n"
+        f"{escape_markdown('⚠️ توجه: پیام شما مستقیماً برای ادمین ارسال خواهد شد.')}"
+    )
     
-    text = f"{title}\n\n{body}"
-    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back"))
-    _safe_edit(uid, msg_id, text, reply_markup=kb, parse_mode="MarkdownV2")
+    kb = menu.user_cancel_action(back_callback="back", lang_code=lang_code)
+    _safe_edit(uid, msg_id, prompt, reply_markup=kb)
+    
+    # ثبت گام بعدی برای دریافت پیام کاربر
+    bot.register_next_step_handler(call.message, get_support_ticket_message, original_msg_id=msg_id)
 
+def get_support_ticket_message(message: types.Message, original_msg_id: int):
+    """
+    پیام کاربر را دریافت، برای ادمین‌ها فوروارد و تیکت را در DB ثبت می‌کند.
+    """
+    uid = message.from_user.id
+    lang_code = db.get_user_language(uid)
+
+    # پیام "در حال ارسال" به کاربر
+    _safe_edit(uid, original_msg_id, escape_markdown("⏳ در حال ارسال پیام شما به پشتیبانی..."), reply_markup=None)
+
+    try:
+        user_info = message.from_user
+        user_db_data = db.user(uid)
+        wallet_balance = user_db_data.get('wallet_balance', 0.0) if user_db_data else 0.0
+        
+        # --- ساخت پیام کامل برای ادمین ---
+        caption_lines = [
+            f"💬 *تیکت پشتیبانی جدید*",
+            f"`──────────────────`",
+            f"👤 *کاربر:* {escape_markdown(user_info.first_name)}",
+            f"🆔 *آیدی:* `{uid}`"
+        ]
+        if user_info.username:
+            caption_lines.append(f"🔗 *یوزرنیم:* @{escape_markdown(user_info.username)}")
+        
+        caption_lines.append(f"💳 *موجودی کیف پول:* {wallet_balance:,.0f} تومان")
+        caption_lines.append(f"`──────────────────`")
+        
+        admin_caption = "\n".join(caption_lines)
+        
+        sent_admin_message_id = None
+        
+        # ارسال پیام (چه متن، چه عکس و...) به همه ادمین‌ها
+        for admin_id in ADMIN_IDS:
+            try:
+                # پیام کاربر را به ادمین فوروارد می‌کنیم
+                forwarded_msg = bot.forward_message(admin_id, uid, message.message_id)
+                # اطلاعات کاربر را زیر آن ارسال می‌کنیم
+                admin_msg = bot.send_message(admin_id, admin_caption, parse_mode="MarkdownV2", 
+                                             reply_to_message_id=forwarded_msg.message_id)
+                
+                # ما فقط به شناسه *یک* پیام نیاز داریم تا گفتگو را ردیابی کنیم
+                if not sent_admin_message_id:
+                    sent_admin_message_id = admin_msg.message_id
+            
+            except Exception as e:
+                logger.error(f"Failed to forward support ticket to admin {admin_id}: {e}")
+
+        # --- ثبت تیکت در دیتابیس ---
+        if sent_admin_message_id:
+            ticket_id = db.create_support_ticket(uid, sent_admin_message_id)
+            
+            # --- (مهم) شناسه تیکت را به پیام ادمین اضافه می‌کنیم ---
+            # این کار برای ردیابی پاسخ ادمین ضروری است
+            final_admin_caption = f"🎫 *تیکت شماره:* `{ticket_id}`\n" + admin_caption
+            for admin_id in ADMIN_IDS:
+                try:
+                    # پیام اطلاعاتی که ارسال کردیم را ویرایش می‌کنیم تا شماره تیکت را شامل شود
+                    bot.edit_message_text(final_admin_caption, admin_id, sent_admin_message_id, 
+                                          parse_mode="MarkdownV2")
+                except Exception:
+                    pass # اگر ویرایش نشد، مهم نیست، ردیابی هنوز کار می‌کند
+
+        # --- اطلاع‌رسانی به کاربر ---
+        success_prompt = escape_markdown("✅ پیام شما با موفقیت برای پشتیبانی ارسال شد. لطفاً منتظر پاسخ بمانید.")
+        kb_back = types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="back")
+        )
+        _safe_edit(uid, original_msg_id, success_prompt, reply_markup=kb_back)
+
+    except Exception as e:
+        logger.error(f"Error in get_support_ticket_message: {e}", exc_info=True)
+        _safe_edit(uid, original_msg_id, escape_markdown("❌ خطایی در ارسال پیام رخ داد. لطفاً دوباره تلاش کنید."))
 
 def show_tutorial_main_menu(call: types.CallbackQuery):
     """منوی اصلی انتخاب سیستم‌عامل برای آموزش را نمایش می‌دهد."""
@@ -368,80 +447,238 @@ def handle_referral_callbacks(call: types.CallbackQuery):
 # 4. Shop, Connection Doctor & "Coming Soon"
 # =============================================================================
 def handle_shop_callbacks(call: types.CallbackQuery):
-    """تمام callback های مربوط به فروشگاه دستاوردها را با منطق جدید و هوشمند مدیریت می‌کند."""
+    """
+    (نسخه نهایی و کامل)
+    تمام callback های مربوط به فروشگاه دستاوردها را با منطق پیش‌نمایش و تایید نهایی مدیریت می‌کند.
+    """
     uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
+    lang_code = db.get_user_language(uid)
 
-    if data == "shop:main":
+    try:
+        # --- 1. نمایش منوی اصلی فروشگاه ---
+        if data == "shop:main":
+            user = db.user(uid)
+            user_points = user.get('achievement_points', 0) if user else 0
+            access_rights = db.get_user_access_rights(uid)
+            prompt = (
+                f"🛍️ *{escape_markdown('فروشگاه دستاوردها')}*\n\n"
+                f"{escape_markdown('با امتیازهای خود می‌توانید جوایز زیر را خریداری کنید.')}\n\n"
+                f"💰 *{escape_markdown('موجودی امتیاز شما:')} {user_points}*"
+            )
+            _safe_edit(uid, msg_id, prompt, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
+
+        # --- 2. نمایش صفحه تاییدیه (پیش‌نمایش خرید) ---
+        elif data.startswith("shop:confirm:"):
+            item_key = data.split(":")[2]
+            item = ACHIEVEMENT_SHOP_ITEMS.get(item_key)
+            if not item: 
+                bot.answer_callback_query(call.id, "آیتم یافت نشد.", show_alert=True)
+                return
+
+            user_uuids = db.uuids(uid)
+            if not user_uuids:
+                bot.answer_callback_query(call.id, "خطا: شما هیچ اکانت فعالی برای اعمال خرید ندارید.", show_alert=True)
+                return
+
+            # --- شروع منطق پیش‌نمایش (مشابه خرید با کیف پول) ---
+            user_main_uuid_record = user_uuids[0]
+            user_main_uuid = user_main_uuid_record['uuid']
+            info_before = combined_handler.get_combined_user_info(user_main_uuid)
+            info_after = copy.deepcopy(info_before) # کپی عمیق برای شبیه‌سازی
+
+            add_gb = item.get("gb", 0)
+            add_days = item.get("days", 0)
+            target = item.get("target")
+
+            target_panel_type = None
+            if target == 'de': target_panel_type = 'hiddify'
+            elif target in ['fr', 'tr', 'us', 'ro']: target_panel_type = 'marzban'
+            
+            # اعمال تغییرات شبیه‌سازی شده روی info_after
+            for panel_details in info_after.get('breakdown', {}).values():
+                panel_data = panel_details.get('data', {})
+                if target == 'all' or panel_details.get('type') == target_panel_type:
+                    if add_gb > 0:
+                        panel_data['usage_limit_GB'] += add_gb
+                    if add_days > 0:
+                        current_panel_expire = panel_data.get('expire', 0)
+                        panel_data['expire'] = add_days if current_panel_expire is None or current_panel_expire < 0 else current_panel_expire + add_days
+
+            # --- ساخت پیام تاییدیه ---
+            lines = [f"*{escape_markdown('🔍 پیش‌نمایش خرید با امتیاز')}*"]
+            lines.append(f"`──────────────────`")
+            lines.append(f"🎁 *{escape_markdown('آیتم انتخابی:')}* {escape_markdown(item['name'])}")
+            lines.append(f"💰 *{escape_markdown('هزینه:')}* {item['cost']} امتیاز")
+            lines.append(f"`──────────────────`")
+            
+            lines.append(f"*{escape_markdown(get_string('purchase_summary_before_status', lang_code))}*")
+            # نمایش وضعیت قبل
+            for panel_details in sorted(info_before.get('breakdown', {}).values(), key=lambda p: p.get('type') != 'hiddify'):
+                p_data = panel_details.get('data', {})
+                limit = p_data.get('usage_limit_GB', 0)
+                expire_raw = p_data.get('expire')
+                expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+                
+                flag = "🏳️"
+                if panel_details.get('type') == 'hiddify': 
+                    flag = "🇩🇪"
+                elif panel_details.get('type') == 'marzban':
+                     marzban_flags = []
+                     if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
+                     if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
+                     if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+                     if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
+                     flag = "".join(marzban_flags)
+                
+                if flag != "🏳️" and (user_main_uuid_record.get(f"has_access_{panel_details.get('type')[:2]}", True)):
+                    lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+
+            lines.append(f"\n*{escape_markdown('وضعیت پس از خرید')}*")
+            # نمایش وضعیت بعد
+            for panel_details in sorted(info_after.get('breakdown', {}).values(), key=lambda p: p.get('type') != 'hiddify'):
+                p_data = panel_details.get('data', {})
+                limit = p_data.get('usage_limit_GB', 0)
+                expire_raw = p_data.get('expire')
+                expire = expire_raw if expire_raw is not None and expire_raw >= 0 else 0
+                
+                flag = "🏳️"
+                if panel_details.get('type') == 'hiddify': 
+                    flag = "🇩🇪"
+                elif panel_details.get('type') == 'marzban':
+                     marzban_flags = []
+                     if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
+                     if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
+                     if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+                     if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
+                     flag = "".join(marzban_flags)
+
+                if flag != "🏳️" and (user_main_uuid_record.get(f"has_access_{panel_details.get('type')[:2]}", True)):
+                    lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} روز*")
+
+            lines.extend([
+                f"`──────────────────`",
+                f"❓ *{escape_markdown('تایید نهایی')}*",
+                escape_markdown(f"آیا از کسر {item['cost']} امتیاز و اعمال این آیتم اطمینان دارید؟")
+            ])
+            
+            confirm_text = "\n".join(lines)
+            kb = types.InlineKeyboardMarkup(row_width=2)
+            kb.add(
+                types.InlineKeyboardButton("✅ بله، خرید", callback_data=f"shop:execute:{item_key}"),
+                types.InlineKeyboardButton("❌ انصراف", callback_data="shop:main")
+            )
+            _safe_edit(uid, msg_id, confirm_text, reply_markup=kb)
+
+        # --- 3. اجرای نهایی خرید ---
+        elif data.startswith("shop:execute:"):
+            item_key = data.split(":")[2]
+            item = ACHIEVEMENT_SHOP_ITEMS.get(item_key)
+            if not item: return
+
+            _safe_edit(uid, msg_id, escape_markdown("⏳ در حال پردازش خرید... لطفاً صبر کنید."), reply_markup=None)
+
+            if db.spend_achievement_points(uid, item['cost']):
+                user_uuids = db.uuids(uid)
+                purchase_successful = False
+
+                if item_key == "buy_lottery_ticket":
+                    if db.add_achievement(uid, 'lucky_one'):
+                        purchase_successful = True
+                        from scheduler_jobs.rewards import notify_user_achievement
+                        notify_user_achievement(bot, uid, 'lucky_one')
+                
+                elif user_uuids:
+                    user_main_uuid_record = user_uuids[0]
+                    user_main_uuid = user_main_uuid_record['uuid']
+                    info_before = combined_handler.get_combined_user_info(user_main_uuid)
+                    
+                    target = item.get("target")
+                    add_gb = item.get("gb", 0)
+                    add_days = item.get("days", 0)
+
+                    target_panel_type = None
+                    if target == 'de':
+                        target_panel_type = 'hiddify'
+                    elif target in ['fr', 'tr', 'us', 'ro']:
+                        target_panel_type = 'marzban'
+
+                    purchase_successful = combined_handler.modify_user_on_all_panels(
+                        user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel_type
+                    )
+
+                if purchase_successful:
+                    info_after = combined_handler.get_combined_user_info(user_main_uuid)
+                    db.log_shop_purchase(uid, item_key, item['cost'])
+                    bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
+
+                    # --- اطلاع‌رسانی به ادمین ---
+                    try:
+                        mock_plan_for_formatter = { "name": f"امتیاز: {item['name']}", "price": item['cost'] }
+                        user_db_info_after = db.user(uid)
+                        new_points = user_db_info_after.get('achievement_points', 0) if user_db_info_after else 0
+                        
+                        admin_notification_text = fmt_admin_purchase_notification(
+                            user_info=call.from_user,
+                            plan=mock_plan_for_formatter,
+                            new_balance=new_points,
+                            info_before=info_before,
+                            info_after=info_after,
+                            payment_count=0, # امتیازی است
+                            is_vip=user_main_uuid_record.get('is_vip', False),
+                            user_access=user_main_uuid_record
+                        ).replace("خرید جدید از کیف پول", "خرید جدید از فروشگاه امتیاز") \
+                         .replace("تومان", "امتیاز") \
+                         .replace("تمدید شماره:", "خرید آیتم:")
+
+                        panel_short = 'h' if any(p.get('type') == 'hiddify' for p in info_after.get('breakdown', {}).values()) else 'm'
+                        kb_admin = types.InlineKeyboardMarkup().add(
+                            types.InlineKeyboardButton("👤 مدیریت کاربر", callback_data=f"admin:us:{panel_short}:{user_main_uuid}:search")
+                        )
+                        for admin_id in ADMIN_IDS:
+                            _notify_user(admin_id, admin_notification_text)
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to send shop purchase notification to admins for user {uid}: {e}")
+                    # --- پایان اطلاع‌رسانی به ادمین ---
+
+                    # --- پیام موفقیت به کاربر ---
+                    user = db.user(uid)
+                    user_points = user.get('achievement_points', 0) if user else 0
+                    access_rights = db.get_user_access_rights(uid)
+                    
+                    summary_text = fmt_purchase_summary(info_before, info_after, {"name": item['name']}, lang_code, user_access=user_main_uuid_record)
+                    
+                    purchased_item_name = escape_markdown(item['name'])
+                    success_message = (
+                        f"✅ *خرید با موفقیت انجام شد*\\!\n\n"
+                        f"آیتم «*{purchased_item_name}*» برای شما فعال شد\\.\n\n"
+                        f"{summary_text}\n\n"
+                        f"💰 *موجودی امتیاز فعلی:* {user_points}"
+                    )
+                    _safe_edit(uid, msg_id, success_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
+                else:
+                    db.add_achievement_points(uid, item['cost']) # بازگرداندن امتیاز در صورت خطا
+                    bot.answer_callback_query(call.id, "❌ خطایی در اعمال تغییرات رخ داد. امتیاز شما بازگردانده شد.", show_alert=True)
+            else:
+                bot.answer_callback_query(call.id, "❌ امتیاز شما کافی نیست.", show_alert=True)
+
+        # --- 4. مدیریت کلیک روی دکمه آیتم غیرقابل خرید ---
+        elif data == "shop:insufficient_points":
+            bot.answer_callback_query(call.id, "❌ امتیاز شما برای خرید این آیتم کافی نیست.", show_alert=False)
+
+    except Exception as e:
+        logger.error(f"Error in handle_shop_callbacks: {e}", exc_info=True)
+        bot.answer_callback_query(call.id, "خطای داخلی رخ داد. لطفاً دوباره تلاش کنید.", show_alert=True)
+        # بازگرداندن کاربر به منوی اصلی فروشگاه در صورت بروز خطا
         user = db.user(uid)
         user_points = user.get('achievement_points', 0) if user else 0
-
         access_rights = db.get_user_access_rights(uid)
-
         prompt = (
             f"🛍️ *{escape_markdown('فروشگاه دستاوردها')}*\n\n"
             f"{escape_markdown('با امتیازهای خود می‌توانید جوایز زیر را خریداری کنید.')}\n\n"
             f"💰 *{escape_markdown('موجودی امتیاز شما:')} {user_points}*"
         )
         _safe_edit(uid, msg_id, prompt, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
-
-    elif data.startswith("shop:buy:"):
-        from ..config import ACHIEVEMENT_SHOP_ITEMS
-        item_key = data.split(":")[2]
-        item = ACHIEVEMENT_SHOP_ITEMS.get(item_key)
-
-        if not item: return
-
-        if db.spend_achievement_points(uid, item['cost']):
-            user_uuids = db.uuids(uid)
-            purchase_successful = False
-
-            if item_key == "buy_lottery_ticket":
-                if db.add_achievement(uid, 'lucky_one'):
-                    purchase_successful = True
-                    from scheduler_jobs.rewards import notify_user_achievement
-                    notify_user_achievement(bot, uid, 'lucky_one')
-            
-            elif user_uuids:
-                user_main_uuid = user_uuids[0]['uuid']
-                
-                target = item.get("target")
-                add_gb = item.get("gb", 0)
-                add_days = item.get("days", 0)
-
-                target_panel = None
-                if target == 'de':
-                    target_panel = 'hiddify'
-                elif target == 'fr_tr':
-                    target_panel = 'marzban'
-
-                purchase_successful = combined_handler.modify_user_on_all_panels(
-                    user_main_uuid, add_gb=add_gb, add_days=add_days, target_panel_type=target_panel
-                )
-
-            if purchase_successful:
-                db.log_shop_purchase(uid, item_key, item['cost'])
-                bot.answer_callback_query(call.id, "✅ خرید شما با موفقیت انجام شد.", show_alert=True)
-
-                user = db.user(uid)
-                user_points = user.get('achievement_points', 0) if user else 0
-                
-                access_rights = db.get_user_access_rights(uid)
-
-                purchased_item_name = escape_markdown(item['name'])
-                success_message = (
-                    f"✅ *خرید با موفقیت انجام شد*\\!\n\n"
-                    f"شما آیتم «*{purchased_item_name}*» را خریداری کردید و تغییرات روی سرویس شما اعمال شد\\.\n\n"
-                    f"💰 *موجودی امتیاز فعلی:* {user_points}"
-                )
-                _safe_edit(uid, msg_id, success_message, reply_markup=menu.achievement_shop_menu(user_points, access_rights))
-            else:
-                db.add_achievement_points(uid, item['cost'])
-                bot.answer_callback_query(call.id, "❌ خطایی در اعمال تغییرات رخ داد. امتیاز شما بازگردانده شد.", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "❌ امتیاز شما کافی نیست.", show_alert=True)
-
-    elif data == "shop:insufficient_points":
-        bot.answer_callback_query(call.id, "❌ امتیاز شما برای خرید این آیتم کافی نیست.", show_alert=False)
 
 
 def handle_connection_doctor(call: types.CallbackQuery):
