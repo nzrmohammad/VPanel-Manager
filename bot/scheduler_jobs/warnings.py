@@ -173,8 +173,8 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                         # (اختیاری ولی مهم) چک می‌کنیم که در ۲۴ ساعت گذشته تراکنش موفقی نداشته باشد
                         if not db.check_recent_successful_payment(uuid_id_in_db, hours=24):
                             alert_message = (
-                                f"⚠️ *هشدار ریزش مشتری (مردد)*\n\n"
-                                f"سرویس کاربر *{escape_markdown(user_name)}* (`{user_id_in_telegram}`) *دیروز/امروز* منقضی شده و هنوز تمدید نکرده است\\.\n\n"
+                                f"⚠️ *هشدار ریزش مشتری \\(مردد\\)*\n\n"
+                                f"سرویس کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(str(user_id_in_telegram))}`\\) *دیروز/امروز* منقضی شده و هنوز تمدید نکرده است\\.\n\n"
                                 f"این بهترین زمان برای ارسال یک پیشنهاد تخفیف و بازگرداندن اوست\\."
                             )
                             kb_admin = types.InlineKeyboardMarkup(row_width=2)
@@ -312,10 +312,11 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                     days_inactive = (now_utc.replace(tzinfo=None) - last_online.replace(tzinfo=None)).days
                     
                     if days_inactive >= 4 and not db.has_recent_warning(uuid_id_in_db, 'churn_alert_inactive', hours=72):
+                        remaining_gb_str = f"{info.get('remaining_GB', 0.0):.1f}"
                         alert_message = (
-                            f"⚠️ *هشدار ریزش مشتری (ناراضی خاموش)*\n\n"
-                            f"کاربر *{escape_markdown(user_name)}* (`{user_id_in_telegram}`) با وجود داشتن اعتبار، *{days_inactive} روز* است که متصل نشده است\\.\n\n"
-                            f"اعتبار: *{expire_days} روز* \\| حجم باقی‌مانده: *{info.get('remaining_GB', 0.0):.1f} GB*\n\n"
+                            f"⚠️ *هشدار ریزش مشتری \\(ناراضی خاموش\\)*\n\n"
+                            f"کاربر *{escape_markdown(user_name)}* \\(`{escape_markdown(str(user_id_in_telegram))}`\\) با وجود داشتن اعتبار، *{escape_markdown(str(days_inactive))} روز* است که متصل نشده است\\.\n\n"
+                            f"اعتبار: *{escape_markdown(str(expire_days))} روز* \\| حجم باقی‌مانده: *{escape_markdown(remaining_gb_str)} GB*\n\n"
                             f"این کاربر احتمالاً به مشکل خورده و نیاز به پیگیری دارد\\."
                         )
                         kb_admin = types.InlineKeyboardMarkup(row_width=2)
