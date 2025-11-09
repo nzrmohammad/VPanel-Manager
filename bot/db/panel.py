@@ -5,8 +5,6 @@ import logging
 import sqlite3
 
 from .base import DatabaseManager
-# آدرس ایمپورت ACCESS_TEMPLATES ممکن است نیاز به اصلاح داشته باشد
-# اگر فایل config.py شما در پوشه bot قرار دارد، این آدرس صحیح است
 from ..config import ACCESS_TEMPLATES
 
 logger = logging.getLogger(__name__)
@@ -165,7 +163,7 @@ class PanelDB(DatabaseManager):
 
     def set_template_server_type(self, template_id: int, server_type: str):
         """نوع سرور یک قالب را تنظیم می‌کند."""
-        if server_type not in ['de', 'fr', 'tr', 'us', 'ro', 'none']:
+        if server_type not in ['de', 'fr', 'tr', 'us', 'ro', 'supp', 'none']:
             return
         with self._conn() as c:
             c.execute("UPDATE config_templates SET server_type = ? WHERE id = ?", (server_type, template_id))
@@ -190,7 +188,7 @@ class PanelDB(DatabaseManager):
             c.execute("""
                 UPDATE user_uuids SET
                     has_access_de = ?, has_access_fr = ?, has_access_tr = ?,
-                    has_access_us = ?, has_access_ro = ?
+                    has_access_us = ?, has_access_ro = ?, has_access_supp = ?
                 WHERE id = ?
             """, (
                 int(template.get('has_access_de', False)),
@@ -198,6 +196,7 @@ class PanelDB(DatabaseManager):
                 int(template.get('has_access_tr', False)),
                 int(template.get('has_access_us', False)),
                 int(template.get('has_access_ro', False)),
+                int(template.get('has_access_supp', False)),
                 uuid_id
             ))
         logging.info(f"Access template '{plan_category}' applied for uuid_id {uuid_id}.")

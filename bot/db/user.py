@@ -309,7 +309,7 @@ class UserDB(DatabaseManager):
 
     def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
         """دسترسی کاربر به یک سرور خاص را به‌روزرسانی می‌کند."""
-        if server not in ['de', 'fr', 'tr', 'us', 'ro']:
+        if server not in ['de', 'fr', 'tr', 'us', 'ro', 'supp']:
             return False
         column_name = f"has_access_{server}"
         with self._conn() as c:
@@ -318,7 +318,7 @@ class UserDB(DatabaseManager):
             
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
-        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False}
+        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 'has_access_supp': False}
         user_uuids = self.uuids(user_id)
         if user_uuids:
             # دسترسی بر اساس اولین اکانت ثبت شده تعیین می‌شود
@@ -329,6 +329,7 @@ class UserDB(DatabaseManager):
                 access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
                 access_rights['has_access_us'] = first_uuid_record.get('has_access_us', False)
                 access_rights['has_access_ro'] = first_uuid_record.get('has_access_ro', False)
+                access_rights['has_access_supp'] = first_uuid_record.get('has_access_supp', False)
         return access_rights
 
     # --- توابع مربوط به دستگاه‌های کاربر (User Agents) ---
