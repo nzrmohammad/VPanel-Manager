@@ -10,7 +10,7 @@ from bot import combined_handler
 from bot.database import db
 from bot.utils import escape_markdown
 from bot.admin_formatters import fmt_admin_report, fmt_weekly_admin_summary, fmt_daily_achievements_report
-from bot.user_formatters import fmt_user_report, fmt_user_weekly_report
+from bot.user_formatters import fmt_user_report, fmt_user_weekly_report, fmt_user_monthly_report
 from bot.config import ADMIN_IDS, ACHIEVEMENTS
 from bot.language import get_string
 
@@ -102,6 +102,21 @@ def weekly_report(bot, target_user_id: int = None) -> None:
     گزارش هفتگی مصرف را برای کاربران ارسال می‌کند.
     (نسخه اصلاح شده با مدیریت خطا در حلقه)
     """
+    # --- بررسی تداخل با گزارش ماهانه ---
+    if not target_user_id: # اگر تست دستی ادمین نبود
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
+        
+        tomorrow_gregorian = now_gregorian + timedelta(days=1)
+        tomorrow_shamsi = jdatetime.datetime.fromgregorian(datetime=tomorrow_gregorian)
+
+        is_last_shamsi_day = (now_shamsi.month != tomorrow_shamsi.month)
+        
+        if is_last_shamsi_day:
+            logger.info("SCHEDULER (Weekly): Today is the last day of the month. Skipping weekly report to avoid double report.")
+            return # گزارش هفتگی را اجرا نمی‌کند
+        
     now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(pytz.timezone("Asia/Tehran"))).strftime("%Y/%m/%d - %H:%M")
     all_users_info = combined_handler.get_all_users_combined()
     if not all_users_info:
@@ -299,3 +314,92 @@ def send_monthly_satisfaction_survey(bot):
 
     except Exception as e:
         logger.error(f"Error in scheduled job send_monthly_satisfaction_survey: {e}", exc_info=True)
+
+
+def send_monthly_usage_report(bot) -> None:
+    """
+    در روز آخر هر ماه شمسی، گزارش مصرف همان ماه را برای کاربران ارسال می‌کند.
+    (بر اساس ساختار weekly_report)
+    """
+    logger.info("SCHEDULER: Checking for monthly usage report...")
+    try:
+        # --- منطق بررسی آخرین روز ماه شمسی ---
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian)
+
+        tomorrow_gregorian = now_gregorian + timedelta(days=1)
+        tomorrow_shamsi = jdatetime.datetime.fromgregorian(datetime=tomorrow_gregorian)
+
+        is_last_shamsi_day = (now_shamsi.month != tomorrow_shamsi.month)
+
+        # --- برای تست می‌توانید این خط را موقتا فعال کنید ---
+        # is_last_shamsi_day = True 
+
+        if not is_last_shamsi_day:
+            logger.info(f"SCHEDULER: Today ({now_shamsi.strftime('%Y/%m/%d')}) is not the last Shamsi day. Skipping.")
+            return
+        # --- پایان منطق بررسی ---
+
+        logger.info("SCHEDULER: It's the last Shamsi day! Starting monthly usage report job...")
+
+        # --- این بخش دقیقا از weekly_report شما کپی شده است ---
+        now_str = jdatetime.datetime.fromgregorian(datetime=datetime.now(pytz.timezone("Asia/Tehran"))).strftime("%Y/%m/%d - %H:%M")
+        all_users_info = combined_handler.get_all_users_combined()
+        if not all_users_info:
+            logger.warning("SCHEDULER (Monthly): Could not fetch API user info. JOB STOPPED.")
+            return
+        user_info_map = {u['uuid']: u for u in all_users_info}
+
+        user_ids_to_process = list(db.get_all_user_ids())
+        separator = '\n' + '─' * 26 + '\n' # از جداکننده عریض‌تر استفاده می‌کنیم
+
+        for user_id in user_ids_to_process:
+            try:
+                user_settings = db.get_user_settings(user_id)
+                # از همان تنظیمات 'reports' گزارش روزانه/هفتگی استفاده می‌کند
+                if not user_settings.get('reports', True):
+                    continue
+
+                user_uuids = db.uuids(user_id)
+                user_infos = [user_info_map[u['uuid']] for u in user_uuids if u['uuid'] in user_info_map]
+
+                if user_infos:
+                    # 1. تغییر هدر
+                    month_name = jdatetime.date.j_months_fa[now_shamsi.month - 1]
+                    header = f"📊 *گزارش ماه {month_name}* {escape_markdown('-')} {escape_markdown(now_str)}{separator}"
+
+                    lang_code = db.get_user_language(user_id)
+
+                    # 2. فراخوانی فرمت‌کننده جدید
+                    report_text = fmt_user_monthly_report(user_infos, lang_code)
+
+                    final_message = header + report_text
+                    sent_message = bot.send_message(user_id, final_message, parse_mode="MarkdownV2")
+
+                    if sent_message:
+                        # مدیریت حذف گزارش‌های قبلی (کپی شده از weekly_report)
+                        previous_report_ids = db.get_sent_reports(user_id)
+                        db.add_sent_report(user_id, sent_message.message_id)
+                        for report_id in previous_report_ids:
+                            try:
+                                bot.delete_message(user_id, report_id['message_id'])
+                            except Exception as e:
+                                logger.warning(f"Failed to delete old report {report_id['message_id']} for user {user_id}: {e}")
+
+                time.sleep(0.5) # جلوگیری از فلو
+
+            except apihelper.ApiTelegramException as e:
+                if "bot was blocked by the user" in e.description or "user is deactivated" in e.description:
+                    logger.warning(f"SCHEDULER (Monthly): User {user_id} blocked bot. Deactivating.")
+                    for u in db.uuids(user_id):
+                        db.deactivate_uuid(u['id'])
+                else:
+                    logger.error(f"SCHEDULER (Monthly): API error for user {user_id}: {e}")
+            except Exception as e:
+                logger.error(f"SCHEDULER (Monthly): Failure for user {user_id}: {e}", exc_info=True)
+
+        logger.info("SCHEDULER: Monthly usage report job finished.")
+
+    except Exception as e:
+        logger.error(f"Error in scheduled job send_monthly_usage_report: {e}", exc_info=True)

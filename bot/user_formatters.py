@@ -27,6 +27,7 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     has_access_tr = user_record.get('has_access_tr', False) if user_record else False
     has_access_us = user_record.get('has_access_us', False) if user_record else False
     has_access_ro = user_record.get('has_access_ro', False) if user_record else False
+    has_access_supp = user_record.get('has_access_supp', False) if user_record else False
 
     raw_name = info.get("name", get_string('unknown_user', lang_code))
     is_active_overall = info.get("is_active", False)
@@ -49,6 +50,7 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
             if has_access_tr: flags += "🇹🇷"
             if has_access_us: flags += "🇺🇸"
             if has_access_ro: flags += "🇷🇴"
+            if has_access_supp: flags += "🇫🇮"
         
         if not flags:
             return []
@@ -185,31 +187,34 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             account_lines.append(f"📊 حجم‌کل : {escape_markdown(f'{info.get("usage_limit_GB", 0):.2f} GB')}")
             if access_rights.get('has_access_de') and hiddify_info:
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('usage_limit_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and marzban_info:
+            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
                 if access_rights.get('has_access_ro'): flags.append("🇷🇴")
+                if access_rights.get('has_access_supp'): flags.append("🇫🇮")
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('usage_limit_GB', 0)))}")
 
             account_lines.append(f"🔥 حجم‌مصرف شده : {escape_markdown(f'{info.get("current_usage_GB", 0):.2f} GB')}")
             if access_rights.get('has_access_de') and hiddify_info:
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('current_usage_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and marzban_info:
+            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
                 if access_rights.get('has_access_ro'): flags.append("🇷🇴")
+                if access_rights.get('has_access_supp'): flags.append("🇫🇮")
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('current_usage_GB', 0)))}")
 
             account_lines.append(f"📥 حجم‌باقی‌مانده : {escape_markdown(f'{max(0, info.get("usage_limit_GB", 0) - info.get("current_usage_GB", 0)):.2f} GB')}")
             if access_rights.get('has_access_de') and hiddify_info:
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('remaining_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and marzban_info:
+            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
                 if access_rights.get('has_access_ro'): flags.append("🇷🇴")
+                if access_rights.get('has_access_supp'): flags.append("🇫🇮")
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('remaining_GB', 0)))}")
 
             # این بخش مصرف روزانه را به گزارش اضافه می‌کند
@@ -217,11 +222,12 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
                 account_lines.append("⚡️ حجم مصرف شده امروز:")
                 if access_rights.get('has_access_de') and daily_usage_dict.get('hiddify',0) > 0.001:
                     account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(daily_usage_dict.get('hiddify',0)))}")
-                if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro')) and daily_usage_dict.get('marzban',0) > 0.001:
+                if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and daily_usage_dict.get('marzban',0) > 0.001:
                     flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
                     if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                     if access_rights.get('has_access_us'): flags.append("🇺🇸")
                     if access_rights.get('has_access_ro'): flags.append("🇷🇴")
+                    if access_rights.get('has_access_supp'): flags.append("🇫🇮")
                     account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(daily_usage_dict.get('marzban',0)))}")
             else:
                 logger.debug(f"fmt_user_report: Daily usage section for '{name}' was skipped because total daily usage ({sum(daily_usage_dict.values()):.4f} GB) was not > 0.001.")
@@ -304,6 +310,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     if user_record.get('has_access_tr'): flags.append("🇹🇷")
                     if user_record.get('has_access_us'): flags.append("🇺🇸")
                     if user_record.get('has_access_ro'): flags.append("🇷🇴")
+                    if user_record.get('has_access_supp'): flags.append("🇫🇮")
                     flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸🇷🇴" # Fallback
                     breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
                 
@@ -347,6 +354,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                 if user_record.get('has_access_tr'): flags.append("🇹🇷")
                 if user_record.get('has_access_us'): flags.append("🇺🇸")
                 if user_record.get('has_access_ro'): flags.append("🇷🇴")
+                if user_record.get('has_access_supp'): flags.append("🇫🇮")
                 if flags:
                     most_used_server = "".join(flags) # به جای join با "/"، پرچم‌ها را مستقیم به هم می‌چسبانیم
 
@@ -604,6 +612,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if access_rights.get('has_access_tr'): access_flags.append("🇹🇷")
     if access_rights.get('has_access_us'): access_flags.append("🇺🇸")
     if access_rights.get('has_access_ro'): access_flags.append("🇷🇴")
+    if access_rights.get('has_access_supp'): access_flags.append("🇫🇮")
 
     access_text = f"🛰️ سرورها : {''.join(access_flags)}" if access_flags else ""
 
@@ -635,6 +644,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     if access_rights.get('has_access_tr'): marzban_flags_list.append("🇹🇷")
     if access_rights.get('has_access_us'): marzban_flags_list.append("🇺🇸")
     if access_rights.get('has_access_ro'): marzban_flags_list.append("🇷🇴")
+    if access_rights.get('has_access_supp'): marzban_flags_list.append("🇫🇮")
 
     marzban_flag_str = "".join(marzban_flags_list)
 
@@ -695,7 +705,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     lines.append("")
     lines.append(create_progress_bar(usage_percentage))
     uuid_escaped = escape_markdown(user_uuid)
-    lines.append(f"\n||{escape_markdown(user_uuid)}||")
+    lines.append(f"\n`{escape_markdown(user_uuid)}`")
 
     final_text = "\n".join(lines)
     return final_text, "MarkdownV2"
@@ -820,6 +830,7 @@ def fmt_purchase_summary(info_before: dict, info_after: dict, plan: dict, lang_c
     if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
     if user_access.get('has_access_ro'): marzban_flags.append("🇷🇴")
+    if user_access.get('has_access_supp'): marzban_flags.append("🇫🇮")
     dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else ""
 
     def sort_key(panel_item_tuple):
@@ -853,3 +864,140 @@ def fmt_purchase_summary(info_before: dict, info_after: dict, plan: dict, lang_c
             lines.append(f" {flag} : *{int(limit)} GB* \\| *{int(expire)} {escape_markdown(days_unit)}*")
             
     return '\n'.join(lines)
+
+
+def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
+    """
+    (نسخه ماهانه - کپی شده از گزارش هفتگی)
+    گزارش ماهانه را با تفکik مصرف، مقایسه با ماه قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
+    """
+    if not user_infos:
+        return ""
+
+    accounts_reports = []
+    separator = '──────────────────'
+    day_names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+    tehran_tz = pytz.timezone("Asia/Tehran")
+
+    for info in user_infos:
+        uuid = info.get("uuid")
+        if not uuid: continue
+
+        uuid_id = db.get_uuid_id_by_uuid(uuid)
+        user_record = db.get_user_uuid_record(uuid)
+        if not uuid_id or not user_record: continue
+
+        user_id = user_record.get('user_id')
+        name = info.get("name", get_string('unknown_user', lang_code))
+
+        # 1. تغییر کلیدی: فراخوانی تابع ماهانه به جای هفتگی
+        daily_history = db.get_user_monthly_usage_history_by_panel(uuid_id)
+        current_month_usage = sum(item['total_usage'] for item in daily_history)
+
+        account_lines = []
+        if len(user_infos) > 1:
+            account_lines.append(f"*{escape_markdown(get_string('fmt_report_account_header', lang_code).format(name=name))}*")
+
+        # نمایش مصرف روزانه به تفکیک (این حلقه بدون تغییر باقی می‌ماند)
+        for item in reversed(daily_history):
+            total_daily = item['total_usage']
+            if total_daily > 0.001:
+                date_shamsi = to_shamsi(item['date'])
+                usage_formatted = format_daily_usage(total_daily)
+
+                account_lines.append(f"\n *در* {date_shamsi} : *{escape_markdown(usage_formatted)}*")
+
+                breakdown_parts = []
+                h_usage_day = item.get('hiddify_usage', 0.0)
+                m_usage_day = item.get('marzban_usage', 0.0)
+
+                if h_usage_day > 0.001:
+                    breakdown_parts.append(f"🇩🇪 {format_daily_usage(h_usage_day)}")
+                if m_usage_day > 0.001:
+                    flags = []
+                    if user_record.get('has_access_fr'): flags.append("🇫🇷")
+                    if user_record.get('has_access_tr'): flags.append("🇹🇷")
+                    if user_record.get('has_access_us'): flags.append("🇺🇸")
+                    if user_record.get('has_access_ro'): flags.append("🇷🇴")
+                    if user_record.get('has_access_supp'): flags.append("🇫🇮")
+                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸🇷🇴" # Fallback
+                    breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
+
+                if breakdown_parts:
+                    account_lines.append(f"  \\({escape_markdown(', '.join(breakdown_parts))}\\)")
+
+        # فوتر مصرف کل
+        usage_footer_str = format_daily_usage(current_month_usage)
+        # 2. تغییر متن: استفاده از کلید زبان جدید (یا می‌توانید متن فعلی را تغییر دهید)
+        footer_template = get_string("monthly_usage_header", lang_code) # فرض می‌کنیم کلید "monthly_usage_header" را اضافه می‌کنید
+        final_footer_line = f"{footer_template} {usage_footer_str}"
+        account_lines.append(f'\n\n*{escape_markdown(final_footer_line)}*')
+
+        # بخش دستاوردها
+        # 3. تغییر منطق: محاسبه شروع ماه شمسی به جای هفته
+        now_shamsi_for_ach = jdatetime.datetime.now(tz=tehran_tz)
+        month_start_shamsi = now_shamsi_for_ach.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start_utc = month_start_shamsi.togregorian().astimezone(pytz.utc)
+        monthly_achievements = db.get_user_achievements_in_range(user_id, month_start_utc) if user_id else []
+
+        if monthly_achievements:
+            account_lines.append(separator)
+            account_lines.append(f"*{escape_markdown('🏆 دستاوردها و جوایز این ماه')}*")
+            for ach in monthly_achievements:
+                badge_data = ACHIEVEMENTS.get(ach['badge_code'], {})
+                badge_name = escape_markdown(badge_data.get('name', ach['badge_code']))
+                badge_icon = badge_data.get('icon', '🎖️')
+                points = badge_data.get('points', 0)
+                account_lines.append(f"{badge_icon} {badge_name} \\(*\\+{points} امتیاز*\\)")
+
+        # بخش خلاصه هوشمند و دوستانه
+        if current_month_usage > 0.1:
+            busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
+            busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
+
+            total_h_usage = sum(d.get('hiddify_usage', 0.0) for d in daily_history)
+            total_m_usage = sum(d.get('marzban_usage', 0.0) for d in daily_history)
+
+            most_used_server = "سرور اصلی"
+            if total_h_usage >= total_m_usage and user_record.get('has_access_de'):
+                most_used_server = "آلمان 🇩🇪"
+            else:
+                flags = []
+                if user_record.get('has_access_fr'): flags.append("🇫🇷")
+                if user_record.get('has_access_tr'): flags.append("🇹🇷")
+                if user_record.get('has_access_us'): flags.append("🇺🇸")
+                if user_record.get('has_access_ro'): flags.append("🇷🇴")
+                if user_record.get('has_access_supp'): flags.append("🇫🇮")
+                if flags:
+                    most_used_server = "".join(flags)
+
+            # 4. تغییر کلیدی: فراخوانی تابع ماهانه
+            time_of_day_stats = db.get_monthly_usage_by_time_of_day(uuid_id)
+            busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get) if any(v > 0 for v in time_of_day_stats.values()) else None
+            period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}
+            busiest_period_name = period_map.get(busiest_period_key, 'ساعات مختلف')
+
+            # 5. تغییر کلیدی: فراخوانی تابع ماهانه
+            previous_month_usage = db.get_previous_month_usage(uuid_id)
+            comparison_text = ""
+            if previous_month_usage > 0.01:
+                usage_change_percent = ((current_month_usage - previous_month_usage) / previous_month_usage) * 100
+                change_word = "بیشتر" if usage_change_percent >= 0 else "کمتر"
+                # 6. تغییر متن: "هفته قبل" به "ماه قبل"
+                comparison_text = f"این مصرف *{escape_markdown(f'{abs(usage_change_percent):.0f}%')}* {escape_markdown(change_word)} از ماه قبل بود\\. "
+
+            # 7. تغییر متن: "این هفته" به "این ماه"
+            summary_message = (
+                f"{separator}\n"
+                f"سلام {escape_markdown(name)}\n"
+                f"این ماه *{escape_markdown(usage_footer_str)}* مصرف داشتی\\. {comparison_text}"
+                f"پرمصرف‌ترین روزت *{escape_markdown(busiest_day_name)}* بود و بیشتر از سرور *{escape_markdown(most_used_server)}* استفاده کردی\\. "
+                f"به نظر میاد بیشتر در *{escape_markdown(busiest_period_name)}* فعال هستی\\!"
+            )
+            account_lines.append(summary_message)
+
+        accounts_reports.append("\n".join(account_lines))
+
+    # 8. تغییر هدر اصلی (اگر چند اکانت وجود داشته باشد)
+    # این بخش در فایل `reports.py` مدیریت می‌شود، پس اینجا `return` می‌کنیم
+    return "\n\n".join(accounts_reports)

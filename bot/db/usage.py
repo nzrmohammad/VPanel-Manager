@@ -882,3 +882,70 @@ class UsageDB(DatabaseManager):
         with self._conn() as c:
             row = c.execute("SELECT COUNT(id) FROM user_uuids WHERE is_active = 1").fetchone()
             return row[0] if row else 0
+
+    def get_user_monthly_usage_history_by_panel(self, uuid_id: int) -> list:
+        """
+        تاریخچه مصرف روزانه کاربر در ماه شمسی جاری را به تفکیک پنل برمی‌گرداند.
+        """
+        try:
+            tehran_tz = pytz.timezone("Asia/Tehran")
+            now_gregorian = datetime.now(tehran_tz)
+            now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
+
+            shamsi_month_start = now_shamsi.replace(day=1, hour=0, minute=0, second=0)
+            gregorian_start_date = shamsi_month_start.togregorian()
+
+            with self.lock:
+                self.cursor.execute("""
+                    SELECT 
+                        date,
+                        SUM(CASE WHEN panel_type = 'hiddify' THEN usage_gb ELSE 0 END) as hiddify_usage,
+                        SUM(CASE WHEN panel_type = 'marzban' THEN usage_gb ELSE 0 END) as marzban_usage,
+                        SUM(usage_gb) as total_usage
+                    FROM daily_usage
+                    WHERE uuid_id = ? AND date >= ?
+                    GROUP BY date
+                    ORDER BY date ASC
+                """, (uuid_id, gregorian_start_date))
+                return [dict(row) for row in self.cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error in get_user_monthly_usage_history_by_panel: {e}", exc_info=True)
+            return []
+
+
+    def get_previous_month_usage(self, uuid_id: int) -> float:
+        """
+        کل مصرف کاربر در ماه شمسی گذشته را برمی‌گرداند.
+        """
+        try:
+            tehran_tz = pytz.timezone("Asia/Tehran")
+            now_gregorian = datetime.now(tehran_tz)
+            now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
+
+            # شروع ماه شمسی فعلی
+            start_of_current_month_shamsi = now_shamsi.replace(day=1, hour=0, minute=0, second=0)
+            start_of_current_month_greg = start_of_current_month_shamsi.togregorian()
+
+            # پایان ماه شمسی قبل (یک ثانیه قبل از شروع این ماه)
+            end_of_previous_month_greg = start_of_current_month_greg - timedelta(seconds=1)
+            end_of_previous_month_shamsi = jdatetime.datetime.fromgregorian(datetime=end_of_previous_month_greg, tzinfo=tehran_tz)
+
+            # شروع ماه شمسی قبل
+            start_of_previous_month_shamsi = end_of_previous_month_shamsi.replace(day=1, hour=0, minute=0, second=0)
+            start_of_previous_month_greg = start_of_previous_month_shamsi.togregorian()
+
+            with self.lock:
+                self.cursor.execute("""
+                    SELECT SUM(total_usage) 
+                    FROM (
+                        SELECT SUM(usage_gb) as total_usage
+                        FROM daily_usage 
+                        WHERE uuid_id = ? AND date >= ? AND date < ?
+                        GROUP BY date -- برای جلوگیری از محاسبه مضاعف رکوردهای ساعتی
+                    ) as monthly_sum
+                """, (uuid_id, start_of_previous_month_greg, start_of_current_month_greg))
+                result = self.cursor.fetchone()
+                return result[0] if result and result[0] else 0.0
+        except Exception as e:
+            logger.error(f"Error in get_previous_month_usage: {e}", exc_info=True)
+            return 0.0
