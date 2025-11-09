@@ -118,6 +118,29 @@ class DatabaseManager:
             );
             """,
             """
+            CREATE TABLE IF NOT EXISTS user_uuids (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                uuid TEXT,
+                name TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP,
+                first_connection_time TIMESTAMP,
+                welcome_message_sent INTEGER DEFAULT 0,
+                renewal_reminder_sent INTEGER DEFAULT 0,
+                is_vip INTEGER DEFAULT 0,
+                has_access_de INTEGER DEFAULT 1,
+                has_access_fr INTEGER DEFAULT 0,
+                has_access_tr INTEGER DEFAULT 0,
+                has_access_us INTEGER DEFAULT 0,
+                has_access_ro INTEGER DEFAULT 0,
+                has_access_supp INTEGER DEFAULT 0,
+                FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                UNIQUE(user_id, uuid)
+                );
+            """,
+            """
             CREATE TABLE IF NOT EXISTS panels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

@@ -272,7 +272,7 @@ class UserDB(DatabaseManager):
     def get_all_user_uuids(self) -> List[Dict[str, Any]]:
         """تمام رکوردهای UUID را برای پنل ادمین برمی‌گرداند."""
         with self._conn() as c:
-            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr, has_access_us FROM user_uuids ORDER BY created_at DESC"
+            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr, has_access_us, has_access_ro, has_access_supp, FROM user_uuids ORDER BY created_at DESC"
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
@@ -295,7 +295,7 @@ class UserDB(DatabaseManager):
             SELECT
                 u.user_id, u.first_name, u.username,
                 uu.id as uuid_id, uu.name as config_name, uu.uuid, uu.is_vip,
-                uu.has_access_de, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_ro,
+                uu.has_access_de, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_ro, uu.has_access_supp,
                 CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
             FROM users u
             JOIN user_uuids uu ON u.user_id = uu.user_id
