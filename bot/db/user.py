@@ -272,7 +272,7 @@ class UserDB(DatabaseManager):
     def get_all_user_uuids(self) -> List[Dict[str, Any]]:
         """تمام رکوردهای UUID را برای پنل ادمین برمی‌گرداند."""
         with self._conn() as c:
-            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr, has_access_us, has_access_ro, has_access_supp, FROM user_uuids ORDER BY created_at DESC"
+            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr, has_access_us, has_access_ro, has_access_supp FROM user_uuids ORDER BY created_at DESC"
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
