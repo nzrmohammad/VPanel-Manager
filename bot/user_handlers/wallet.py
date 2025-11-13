@@ -469,7 +469,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
             )
     # --- END: REFACTORED LOGIC ---
     
-    db.apply_access_template(uuid_id, plan_to_buy['type'])
+    # db.apply_access_template(uuid_id, plan_to_buy['type'])
     info_after = combined_handler.get_combined_user_info(user_main_uuid)
     
     try:

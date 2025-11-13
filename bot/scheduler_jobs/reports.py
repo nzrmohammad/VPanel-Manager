@@ -173,7 +173,7 @@ def send_weekly_admin_summary(bot) -> None:
             except Exception as e:
                 logger.error(f"Failed to send weekly admin summary to {admin_id}: {e}")
 
-        top_users = report_data.get('top_10_overall', [])
+        top_users = report_data.get('top_15_overall', [])
         if top_users:
             all_bot_users_with_uuids = db.get_all_bot_users_with_uuids()
             user_map = {}
@@ -222,7 +222,7 @@ def send_weekly_admin_summary(bot) -> None:
 
                     if user_id:
                         lang_code = db.get_user_language(user_id)
-                        message_key = f"weekly_top_user_rank_{rank}" if 2 <= rank <= 3 else "weekly_top_user_rank_4_to_10"
+                        message_key = f"weekly_top_user_rank_{rank}" if 2 <= rank <= 3 else "weekly_top_user_rank_4_to_15"
                         fun_message_template = get_string(message_key, lang_code)
                         final_message = fun_message_template.format(
                             usage=escape_markdown(f"{usage:.2f} GB"),

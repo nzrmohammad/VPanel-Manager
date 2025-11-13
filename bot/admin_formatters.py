@@ -83,6 +83,10 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                 flags.append("🇹🇷")
             if user_uuid_record.get('has_access_us'):
                 flags.append("🇺🇸")
+            if user_uuid_record.get('has_access_ro'):
+                flags.append("🇷🇴")
+            if user_uuid_record.get('has_access_supp'):
+                flags.append("🇫🇮")                
             if flags:
                 display_name_with_flags = "".join(flags)
 
@@ -169,12 +173,12 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
     
     lines = ["🏆 *گزارش هفتگی پرمصرف‌ترین کاربران*"]
     lines.append("`──────────────────`")
-    lines.append("🥇 *۱۰ کاربر برتر این هفته:*")
+    lines.append("🥇 *۱۵ کاربر برتر این هفته:*")
 
-    if not report_data.get('top_10_overall'):
+    if not report_data.get('top_15_overall'):
         lines.append(escape_markdown("هیچ مصرفی در این هفته ثبت نشده است."))
     else:
-        for i, user in enumerate(report_data['top_10_overall']):
+        for i, user in enumerate(report_data['top_15_overall']):
             usage_str = format_daily_usage(user['total_usage'])
             lines.append(f"`{i+1}.` *{escape_markdown(user['name'])}*: {escape_markdown(usage_str)}")
 
@@ -611,7 +615,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             f"💳 پرداخت‌های امروز : *{payments_today_count}*",
             f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
             f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-            f" 🇫🇷🇹🇷🇺🇸🇷🇴 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+            f" 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
         ]
 
         if top_consumer_today["usage"] > 0.01:
@@ -635,7 +639,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 if h_usage > 0.001: usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(h_usage))}")
                 m_usage = daily_dict.get('marzban', 0.0)
                 if m_usage > 0.001 and user_db_record:
-                    flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'), ("🇷🇴", 'has_access_ro')] if user_db_record.get(has)]
+                    flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'), ("🇷🇴", 'has_access_ro'), ("🇫🇮", 'has_access_supp')] if user_db_record.get(has)]
                     if flags: usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(m_usage))}")
 
                 usage_str = escape_markdown(" | ").join(usage_parts)
@@ -676,8 +680,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
             warning_map = {
                 "low_data_hiddify": "کمبود حجم 🇩🇪", "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-                "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸🇷🇴", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸🇷🇴",
-                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸🇷🇴",
+                "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮",
+                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮",
                 "expired": "منقضی شده", "inactive_user_reminder": "یادآوری عدم فعالیت",
                 "unusual_daily_usage_admin_alert": "مصرف غیرعادی (به ادمین)",
                 "too_many_devices_admin_alert": "تعداد دستگاه بالا (به ادمین)"
@@ -1082,6 +1086,8 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
+    if user_access.get('has_access_ro'): marzban_flags.append("🇷🇴")
+    if user_access.get('has_access_supp'): marzban_flags.append("🇫🇮")
     dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else ""
 
     def sort_key(panel_item_tuple):
