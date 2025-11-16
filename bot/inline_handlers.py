@@ -157,6 +157,38 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
     """
     پردازش کوئری‌های inline برای ادمین‌ها با قابلیت ارسال دسته‌ای پلن‌ها.
     """
+    app_links_message_text = (
+        "🔗 *لینک دانلود برنامه ها*\n\n"
+        "*🤖 Android*\n"
+        "1\\- Hiddify\n"
+        "2\\- V2rayNG\n"
+        "3\\- Happ\n\n"
+        "*🍏 Ios*\n"
+        "1\\- Streisand\n"
+        "2\\- Hiddify\n"
+        "3\\- V2Box\n"
+        "4\\- Shadowrocket\n\n"
+        "*🖥️ Windows*\n"
+        "1\\- Hiddify\n"
+        "2\\- V2rayN\n\n"
+        "برای هر سیستم عامل شماره ها به ترتیب اولویت بهتر بودن برنامه هستش"
+    )
+
+    app_links_keyboard = InlineKeyboardMarkup(row_width=3)
+    app_links_keyboard.add(
+        # Android
+        InlineKeyboardButton("1. Hiddify (Android)", url="https://github.com/hiddify/hiddify-next/releases/download/v2.5.7/Hiddify-Android-arm64.apk"),
+        InlineKeyboardButton("2. V2rayNG (Android)", url="https://github.com/2dust/v2rayNG/releases/download/1.10.26/v2rayNG_1.10.26_arm64-v8a.apk"),
+        InlineKeyboardButton("3. Happ (Android)", url="https://github.com/Happ-proxy/happ-android/releases/download/3.5.0/Happ_beta.apk"),
+        # iOS
+        InlineKeyboardButton("1. Streisand (iOS)", url="https://apps.apple.com/us/app/streisand/id6450534064"),
+        InlineKeyboardButton("2. Hiddify (iOS)", url="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532"),
+        InlineKeyboardButton("3. V2Box (iOS)", url="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690"),
+        InlineKeyboardButton("4. Shadowrocket (iOS)", url="https://apps.apple.com/us/app/shadowrocket/id932747118"),
+        # Windows
+        InlineKeyboardButton("1. Hiddify (Windows)", url="https://github.com/hiddify/hiddify-next/releases/download/v2.0.5/Hiddify-Windows-Portable-x64.zip"),
+        InlineKeyboardButton("2. V2rayN (Windows)", url="https://github.com/2dust/v2rayN/releases/download/7.15.7/v2rayN-windows-64-SelfContained.zip")
+    )
     query = inline_query.query.strip().lower()
     results = []
     user_id = inline_query.from_user.id
@@ -230,7 +262,7 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
                 )
 
                 results.append(types.InlineQueryResultArticle(
-                    id=str(user.get('uuid', i)), 
+                    id=str(user.get('uuid') or i), 
                     title=f"👤 {user.get('name', 'کاربر ناشناس')}",
                     description=f"UUID: {user.get('uuid', 'N/A')}",
                     reply_markup=keyboard,
@@ -265,6 +297,16 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
                 id='search_prompt', title="🔎 جستجوی کاربر",
                 description="برای جستجو، شروع به تایپ نام یا UUID کنید...",
                 input_message_content=types.InputTextMessageContent("برای جستجوی کاربر، نام یا UUID او را پس از آیدی ربات تایپ کنید.")
+            ),
+            types.InlineQueryResultArticle(
+                id='send_app_links',
+                title="🔗 ارسال لینک برنامه‌ها",
+                description="ارسال لیست لینک‌های دانلود برنامه‌های مورد نیاز.",
+                input_message_content=types.InputTextMessageContent(
+                    message_text=app_links_message_text,
+                    parse_mode="MarkdownV2"
+                ),
+                reply_markup=app_links_keyboard
             )
         ])
 
