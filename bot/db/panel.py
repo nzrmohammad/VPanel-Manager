@@ -112,14 +112,49 @@ class PanelDB(DatabaseManager):
             return res.rowcount > 0
 
     # --- توابع مربوط به قالب‌های کانفیگ (Config Templates) ---
-
     def add_batch_templates(self, templates: list[str]) -> int:
-        """لیستی از رشته‌های کانفیگ را به صورت دسته‌ای اضافه می‌کند."""
+        """
+        لیستی از رشته‌های کانفیگ را به صورت دسته‌ای اضافه می‌کند.
+        (هوشمند: نوع سرور را به صورت خودکار از روی متن کانفیگ تشخیص می‌دهد)
+        """
         if not templates:
             return 0
+        
+        # تابع داخلی برای تشخیص نوع سرور از روی رشته کانفیگ
+        def detect_server_type(config_str: str) -> str:
+            config_lower = config_str.lower()
+            # تشخیص بر اساس پرچم‌ها
+            if "🇩🇪" in config_str or "de-" in config_lower or "#de" in config_lower:
+                return 'de'
+            elif "🇫🇷" in config_str or "fr-" in config_lower or "#fr" in config_lower:
+                return 'fr'
+            elif "🇹🇷" in config_str or "tr-" in config_lower or "#tr" in config_lower:
+                return 'tr'
+            elif "🇺🇸" in config_str or "us-" in config_lower or "#us" in config_lower:
+                return 'us'
+            elif "🇷🇴" in config_str or "ro-" in config_lower or "#ro" in config_lower:
+                return 'ro'
+            # تشخیص کانفیگ‌های پشتیبانی
+            elif "support" in config_lower or "help" in config_lower:
+                return 'supp'
+            
+            return 'none'
+
         with self._conn() as c:
             cursor = c.cursor()
-            cursor.executemany("INSERT INTO config_templates (template_str) VALUES (?)", [(tpl,) for tpl in templates])
+            # برای هر کانفیگ، نوع سرور را تشخیص داده و همراه آن ذخیره می‌کنیم
+            data_to_insert = []
+            for tpl in templates:
+                server_type = detect_server_type(tpl)
+                data_to_insert.append((tpl, server_type))
+
+            # کوئری اینزرت باید شامل فیلد server_type هم باشد
+            # فرض بر این است که ستون server_type در جدول config_templates وجود دارد
+            # اگر وجود ندارد، باید قبلاً اضافه شده باشد یا دیفالت داشته باشد
+            cursor.executemany(
+                "INSERT INTO config_templates (template_str, server_type) VALUES (?, ?)", 
+                data_to_insert
+            )
             return cursor.rowcount
 
     def update_template(self, template_id: int, new_template_str: str) -> bool:
