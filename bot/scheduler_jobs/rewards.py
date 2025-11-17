@@ -19,6 +19,7 @@ from bot.config import (
 from bot.language import get_string
 from .warnings import send_warning_message
 from ..admin_formatters import fmt_achievement_leaderboard, fmt_lottery_participants_list
+from ..combined_handler import get_combined_user_info
 
 logger = logging.getLogger(__name__)
 
@@ -230,70 +231,91 @@ def birthday_gifts_job(bot) -> None:
 
 def check_achievements_and_anniversary(bot) -> None:
     """
-    (نسخه نهایی) شرایط دریافت دستاوردها و هدیه سالگرد را بررسی کرده و پاداش را به صورت هوشمند اعمال می‌کند.
+    نسخه جامع: بررسی تمام نشان‌های مبتنی بر وضعیت (VIP، کهنه‌کار، وفادار، سفیر، مصرف)
     """
-    all_user_ids = list(db.get_all_user_ids())
-    logger.info(f"SCHEDULER: Checking achievements and anniversaries for {len(all_user_ids)} users.")
+    logger.info("Running daily comprehensive badge check...")
     
-    for user_id in all_user_ids:
-        try:
-            user_uuids = db.uuids(user_id)
-            if not user_uuids:
-                continue
+    all_uuids = list(db.get_all_user_uuids())
+    processed_users = set()
 
-            first_uuid_record = user_uuids[0]
-            uuid_id = first_uuid_record['id']
-            first_uuid_creation_date = first_uuid_record['created_at']
-            if first_uuid_creation_date.tzinfo is None:
-                first_uuid_creation_date = pytz.utc.localize(first_uuid_creation_date)
-            
-            days_since_creation = (datetime.now(pytz.utc) - first_uuid_creation_date).days
-            payment_count = len(db.get_user_payment_history(uuid_id))
-            referred_users = db.get_referred_users(user_id)
-            referral_count = sum(1 for u in referred_users if u.get('referral_reward_applied'))
-            
-            # --- بررسی دستاوردها ---
-            if days_since_creation >= 365 and db.add_achievement(user_id, 'veteran'):
-                notify_user_achievement(bot, user_id, 'veteran')
-            
-            if payment_count >= 5 and db.add_achievement(user_id, 'loyal_supporter'):
-                notify_user_achievement(bot, user_id, 'loyal_supporter')
-
-            if referral_count >= AMBASSADOR_BADGE_THRESHOLD and db.add_achievement(user_id, 'ambassador'):
-                notify_user_achievement(bot, user_id, 'ambassador')
-            
-            user_info = combined_handler.get_combined_user_info(first_uuid_record['uuid'])
-            if user_info and user_info.get('total_usage_GB', 0) >= 1000 and db.add_achievement(user_id, 'data_whale'):
-                notify_user_achievement(bot, user_id, 'data_whale')
-
-            # --- بررسی هدیه سالگرد ---
-            current_year = datetime.now(pytz.utc).year
-            if days_since_creation > 0 and days_since_creation % 365 == 0:
-                anniversary_year = days_since_creation // 365
-                gift_name = f'anniversary_{anniversary_year}'
-                
-                already_given = db.check_if_gift_given(user_id, gift_name, current_year)
-                if not already_given:
-                    anniversary_gift_gb, anniversary_gift_days = 20, 10
-                    
-                    if _apply_reward_intelligently(user_id, first_uuid_record['uuid'], anniversary_gift_gb, anniversary_gift_days):
-                        lang_code = db.get_user_language(user_id)
-                        title = get_string("anniversary_gift_title", lang_code)
-                        body = get_string("anniversary_gift_body", lang_code).format(
-                            year=anniversary_year,
-                            gift_gb=anniversary_gift_gb,
-                            gift_days=anniversary_gift_days
-                        )
-                        message = f"*{escape_markdown(title)}*\n\n{escape_markdown(body)}"
-                        send_warning_message(bot, user_id, message)
-                        db.log_gift_given(user_id, gift_name, current_year)
-                        
-        except Exception as e:
-            logger.error(f"Error checking achievements/anniversary for user_id {user_id}: {e}", exc_info=True)
+    for config in all_uuids:
+        user_id = config['user_id']
+        if user_id in processed_users:
+            continue
+        processed_users.add(user_id)
         
-        time.sleep(0.1)
-    
-    logger.info("Finished checking achievements and anniversaries.")
+        try:
+            # اطلاعات پایه
+            uuid_id = config['id']
+            uuid_str = config['uuid']
+            is_vip = config.get('is_vip', 0)
+            created_at = config.get('created_at')
+
+            # -------------------------------------------
+            # ۱. بررسی VIP (حامی ویژه)
+            # -------------------------------------------
+            if is_vip:
+                if db.add_achievement(user_id, 'vip_friend'):
+                    # اگر نشان نداشت، اضافه کن و امتیاز بده
+                    db.add_achievement_points(user_id, ACHIEVEMENTS['vip_friend']['points'])
+                    notify_user_achievement(bot, user_id, 'vip_friend')
+
+            # -------------------------------------------
+            # ۲. بررسی کهنه‌کار (Veteran) - یک سال عضویت
+            # -------------------------------------------
+            if created_at:
+                if isinstance(created_at, str):
+                    try:
+                        created_at = datetime.fromisoformat(created_at)
+                    except ValueError:
+                        pass
+                
+                if isinstance(created_at, datetime):
+                    if created_at.tzinfo is None:
+                        created_at = pytz.utc.localize(created_at)
+                    
+                    days_active = (datetime.now(pytz.utc) - created_at).days
+                    if days_active >= 365:
+                        if db.add_achievement(user_id, 'veteran'):
+                            db.add_achievement_points(user_id, ACHIEVEMENTS['veteran']['points'])
+                            notify_user_achievement(bot, user_id, 'veteran')
+
+            # -------------------------------------------
+            # ۳. بررسی حامی وفادار (Loyal Supporter) - ۵ پرداخت
+            # -------------------------------------------
+            payments = db.get_user_payment_history(uuid_id)
+            if len(payments) >= 5:
+                if db.add_achievement(user_id, 'loyal_supporter'):
+                    db.add_achievement_points(user_id, ACHIEVEMENTS['loyal_supporter']['points'])
+                    notify_user_achievement(bot, user_id, 'loyal_supporter')
+
+            # -------------------------------------------
+            # ۴. بررسی سفیر (Ambassador) - تعداد دعوت
+            # -------------------------------------------
+            referrals = db.get_referred_users(user_id)
+            successful_referrals = sum(1 for r in referrals if r.get('referral_reward_applied'))
+            
+            if successful_referrals >= AMBASSADOR_BADGE_THRESHOLD:
+                if db.add_achievement(user_id, 'ambassador'):
+                    db.add_achievement_points(user_id, ACHIEVEMENTS['ambassador']['points'])
+                    notify_user_achievement(bot, user_id, 'ambassador')
+
+            # -------------------------------------------
+            # ۵. بررسی مصرف‌کننده حرفه‌ای (Pro Consumer)
+            # -------------------------------------------
+            user_info = get_combined_user_info(uuid_str)
+            if user_info:
+                total_usage = user_info.get('current_usage_GB', 0)
+                if total_usage >= 200: 
+                    if db.add_achievement(user_id, 'pro_consumer'):
+                        db.add_achievement_points(user_id, ACHIEVEMENTS['pro_consumer']['points'])
+                        notify_user_achievement(bot, user_id, 'pro_consumer')
+
+        except Exception as e:
+            logger.error(f"Error checking badges for user {user_id}: {e}")
+            continue
+
+    logger.info("Daily badge check completed.")
 
 
 def check_for_special_occasions(bot):
