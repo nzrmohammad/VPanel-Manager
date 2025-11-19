@@ -17,7 +17,6 @@ from bot.config import (
     AMBASSADOR_BADGE_THRESHOLD, LOYALTY_REWARDS
 )
 from bot.language import get_string
-from .warnings import send_warning_message
 from ..admin_formatters import fmt_achievement_leaderboard, fmt_lottery_participants_list
 from ..combined_handler import get_combined_user_info
 
@@ -167,6 +166,7 @@ def notify_admin_of_upcoming_event(bot) -> None:
 
 def notify_user_achievement(bot, user_id: int, badge_code: str):
     """(نسخه نهایی) کاربر را از دستاورد جدید با فرمت خوانا مطلع می‌کند."""
+    from .warnings import send_warning_message
     badge = ACHIEVEMENTS.get(badge_code)
     if not badge: return
 
@@ -189,6 +189,7 @@ def notify_user_achievement(bot, user_id: int, badge_code: str):
 
 def birthday_gifts_job(bot) -> None:
     """هدایای تولد را به صورت هوشمند اعمال کرده و ۱۵ روز قبل از تولد نیز به کاربر یادآوری می‌کند."""
+    from .warnings import send_warning_message
     all_users_with_birthdays = list(db.get_users_with_birthdays())
     if not all_users_with_birthdays: return
         
@@ -333,6 +334,7 @@ def check_for_special_occasions(bot):
 
 def _distribute_special_occasion_gifts(bot, event_details: dict):
     """(نسخه نهایی) هدیه رویدادها را به صورت هوشمند بین پنل‌های کاربران فعال تقسیم و اعمال می‌کند."""
+    from .warnings import send_warning_message
     all_active_uuids_records = list(db.all_active_uuids())
     if not all_active_uuids_records:
         logger.info(f"No active users to send {event_details['name']} gift to.")
@@ -367,6 +369,7 @@ def _distribute_special_occasion_gifts(bot, event_details: dict):
 
 def run_lucky_lottery(bot) -> None:
     """قرعه‌کشی ماهانه خوش‌شانسی را در اولین جمعه ماه شمسی اجرا می‌کند."""
+    from .warnings import send_warning_message
     tehran_tz = pytz.timezone("Asia/Tehran")
     today_jalali = jdatetime.datetime.now(tehran_tz)
     
@@ -418,6 +421,7 @@ def run_lucky_lottery(bot) -> None:
 
 def send_lucky_badge_summary(bot) -> None:
     """گزارش تعداد نشان خوش‌شانس را برای کاربران و لیست شرکت‌کنندگان را برای ادمین ارسال می‌کند."""
+    from .warnings import send_warning_message
     if not ENABLE_LUCKY_LOTTERY:
         return
 
@@ -442,6 +446,7 @@ def send_lucky_badge_summary(bot) -> None:
 
 
 def send_weekend_vip_message(bot) -> None:
+    from .warnings import send_warning_message
     """پیام قدردانی آخر هفته را برای کاربران VIP ارسال می‌کند."""
     logger.info("SCHEDULER: Sending weekend thank you message to VIP users.")
     
@@ -495,6 +500,7 @@ def send_weekend_vip_message(bot) -> None:
 
 def send_weekend_normal_user_message(bot) -> None:
     """پیام قدردانی آخر هفته را برای کاربران عادی (غیر VIP) ارسال می‌کند."""
+    from .warnings import send_warning_message
     logger.info("SCHEDULER: Sending weekend thank you message to normal users.")
     
     all_uuids = db.get_all_user_uuids()
@@ -543,6 +549,7 @@ def check_auto_renewals_and_warnings(bot) -> None:
     (نسخه کامل و نهایی)
     هر روز اجرا شده و وضعیت تمدید خودکار و هشدارهای کمبود موجودی را بررسی می‌کند.
     """
+    from .warnings import send_warning_message
     logger.info("SCHEDULER: Starting auto-renewal and low balance check job.")
     users_with_auto_renew = [u for u in db.get_all_user_ids() if (ud := db.user(u)) and ud.get('auto_renew')]
 
@@ -606,6 +613,7 @@ def run_monthly_lottery(bot) -> None:
     (نسخه کامل و نهایی)
     قرعه‌کشی ماهانه را اجرا کرده، به برنده جایزه می‌دهد و به همه اطلاع‌رسانی می‌کند.
     """
+    from .warnings import send_warning_message
     today_jalali = jdatetime.datetime.now(pytz.timezone("Asia/Tehran"))
     if today_jalali.weekday() != 6 or today_jalali.day > 7:
         return
