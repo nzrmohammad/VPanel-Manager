@@ -251,28 +251,22 @@ class FinancialsDB(DatabaseManager):
         
     def check_recent_successful_payment(self, uuid_id: int, hours: int) -> bool:
         """
-        (نسخه اصلاح شده بر اساس _init_db شما)
         بررسی می‌کند که آیا کاربر در X ساعت گذشته پرداخت موفقی داشته است یا خیر.
-        (شامل پرداخت دستی و خرید از کیف پول)
+        (اصلاح شده برای جدول wallet_transactions)
         """
         threshold_time = datetime.now(pytz.utc) - timedelta(hours=hours)
         with self._conn() as c:
-            
-            # --- شروع اصلاحیه ---
-            # هر دو چک (پرداخت دستی و خرید با کیف پول) در یک کوئری روی جدول 'wallet_history' ادغام شدند
-            # زیرا جدول 'payment_history' و 'wallet_transactions' در _init_db شما وجود ندارند.
-            
+            # استفاده از جدول صحیح wallet_transactions و نام ستون‌های درست
             row = c.execute(
                 """
-                SELECT 1 FROM wallet_history wh
-                JOIN user_uuids uu ON wh.user_id = uu.user_id
-                WHERE uu.id = ? AND wh.timestamp >= ? 
-                AND wh.transaction_type IN ('purchase', 'auto_renewal', 'addon_purchase', 'gift_purchase', 'charge')
+                SELECT 1 FROM wallet_transactions wt
+                JOIN users u ON wt.user_id = u.user_id
+                JOIN user_uuids uu ON u.user_id = uu.user_id
+                WHERE uu.id = ? AND wt.transaction_date >= ? 
+                AND wt.type IN ('purchase', 'addon_purchase', 'gift_purchase', 'charge')
                 LIMIT 1
                 """,
                 (uuid_id, threshold_time)
             ).fetchone()
-            # --- پایان اصلاحیه ---
 
-            # اگر در هر کدام از جدول‌ها رکوردی پیدا شد، True برمی‌گرداند
             return row is not None

@@ -262,16 +262,21 @@ class UsageDB(DatabaseManager):
         return sorted(summary, key=lambda x: x['date'])
     
     def get_new_users_per_month_stats(self) -> Dict[str, int]:
-        """آمار کاربران جدید در هر ماه را برمی‌گرداند."""
+        """
+        آمار کاربران جدید در هر ماه میلادی را برمی‌گرداند.
+        (اصلاح شده: استفاده از user_uuids به جای users)
+        """
         with self._conn() as c:
-            rows = c.execute("""
-                SELECT strftime('%Y-%m', created_at) as month, COUNT(id) as count
-                FROM users
+            # استفاده از اولین تاریخ ساخت کانفیگ برای هر کاربر
+            query = """
+                SELECT strftime('%Y-%m', MIN(created_at)) as month, COUNT(DISTINCT user_id) as count
+                FROM user_uuids
                 GROUP BY month
                 ORDER BY month DESC
                 LIMIT 12
-            """).fetchall()
-            return {row['month']: row['count'] for row in rows}
+            """
+            rows = c.execute(query).fetchall()
+            return {row['month']: row['count'] for row in rows if row['month']}
 
     def get_daily_active_users_count(self) -> int:
         """تعداد کاربران فعالی که در ۲۴ ساعت گذشته مصرف داشته‌اند را برمی‌گرداند."""
@@ -307,10 +312,17 @@ class UsageDB(DatabaseManager):
             return [dict(row) for row in rows]
 
     def get_new_users_in_range(self, start_date: datetime, end_date: datetime) -> int:
-        """تعداد کاربران جدید در یک بازه زمانی مشخص را برمی‌گرداند."""
+        """
+        تعداد کاربران جدید در یک بازه زمانی مشخص را برمی‌گرداند.
+        (اصلاح شده: استفاده از user_uuids به جای users)
+        """
         with self._conn() as c:
             row = c.execute(
-                "SELECT COUNT(id) FROM users WHERE created_at >= ? AND created_at <= ?",
+                """
+                SELECT COUNT(DISTINCT user_id) 
+                FROM user_uuids 
+                WHERE created_at >= ? AND created_at <= ?
+                """,
                 (start_date, end_date)
             ).fetchone()
             return row[0] if row else 0
@@ -886,66 +898,105 @@ class UsageDB(DatabaseManager):
     def get_user_monthly_usage_history_by_panel(self, uuid_id: int) -> list:
         """
         تاریخچه مصرف روزانه کاربر در ماه شمسی جاری را به تفکیک پنل برمی‌گرداند.
+        (اصلاح شده برای استفاده از usage_snapshots)
         """
-        try:
-            tehran_tz = pytz.timezone("Asia/Tehran")
-            now_gregorian = datetime.now(tehran_tz)
-            now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
 
-            shamsi_month_start = now_shamsi.replace(day=1, hour=0, minute=0, second=0)
-            gregorian_start_date = shamsi_month_start.togregorian()
+        # روز اول ماه شمسی جاری
+        shamsi_month_start = now_shamsi.replace(day=1, hour=0, minute=0, second=0)
+        current_date = shamsi_month_start
+        
+        history = []
 
-            with self.lock:
-                self.cursor.execute("""
-                    SELECT 
-                        date,
-                        SUM(CASE WHEN panel_type = 'hiddify' THEN usage_gb ELSE 0 END) as hiddify_usage,
-                        SUM(CASE WHEN panel_type = 'marzban' THEN usage_gb ELSE 0 END) as marzban_usage,
-                        SUM(usage_gb) as total_usage
-                    FROM daily_usage
-                    WHERE uuid_id = ? AND date >= ?
-                    GROUP BY date
-                    ORDER BY date ASC
-                """, (uuid_id, gregorian_start_date))
-                return [dict(row) for row in self.cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Error in get_user_monthly_usage_history_by_panel: {e}", exc_info=True)
-            return []
+        with self._conn() as c:
+            # حلقه تا امروز
+            while current_date <= now_shamsi:
+                date_str = current_date.strftime('%Y-%m-%d')
+                
+                # بازه زمانی روز (از ۰۰:۰۰ تا فردا ۰۰:۰۰ به وقت تهران، تبدیل شده به UTC)
+                day_start_utc = current_date.togregorian().astimezone(pytz.utc)
+                day_end_utc = day_start_utc + timedelta(days=1)
 
+                # دریافت اسنپ‌شات ابتدا و انتهای روز
+                baseline_snap = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                    (uuid_id, day_start_utc)
+                ).fetchone()
+
+                end_snap = c.execute(
+                    "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                    (uuid_id, day_end_utc)
+                ).fetchone()
+
+                h_usage, m_usage = 0.0, 0.0
+
+                if end_snap:
+                    h_start = baseline_snap['hiddify_usage_gb'] if baseline_snap and baseline_snap['hiddify_usage_gb'] else 0.0
+                    m_start = baseline_snap['marzban_usage_gb'] if baseline_snap and baseline_snap['marzban_usage_gb'] else 0.0
+                    
+                    h_end = end_snap['hiddify_usage_gb'] or 0.0
+                    m_end = end_snap['marzban_usage_gb'] or 0.0
+
+                    # محاسبه مصرف با در نظر گرفتن احتمال ریست شدن حجم
+                    h_usage = h_end - h_start if h_end >= h_start else h_end
+                    m_usage = m_end - m_start if m_end >= m_start else m_end
+
+                if h_usage > 0 or m_usage > 0:
+                    history.append({
+                        'date': date_str,
+                        'hiddify_usage': round(h_usage, 2),
+                        'marzban_usage': round(m_usage, 2),
+                        'total_usage': round(h_usage + m_usage, 2)
+                    })
+                
+                current_date += timedelta(days=1)
+
+        return history
 
     def get_previous_month_usage(self, uuid_id: int) -> float:
         """
-        کل مصرف کاربر در ماه شمسی گذشته را برمی‌گرداند.
+        کل مصرف کاربر در ماه شمسی گذشته را محاسبه می‌کند.
+        (اصلاح شده برای استفاده از usage_snapshots)
         """
-        try:
-            tehran_tz = pytz.timezone("Asia/Tehran")
-            now_gregorian = datetime.now(tehran_tz)
-            now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
 
-            # شروع ماه شمسی فعلی
-            start_of_current_month_shamsi = now_shamsi.replace(day=1, hour=0, minute=0, second=0)
-            start_of_current_month_greg = start_of_current_month_shamsi.togregorian()
+        # محاسبه شروع و پایان ماه قبل
+        this_month_start = now_shamsi.replace(day=1, hour=0, minute=0, second=0)
+        prev_month_end = this_month_start - timedelta(seconds=1)
+        prev_month_start = prev_month_end.replace(day=1, hour=0, minute=0, second=0)
 
-            # پایان ماه شمسی قبل (یک ثانیه قبل از شروع این ماه)
-            end_of_previous_month_greg = start_of_current_month_greg - timedelta(seconds=1)
-            end_of_previous_month_shamsi = jdatetime.datetime.fromgregorian(datetime=end_of_previous_month_greg, tzinfo=tehran_tz)
+        start_utc = prev_month_start.togregorian().astimezone(pytz.utc)
+        end_utc = this_month_start.togregorian().astimezone(pytz.utc)
 
-            # شروع ماه شمسی قبل
-            start_of_previous_month_shamsi = end_of_previous_month_shamsi.replace(day=1, hour=0, minute=0, second=0)
-            start_of_previous_month_greg = start_of_previous_month_shamsi.togregorian()
+        total_usage = 0.0
+        
+        with self._conn() as c:
+            # خواندن تمام اسنپ‌شات‌های ماه قبل برای محاسبه دقیق (حتی اگر وسط ماه ریست شده باشد)
+            snapshots = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? AND taken_at < ? ORDER BY taken_at ASC", 
+                (uuid_id, start_utc, end_utc)
+            ).fetchall()
+            
+            last_snap_before = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1", 
+                (uuid_id, start_utc)
+            ).fetchone()
 
-            with self.lock:
-                self.cursor.execute("""
-                    SELECT SUM(total_usage) 
-                    FROM (
-                        SELECT SUM(usage_gb) as total_usage
-                        FROM daily_usage 
-                        WHERE uuid_id = ? AND date >= ? AND date < ?
-                        GROUP BY date -- برای جلوگیری از محاسبه مضاعف رکوردهای ساعتی
-                    ) as monthly_sum
-                """, (uuid_id, start_of_previous_month_greg, start_of_current_month_greg))
-                result = self.cursor.fetchone()
-                return result[0] if result and result[0] else 0.0
-        except Exception as e:
-            logger.error(f"Error in get_previous_month_usage: {e}", exc_info=True)
-            return 0.0
+            last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] else 0.0
+            last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] else 0.0
+
+            for snap in snapshots:
+                curr_h = snap['hiddify_usage_gb'] or 0.0
+                curr_m = snap['marzban_usage_gb'] or 0.0
+
+                h_diff = max(0, curr_h - last_h) if curr_h >= last_h else curr_h
+                m_diff = max(0, curr_m - last_m) if curr_m >= last_m else curr_m
+                
+                total_usage += (h_diff + m_diff)
+                last_h, last_m = curr_h, curr_m
+
+        return round(total_usage, 2)
