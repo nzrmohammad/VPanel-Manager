@@ -250,7 +250,7 @@ def modify_user_on_all_panels(
             logger.warning(f"⚠️  Could not create handler for '{panel_name}'")
             continue
 
-        # --- بخش مربوط به Hiddify (بدون تغییر) ---
+        # --- بخش اصلاح شده مربوط به Hiddify ---
         if panel_type == 'hiddify' and uuid:
             logger.info(f"🔄 Processing panel '{panel_name}' (type: 'hiddify')")
             user_panel_data = handler.user_info(uuid)
@@ -260,16 +260,25 @@ def modify_user_on_all_panels(
                 continue
             
             payload = {}
-            remaining_days = user_panel_data.get('expire', 0)
-            is_expired = remaining_days <= 0
-
-            if not is_expired:
-                if add_days > 0: payload['package_days'] = remaining_days + add_days
-                if add_gb > 0: payload['usage_limit_GB'] = user_panel_data.get('usage_limit_GB', 0) + add_gb
-            else:
-                if add_days > 0 or add_gb > 0:
-                    payload['package_days'] = add_days if add_days > 0 else 30
-                    if add_gb > 0: payload['usage_limit_GB'] = user_panel_data.get('usage_limit_GB', 0) + add_gb
+            
+            # دریافت روزهای باقیمانده (اگر منفی بود صفر در نظر می‌گیریم)
+            current_remaining = user_panel_data.get('expire', 0)
+            if current_remaining is None or current_remaining < 0:
+                current_remaining = 0
+            
+            # اگر قرار است روز اضافه شود
+            if add_days > 0:
+                # 1. تاریخ شروع را حتماً ریست می‌کنیم تا کنتور از صفر (امروز) شروع شود
+                payload['start_date'] = None
+                
+                # 2. روزهای پکیج برابر است با: روزهای باقیمانده کاربر + روزهای خرید جدید
+                # اینطوری اگر 1 روز مانده باشد، با 30 روز خرید می‌شود 31 روز اعتبار از همین لحظه
+                payload['package_days'] = int(current_remaining + add_days)
+            
+            # اضافه کردن حجم (بدون تغییر نسبت به قبل)
+            if add_gb > 0: 
+                current_limit = user_panel_data.get('usage_limit_GB', 0)
+                payload['usage_limit_GB'] = current_limit + add_gb
 
             if payload:
                 logger.info(f"📤 Final Hiddify payload: {payload}")
