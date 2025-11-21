@@ -22,7 +22,7 @@ def handle_feedback_callbacks(call: types.CallbackQuery):
     uid, msg_id, data = call.from_user.id, call.message.message_id, call.data
     
     if data == "feedback:cancel":
-        _safe_edit(uid, msg_id, "از اینکه وقت گذاشتید متشکریم.", reply_markup=None)
+        _safe_edit(uid, msg_id, "از اینکه وقت گذاشتید متشکریم\.", reply_markup=None)
         return
 
     if data.startswith("feedback:rating:"):
@@ -48,7 +48,7 @@ def handle_feedback_callbacks(call: types.CallbackQuery):
         bot.register_next_step_handler(call.message, get_feedback_comment, feedback_id=feedback_id, original_msg_id=msg_id)
 
     elif data == "feedback:cancel_comment":
-        _safe_edit(uid, msg_id, "از ثبت امتیاز شما متشکریم.", reply_markup=None)
+        _safe_edit(uid, msg_id, "از ثبت امتیاز شما متشکریم\.", reply_markup=None)
         bot.clear_step_handler_by_chat_id(uid)
 
 

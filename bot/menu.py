@@ -829,7 +829,7 @@ class Menu:
     
     def feedback_rating_menu(self) -> types.InlineKeyboardMarkup:
         """منوی نظرسنجی رضایت (۱ تا ۵ ستاره) را ایجاد می‌کند."""
-        kb = types.InlineKeyboardMarkup(row_width=5)
+        kb = types.InlineKeyboardMarkup(row_width=1)
         buttons = [
             types.InlineKeyboardButton("⭐️", callback_data="feedback:rating:1"),
             types.InlineKeyboardButton("⭐️⭐️", callback_data="feedback:rating:2"),
