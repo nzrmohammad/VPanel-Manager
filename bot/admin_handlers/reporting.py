@@ -701,7 +701,7 @@ def show_feedback_list(call: types.CallbackQuery, page: int):
                 user_name = escape_markdown(item.get('first_name', 'ناشناس'))
                 user_id = item.get('user_id', 0)
                 rating = "⭐️" * item.get('rating', 0)
-                comment = escape_markdown(item.get('comment', ' نظری ثبت نشده '))
+                comment = escape_markdown(item.get('comment') or 'نظری ثبت نشده')
                 date_str = escape_markdown(to_shamsi(item.get('created_at'), include_time=True))
                 
                 lines.append(f"👤 *{user_name}* \\(`{user_id}`\\) \\| امتیاز: {rating}")
