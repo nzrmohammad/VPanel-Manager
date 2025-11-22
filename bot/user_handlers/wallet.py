@@ -8,8 +8,7 @@ from ..admin_formatters import fmt_admin_purchase_notification
 from ..language import get_string
 from ..config import LOYALTY_REWARDS, REFERRAL_REWARD_GB, REFERRAL_REWARD_DAYS, ACHIEVEMENTS, ADMIN_IDS, CARD_PAYMENT_INFO, ADMIN_SUPPORT_CONTACT
 from .. import combined_handler
-from telebot.apihelper import ApiTelegramException
-from html import escape
+from ..receipt_generator import generate_receipt_pdf
 
 
 logger = logging.getLogger(__name__)
@@ -390,7 +389,7 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
 
 
 def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
-    """(نسخه اصلاح شده) خرید را نهایی کرده و حجم و روز را به صورت همزمان اعمال می‌کند."""
+    """(نسخه نهایی با تولید رسید PDF) خرید را نهایی کرده و حجم و روز را اعمال می‌کند."""
     uid = call.from_user.id
     lang_code = db.get_user_language(uid)
 
@@ -421,19 +420,19 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
         _safe_edit(uid, call.message.message_id, escape_markdown("خطا: موجودی کیف پول شما کافی نبود."))
         return
 
-    db.add_payment_record(uuid_id)
+    # --- ثبت پرداخت و دریافت شناسه پیگیری ---
+    payment_id = db.add_payment_record(uuid_id)
     payment_count = len(db.get_user_payment_history(uuid_id))
-    # _check_and_apply_loyalty_reward(uid, uuid_id, user_main_uuid, call.from_user.first_name)
+    _check_and_apply_loyalty_reward(uid, uuid_id, user_main_uuid, call.from_user.first_name)
 
     add_days = parse_volume_string(plan_to_buy.get('duration', '0'))
     plan_type = plan_to_buy.get('type')
     
-    # --- START: REFACTORED LOGIC ---
+    # --- اعمال تغییرات روی پنل‌ها ---
     if plan_type == 'combined':
         add_gb_de = parse_volume_string(plan_to_buy.get('volume_de', '0'))
         add_gb_fr_tr = parse_volume_string(plan_to_buy.get('volume_fr', '0'))
         
-        # یکپارچه کردن تماس برای پنل Hiddify
         if add_gb_de > 0 or add_days > 0:
             combined_handler.modify_user_on_all_panels(
                 identifier=user_main_uuid, 
@@ -442,7 +441,6 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
                 target_panel_type='hiddify'
             )
             
-        # یکپارچه کردن تماس برای پنل Marzban
         if add_gb_fr_tr > 0 or add_days > 0:
             combined_handler.modify_user_on_all_panels(
                 identifier=user_main_uuid, 
@@ -451,7 +449,6 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
                 target_panel_type='marzban'
             )
     else:
-        # منطق برای پلن‌های اختصاصی (بدون تغییر، اما ساختار بهبود یافته)
         target_panel = 'hiddify' if plan_type == 'germany' else 'marzban'
         volume_key_map = {'germany': 'volume_de', 'france': 'volume_fr', 'turkey': 'volume_tr', 'usa': 'volume_us', 'romania': 'volume_ro'}
         volume_key = volume_key_map.get(plan_type)
@@ -467,11 +464,10 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
                 add_days=add_days, 
                 target_panel_type=target_panel
             )
-    # --- END: REFACTORED LOGIC ---
     
-    # db.apply_access_template(uuid_id, plan_to_buy['type'])
     info_after = combined_handler.get_combined_user_info(user_main_uuid)
     
+    # --- اعلان‌ها ---
     try:
         notification_title = "خرید سرویس"
         notification_message = f"خرید پلن «{plan_name}» با موفقیت انجام شد. مبلغ {price:,.0f} تومان از کیف پول شما کسر گردید."
@@ -496,6 +492,7 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     except Exception as e:
         logger.error(f"Failed to send purchase notification to admins for user {uid}: {e}")
 
+    # --- پیام نهایی به کاربر ---
     summary_text = fmt_purchase_summary(info_before, info_after, plan_to_buy, lang_code, user_access=user_main_uuid_record)
     header_line1 = "✅ خرید شما با موفقیت انجام شد\\!"
     header_line2 = f"پلن *{escape_markdown(plan_name)}* برای شما فعال گردید\\."
@@ -503,6 +500,39 @@ def execute_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(f"🔙 بازگشت به کیف پول", callback_data="wallet:main"))
     _safe_edit(uid, call.message.message_id, final_message, reply_markup=kb)
+
+    # --- تولید و ارسال رسید PDF ---
+    try:
+        from ..receipt_generator import generate_receipt_pdf
+        from datetime import datetime
+        
+        user_full_name = call.from_user.first_name or "کاربر"
+        if call.from_user.last_name:
+            user_full_name += f" {call.from_user.last_name}"
+            
+        receipt_date = to_shamsi(datetime.now(), include_time=True)
+        
+        # تولید PDF
+        pdf_file = generate_receipt_pdf(
+            user_name=user_full_name,
+            amount=price,
+            date_str=receipt_date,
+            plan_name=plan_name,
+            tracking_id=payment_id
+        )
+        
+        # ارسال فایل
+        bot.send_document(
+            chat_id=uid,
+            document=pdf_file,
+            visible_file_name=f"Receipt_{payment_id}.pdf",
+            caption="🧾 رسید پرداخت شما",
+            reply_to_message_id=call.message.message_id
+        )
+    except ImportError:
+        logger.error("Could not import generate_receipt_pdf. Check if receipt_generator.py exists and dependencies are installed.")
+    except Exception as e:
+        logger.error(f"Failed to generate/send receipt PDF: {e}", exc_info=True)
 
 
 def show_wallet_settings(call: types.CallbackQuery):

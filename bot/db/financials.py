@@ -20,13 +20,13 @@ class FinancialsDB(DatabaseManager):
 
     # --- توابع مربوط به پرداخت‌ها (Payments) ---
 
-    def add_payment_record(self, uuid_id: int) -> bool:
-        """یک رکورد پرداخت جدید برای یک UUID مشخص ثبت می‌کند."""
+    def add_payment_record(self, uuid_id: int) -> int:
+        """یک رکورد پرداخت جدید ثبت می‌کند و شناسه پرداخت را برمی‌گرداند."""
         with self._conn() as c:
-            c.execute("INSERT INTO payments (uuid_id, payment_date) VALUES (?, ?)",
+            cursor = c.execute("INSERT INTO payments (uuid_id, payment_date) VALUES (?, ?)",
                       (uuid_id, datetime.now(timezone.utc)))
-            return True
-
+            return cursor.lastrowid 
+        
     def get_payment_counts(self) -> Dict[str, int]:
         """تعداد کل پرداخت‌ها را به ازای هر نام کانفیگ برمی‌گرداند."""
         query = """
