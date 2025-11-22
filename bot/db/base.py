@@ -84,6 +84,8 @@ class DatabaseManager:
                 show_info_config INTEGER DEFAULT 1,
                 admin_note TEXT,
                 lang_code TEXT,
+                last_checkin DATE,
+                streak_count INTEGER DEFAULT 0,
                 weekly_reports INTEGER DEFAULT 1,
                 auto_delete_reports INTEGER DEFAULT 0,
                 referral_code TEXT,

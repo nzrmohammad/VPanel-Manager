@@ -23,6 +23,7 @@ class Menu:
         btn_achievements = types.InlineKeyboardButton(f"🏆 {get_string('btn_achievements', lang_code)}", callback_data="achievements")
         btn_settings = types.InlineKeyboardButton(f"⚙️ {get_string('settings', lang_code)}", callback_data="settings")
         btn_birthday = types.InlineKeyboardButton(f"🎁 {get_string('birthday_gift', lang_code)}", callback_data="birthday_gift")
+        btn_checkin = types.InlineKeyboardButton("📅 اعلام حضور (سکه رایگان)", callback_data="daily_checkin")
         btn_web_login = types.InlineKeyboardButton(f"🌐 {get_string('btn_web_login', lang_code)}", callback_data="web_login")
 
         kb.add(btn_manage_account, btn_quick_stats)
@@ -198,7 +199,7 @@ class Menu:
             kb.add(types.InlineKeyboardButton("🎉 سرگرمی و شانس", callback_data="noop"))
             kb.add(*lottery_buttons)
         # -----------------------------------------
-
+        kb.add(types.InlineKeyboardButton(f"🎰 گردونه شانس", callback_data="lucky_spin_menu"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به سرویس‌ها", callback_data="view_plans"))
         return kb
 
@@ -504,6 +505,7 @@ class Menu:
         btn_delete_user = types.InlineKeyboardButton("🗑 حذف کامل", callback_data=f"admin:us_delc:{identifier}{context_suffix}")
         kb.add(btn_renew_subscription, btn_delete_user)
 
+        kb.add(types.InlineKeyboardButton("🥺 پیام دلتنگی", callback_data=f"admin:us_winback:{identifier}:{panel_short}{context_suffix}")) 
         # دکمه بازگشت
         final_back_callback = back_callback or f"admin:manage_panel:{panel}"
         kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=final_back_callback))

@@ -4,6 +4,8 @@ import jdatetime
 from datetime import datetime, timedelta
 import pytz
 import copy
+import random
+import time
 
 # --- Local Imports ---
 from ..database import db
@@ -17,6 +19,7 @@ from .. import combined_handler
 from ..hiddify_api_handler import HiddifyAPIHandler
 from ..marzban_api_handler import MarzbanAPIHandler
 from .wallet import _notify_user
+from bot.scheduler_jobs.rewards import _apply_reward_intelligently
 
 
 logger = logging.getLogger(__name__)
@@ -792,3 +795,132 @@ def handle_coming_soon(call: types.CallbackQuery):
     lang_code = db.get_user_language(call.from_user.id)
     alert_text = get_string('msg_coming_soon_alert', lang_code)
     bot.answer_callback_query(call.id, text=alert_text, show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "daily_checkin")
+def daily_checkin_handler(call):
+    user_id = call.from_user.id
+    
+    # فراخوانی متدی که در مرحله ۱ ساختیم
+    result = db.claim_daily_checkin(user_id)
+    
+    if result['status'] == 'already_claimed':
+        # اگر امروز قبلاً گرفته باشد، فقط یک هشدار (Alert) نمایش می‌دهیم
+        text = (
+            f"✋ امروز سهمیه‌تو گرفتی!\n\n"
+            f"🔥 رکورد فعلی: {result['streak']} روز متوالی\n"
+            f"⏰ فردا دوباره سر بزن."
+        )
+        bot.answer_callback_query(call.id, text, show_alert=True)
+        
+    elif result['status'] == 'success':
+        # اگر موفق بود، پیام تبریک می‌فرستیم
+        points = result['points']
+        streak = result['streak']
+        
+        msg = (
+            f"✅ *حضور امروزت ثبت شد!*\n\n"
+            f"💰 پاداش دریافتی: *{points} سکه*\n"
+            f"🔥 رکورد متوالی: *{streak} روز*\n\n"
+            f"💡 _هر روز سر بزن تا رکوردت خراب نشه!_"
+        )
+        
+        # نمایش پیام موفقیت کوچک بالای صفحه
+        bot.answer_callback_query(call.id, f"🎉 {points} سکه دریافت شد!", show_alert=False)
+        
+        # ارسال پیام کامل
+        bot.send_message(user_id, msg, parse_mode="Markdown")
+
+# --- تنظیمات گردونه ---
+SPIN_COST = 50  # هزینه هر بار چرخش
+REWARDS_CONFIG = [
+    {"name": "پوچ 😢",           "weight": 40, "type": "none"},
+    {"name": "۲۰ سکه بازگشت 🪙", "weight": 30, "type": "points", "value": 20},
+    {"name": "۵۰۰ مگابایت حجم 🎁", "weight": 20, "type": "volume", "value": 0.5},
+    {"name": "۱ گیگابایت حجم 🔥",  "weight": 10, "type": "volume", "value": 1.0},
+]
+
+@bot.callback_query_handler(func=lambda call: call.data == "lucky_spin_menu")
+def lucky_spin_menu_handler(call):
+    """منوی اولیه گردونه برای نمایش قوانین و دکمه شروع"""
+    user_id = call.from_user.id
+    user_data = db.user(user_id)
+    current_points = user_data.get('achievement_points', 0)
+    
+    msg = (
+        f"🎰 **گردونه شانس**\n\n"
+        f"💰 موجودی شما: *{current_points} سکه*\n"
+        f"💎 هزینه هر چرخش: *{SPIN_COST} سکه*\n\n"
+        f"🎁 **جوایز احتمالی:**\n"
+        f"▫️ حجم اضافه (تا ۱ گیگ)\n"
+        f"▫️ سکه رایگان\n"
+        f"▫️ و شاید هم پوچ!\n\n"
+        f"آیا شانست رو امتحان می‌کنی؟"
+    )
+    
+    kb = types.InlineKeyboardMarkup()
+    if current_points >= SPIN_COST:
+        kb.add(types.InlineKeyboardButton("🎲 بچرخون! (50- سکه)", callback_data="do_spin"))
+    else:
+        kb.add(types.InlineKeyboardButton("❌ موجودی کافی نیست", callback_data="noop"))
+    
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="shop:main"))
+    
+    bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="Markdown")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "do_spin")
+def do_spin_handler(call):
+    """اجرای عملیات چرخش"""
+    user_id = call.from_user.id
+    
+    # ۱. تلاش برای کسر امتیاز
+    # متد spend_achievement_points را قبلا در AchievementDB داشتید (فایل achievement.py)
+    if not db.spend_achievement_points(user_id, SPIN_COST):
+        bot.answer_callback_query(call.id, "موجودی شما کافی نیست!", show_alert=True)
+        return
+
+    # ۲. نمایش انیمیشن (اختیاری: صرفا با ویرایش متن حس چرخش می‌دهیم)
+    try:
+        bot.edit_message_text("🎰 در حال چرخش... 🎲", call.message.chat.id, call.message.message_id)
+        time.sleep(1.5) # وقفه کوتاه برای هیجان
+    except:
+        pass
+
+    # ۳. انتخاب جایزه بر اساس شانس (Weight)
+    reward = random.choices(REWARDS_CONFIG, weights=[r['weight'] for r in REWARDS_CONFIG], k=1)[0]
+    
+    # ۴. اعمال جایزه
+    result_msg = ""
+    if reward['type'] == "none":
+        result_msg = f"😢 اوه! {reward['name']}\nشانس بعدی شاید بهتر باشه."
+        
+    elif reward['type'] == "points":
+        db.add_achievement_points(user_id, reward['value'])
+        result_msg = f"🎉 تبریک! برنده شدی:\n**{reward['name']}**"
+        
+    elif reward['type'] == "volume":
+        # پیدا کردن UUID کاربر برای واریز حجم
+        user_uuids = db.uuids(user_id)
+        if user_uuids:
+            # استفاده از تابع هوشمند rewards.py برای واریز حجم
+            first_uuid = user_uuids[0]['uuid']
+            success = _apply_reward_intelligently(user_id, first_uuid, add_gb=reward['value'], add_days=0)
+            if success:
+                result_msg = f"🔥 عالیه! برنده شدی:\n**{reward['name']}**\n(به سرویس شما اضافه شد)"
+            else:
+                # اگر به هر دلیلی نشد حجم بدیم، سکه رو پس میدیم
+                db.add_achievement_points(user_id, SPIN_COST)
+                result_msg = "❌ خطا در واریز حجم. سکه‌های شما برگشت داده شد."
+        else:
+            # کاربر سرویس فعال ندارد، سکه رو پس میدیم
+            db.add_achievement_points(user_id, SPIN_COST)
+            result_msg = "❌ شما سرویس فعالی برای دریافت حجم ندارید. سکه‌ها برگشت داده شد."
+
+    # ۵. نمایش نتیجه نهایی
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🎲 دوباره بچرخون", callback_data="lucky_spin_menu"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به فروشگاه", callback_data="shop:main"))
+    
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    bot.send_message(call.message.chat.id, result_msg, reply_markup=kb, parse_mode="Markdown")

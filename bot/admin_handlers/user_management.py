@@ -8,6 +8,7 @@ from ..admin_formatters import fmt_admin_user_summary, fmt_user_payment_history
 from ..utils import _safe_edit, escape_markdown, load_service_plans, save_service_plans, parse_volume_string
 
 from ..user_handlers.wallet import _check_and_apply_loyalty_reward, _check_and_apply_referral_reward
+from bot.scheduler_jobs.rewards import _apply_reward_intelligently
 from ..config import ACHIEVEMENTS
 from ..scheduler_jobs.rewards import notify_user_achievement
 from ..language import get_string
@@ -1659,3 +1660,59 @@ def handle_churn_send_offer(call: types.CallbackQuery, params: list):
     except Exception as e:
         logger.error(f"Error in handle_churn_send_offer: {e}", exc_info=True)
         bot.answer_callback_query(call.id, "خطای داخلی رخ داد.", show_alert=True)
+
+# در فایل bot/admin_handlers/user_management.py
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin:us_winback:"))
+def manual_winback_handler(call):
+    """ارسال پیام دلتنگی و ارجاع به پشتیبانی برای دریافت هدیه"""
+    try:
+        admin_id = call.from_user.id
+        data_parts = call.data.split(":")
+        identifier = data_parts[2]
+
+        # 1. پیدا کردن کاربر هدف
+        if identifier.isdigit():
+            target_user_id = int(identifier)
+        else:
+            target_uuid = identifier
+            target_user_id = db.get_user_id_by_uuid(target_uuid)
+        
+        if not target_user_id:
+             bot.answer_callback_query(call.id, "❌ کاربر پیدا نشد.", show_alert=True)
+             return
+
+        # 2. دریافت نام کاربر
+        user_info = db.user(target_user_id)
+        user_name = user_info.get('first_name', 'عزیز') if user_info else 'عزیز'
+
+        # 3. متن پیام احساسی و تعاملی (بدون اعمال هدیه اتوماتیک)
+        # از escape_markdown استفاده می‌کنیم تا فرمت پیام به هم نریزد
+        msg_text = (
+            f"سلام {escape_markdown(user_name)} جان 👋🌸\n\n"
+            f"خیلی وقته نیستی و دلمون برات یه ذره شده\\.\\.\\. 🥺💔\n"
+            f"قهری باهامون؟ 😢 یا مشکلی پیش اومده که دیگه سر نمی‌زنی؟\n\n"
+            f"واسه اینکه دوباره باهم آشتی کنیم، یه کادوی کوچولو \\(🎁 *1 گیگ حجم \\+ 3 روز زمان*\\) برات کنار گذاشتم\\.\n\n"
+            f"اگه هنوز منو دوست داری و میخوای این کادو رو بگیری، بهم پیام بده تا تقدیمت کنم 👇✨"
+        )
+
+        # 4. تنظیم دکمه لینک به پشتیبانی (آیدی تلگرام شما)
+        # 🔴 توجه: جای YOUR_SUPPORT_USERNAME آیدی تلگرام خود را بگذارید (مثلا: Nzrmohammad)
+        support_username = "YOUR_SUPPORT_USERNAME" 
+        
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton(
+            "💌 پیام به پشتیبانی (دریافت هدیه) 🎁", 
+            url=f"https://t.me/{support_username}"
+        ))
+
+        # 5. ارسال پیام به کاربر
+        bot.send_message(target_user_id, msg_text, reply_markup=kb, parse_mode="MarkdownV2")
+        
+        # تایید برای ادمین
+        bot.answer_callback_query(call.id, "✅ پیام ارسال شد! منتظر پیام کاربر باشید.", show_alert=True)
+        
+    except Exception as e:
+        # لاگ کردن خطا (بهتر است از logger استفاده شود)
+        print(f"Error sending winback msg: {e}")
+        bot.answer_callback_query(call.id, "❌ خطای ناشناخته رخ داد.", show_alert=True)

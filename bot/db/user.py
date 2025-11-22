@@ -532,3 +532,49 @@ class UserDB(DatabaseManager):
         with self._conn() as c:
             rows = c.execute(query, (seven_days_ago,)).fetchall()
             return [dict(r) for r in rows]
+        
+    def claim_daily_checkin(self, user_id: int) -> dict:
+        """ثبت اعلام حضور روزانه با امتیاز کم (سرگرمی)"""
+        today = datetime.now(pytz.timezone("Asia/Tehran")).date()
+        
+        with self._conn() as c:
+            # دریافت اطلاعات فعلی کاربر
+            row = c.execute("SELECT last_checkin, streak_count FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            
+            # تبدیل تاریخ دیتابیس به آبجکت پایتون
+            last_checkin = None
+            if row and row['last_checkin']:
+                try:
+                    last_checkin = datetime.strptime(row['last_checkin'], "%Y-%m-%d").date()
+                except ValueError:
+                    last_checkin = None
+            
+            streak = row['streak_count'] if row and row['streak_count'] else 0
+            
+            # ۱. اگر امروز قبلاً گرفته باشد
+            if last_checkin == today:
+                return {"status": "already_claimed", "streak": streak}
+            
+            # ۲. محاسبه استریک (روزهای متوالی)
+            # اگر آخرین بار "دیروز" بوده، استریک یکی اضافه میشه
+            if last_checkin == today - timedelta(days=1):
+                new_streak = streak + 1
+            else:
+                # اگر فاصله افتاده، استریک ریست میشه به ۱
+                new_streak = 1
+            
+            # ۳. محاسبه امتیاز (خیلی کم، صرفاً جهت فان)
+            # فرمول: همیشه ۱ امتیاز، ولی اگر ۷ روز پشت سر هم بیاد ۱ امتیاز تشویقی میگیره
+            points = 1
+            if new_streak % 7 == 0:
+                points += 5  # جایزه هفتگی کوچک
+            
+            # ۴. ذخیره در دیتابیس
+            # آپدیت تاریخ و استریک
+            c.execute("UPDATE users SET last_checkin = ?, streak_count = ? WHERE user_id = ?", (today, new_streak, user_id))
+            
+            # اضافه کردن امتیاز به کیف امتیازات کاربر
+            # فرض بر این است که ستون achievement_points دارید (چون سیستم دستاورد دارید)
+            c.execute("UPDATE users SET achievement_points = COALESCE(achievement_points, 0) + ? WHERE user_id = ?", (points, user_id))
+            
+            return {"status": "success", "streak": new_streak, "points": points}
