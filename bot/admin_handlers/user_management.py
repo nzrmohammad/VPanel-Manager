@@ -1695,8 +1695,7 @@ def manual_winback_handler(call):
         )
 
         # 4. تنظیم دکمه لینک به پشتیبانی (آیدی تلگرام شما)
-        # 🔴 توجه: جای YOUR_SUPPORT_USERNAME آیدی تلگرام خود را بگذارید (مثلا: Nzrmohammad)
-        support_username = "YOUR_SUPPORT_USERNAME" 
+        support_username = "Nzrmohammad" 
         
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(

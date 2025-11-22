@@ -32,7 +32,7 @@ class Menu:
         kb.add(btn_user_account, btn_referral)
         kb.add(btn_achievements, btn_settings)
         kb.add(btn_birthday,btn_support)
-        kb.add(btn_web_login)
+        kb.add(btn_checkin,btn_web_login)
 
         if is_admin:
             kb.add(types.InlineKeyboardButton(f"{EMOJIS['crown']} پنل مدیریت", callback_data="admin:panel"))
@@ -184,22 +184,31 @@ class Menu:
             return None
 
         # --- نمایش دکمه‌ها بر اساس دسته‌بندی ---
+        
+        # 1. حجم
         data_buttons = [create_button(k, v) for k, v in data_items.items() if create_button(k, v)]
         if data_buttons:
-            kb.add(types.InlineKeyboardButton("افزایش حجم (گیگابایت)", callback_data="noop"))
+            kb.add(types.InlineKeyboardButton("📦 افزایش حجم (گیگابایت)", callback_data="noop"))
             kb.add(*data_buttons)
 
+        # 2. روز (زمان)
         day_buttons = [create_button(k, v) for k, v in day_items.items() if create_button(k, v)]
         if day_buttons:
-            kb.add(types.InlineKeyboardButton("تمدید سرویس (روز)", callback_data="noop"))
+            kb.add(types.InlineKeyboardButton("⏳ تمدید سرویس (روز)", callback_data="noop"))
             kb.add(*day_buttons)
             
+        # 3. قرعه‌کشی و سرگرمی (یکپارچه شده)
         lottery_buttons = [create_button(k, v) for k, v in lottery_items.items() if create_button(k, v)]
+        
+        # اضافه کردن دستی دکمه گردونه شانس به لیست دکمه‌های این بخش
+        spin_button = types.InlineKeyboardButton("🎰 گردونه شانس", callback_data="lucky_spin_menu")
+        lottery_buttons.append(spin_button)
+
         if lottery_buttons:
             kb.add(types.InlineKeyboardButton("🎉 سرگرمی و شانس", callback_data="noop"))
             kb.add(*lottery_buttons)
+
         # -----------------------------------------
-        kb.add(types.InlineKeyboardButton(f"🎰 گردونه شانس", callback_data="lucky_spin_menu"))
         kb.add(types.InlineKeyboardButton("🔙 بازگشت به سرویس‌ها", callback_data="view_plans"))
         return kb
 

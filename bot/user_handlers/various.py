@@ -803,20 +803,26 @@ def handle_coming_soon(call: types.CallbackQuery):
 def daily_checkin_handler(call):
     user_id = call.from_user.id
     
-    # فراخوانی متدی که در مرحله ۱ ساختیم
+    # فراخوانی متد دیتابیس
     result = db.claim_daily_checkin(user_id)
     
+    # ✅ اصلاح مهم: تغییر کالبک به "back" برای بازگشت به منوی اصلی
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+
     if result['status'] == 'already_claimed':
-        # اگر امروز قبلاً گرفته باشد، فقط یک هشدار (Alert) نمایش می‌دهیم
+        # اگر امروز قبلاً گرفته باشد
         text = (
-            f"✋ امروز سهمیه‌تو گرفتی!\n\n"
-            f"🔥 رکورد فعلی: {result['streak']} روز متوالی\n"
-            f"⏰ فردا دوباره سر بزن."
+            f"✋ *امروز سهمیه‌تو گرفتی!*\n\n"
+            f"🔥 رکورد فعلی: *{result['streak']} روز متوالی*\n"
+            f"⏰ فردا دوباره سر بزن تا استریکت خراب نشه."
         )
-        bot.answer_callback_query(call.id, text, show_alert=True)
+        
+        bot.answer_callback_query(call.id, "✋ امروز قبلاً دریافت کردی!", show_alert=False)
+        _safe_edit(user_id, call.message.message_id, text, reply_markup=kb, parse_mode="Markdown")
         
     elif result['status'] == 'success':
-        # اگر موفق بود، پیام تبریک می‌فرستیم
+        # اگر موفق بود
         points = result['points']
         streak = result['streak']
         
@@ -827,11 +833,8 @@ def daily_checkin_handler(call):
             f"💡 _هر روز سر بزن تا رکوردت خراب نشه!_"
         )
         
-        # نمایش پیام موفقیت کوچک بالای صفحه
         bot.answer_callback_query(call.id, f"🎉 {points} سکه دریافت شد!", show_alert=False)
-        
-        # ارسال پیام کامل
-        bot.send_message(user_id, msg, parse_mode="Markdown")
+        _safe_edit(user_id, call.message.message_id, msg, reply_markup=kb, parse_mode="Markdown")
 
 # --- تنظیمات گردونه ---
 SPIN_COST = 50  # هزینه هر بار چرخش
