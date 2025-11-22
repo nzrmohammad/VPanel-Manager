@@ -73,6 +73,17 @@ class NotificationsDB(DatabaseManager):
                 (user_id, message_id)
             )
 
+    def get_sent_reports(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        لیست تمام گزارش‌های ارسال شده قبلی برای یک کاربر را برمی‌گرداند.
+        """
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT id, message_id FROM sent_reports WHERE user_id = ?", 
+                (user_id,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def get_old_reports_to_delete(self, hours: int = 12) -> List[Dict[str, Any]]:
         """پیام‌های گزارشی که قدیمی‌تر از زمان مشخص شده هستند را برای حذف برمی‌گرداند."""
         time_limit = datetime.now(pytz.utc) - timedelta(hours=hours)
@@ -150,3 +161,4 @@ class NotificationsDB(DatabaseManager):
     def delete_scheduled_message(self, job_id: int):
         with self._conn() as c:
             c.execute("DELETE FROM scheduled_messages WHERE id=?", (job_id,))
+

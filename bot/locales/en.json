@@ -149,6 +149,7 @@
   "err_name_too_short": "The entered name is too short. Operation cancelled.",
   "msg_name_changed_success": "✅ Your config name has been successfully changed.\n\n⚠️ To see the change, please update your subscription link in your application.",
   "weekly_usage_header": "📊 This Week's Total Usage:",
+  "monthly_usage_header": "📊 This Month's Total Usage:",
   "weekly_report_footer": "⚡️ Total usage this week for all accounts: {usage}",
   "btn_tutorials": "Connection Guides",
   "prompt_select_os": "Please select your operating system to get the guide:",

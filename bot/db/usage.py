@@ -846,7 +846,59 @@ class UsageDB(DatabaseManager):
                 last_h, last_m = current_h, current_m
 
         return usage_stats
-    
+
+    def get_monthly_usage_by_time_of_day(self, uuid_id: int) -> Dict[str, float]:
+        """
+        مصرف ماهانه کاربر را به تفکیک ساعات روز محاسبه می‌کند.
+        """
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        time_slots = {
+            'morning': (6, 12), 'afternoon': (12, 18),
+            'evening': (18, 24), 'night': (0, 6)
+        }
+        usage_stats = { 'morning': 0.0, 'afternoon': 0.0, 'evening': 0.0, 'night': 0.0 }
+        
+        now_gregorian = datetime.now(tehran_tz)
+        now_shamsi = jdatetime.datetime.fromgregorian(datetime=now_gregorian, tzinfo=tehran_tz)
+        # شروع ماه شمسی
+        month_start_shamsi = now_shamsi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start_utc = month_start_shamsi.togregorian().astimezone(pytz.utc)
+        
+        with self._conn() as c:
+            last_snap_before = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
+                (uuid_id, month_start_utc)
+            ).fetchone()
+
+            last_h = last_snap_before['hiddify_usage_gb'] if last_snap_before and last_snap_before['hiddify_usage_gb'] is not None else 0.0
+            last_m = last_snap_before['marzban_usage_gb'] if last_snap_before and last_snap_before['marzban_usage_gb'] is not None else 0.0
+
+            snapshots = c.execute(
+                "SELECT hiddify_usage_gb, marzban_usage_gb, taken_at FROM usage_snapshots WHERE uuid_id = ? AND taken_at >= ? ORDER BY taken_at ASC",
+                (uuid_id, month_start_utc)
+            ).fetchall()
+
+            for snap in snapshots:
+                current_h = snap['hiddify_usage_gb'] or 0.0
+                current_m = snap['marzban_usage_gb'] or 0.0
+                
+                h_diff = current_h - last_h if current_h >= last_h else current_h
+                m_diff = current_m - last_m if current_m >= last_m else current_m
+                total_diff = max(0, h_diff) + max(0, m_diff)
+
+                if total_diff > 0:
+                    snap_time_tehran = snap['taken_at'].astimezone(tehran_tz)
+                    hour = snap_time_tehran.hour
+                    
+                    for slot, (start, end) in time_slots.items():
+                        if start <= hour < end:
+                            usage_stats[slot] += total_diff
+                            break
+                
+                last_h, last_m = current_h, current_m
+
+        return usage_stats
+
     def get_user_total_usage_in_last_n_days(self, uuid_id: int, days: int) -> float:
         """مجموع کل مصرف یک کاربر خاص در N روز گذشته را با مدیریت ریست شدن حجم محاسبه می‌کند."""
         n_days_ago = datetime.now(pytz.utc) - timedelta(days=days)
@@ -898,7 +950,7 @@ class UsageDB(DatabaseManager):
     def get_user_monthly_usage_history_by_panel(self, uuid_id: int) -> list:
         """
         تاریخچه مصرف روزانه کاربر در ماه شمسی جاری را به تفکیک پنل برمی‌گرداند.
-        (اصلاح شده برای استفاده از usage_snapshots)
+        (نسخه اصلاح شده نهایی: بازگرداندن آبجکت تاریخ به جای رشته)
         """
         tehran_tz = pytz.timezone("Asia/Tehran")
         now_gregorian = datetime.now(tehran_tz)
@@ -913,13 +965,12 @@ class UsageDB(DatabaseManager):
         with self._conn() as c:
             # حلقه تا امروز
             while current_date <= now_shamsi:
-                date_str = current_date.strftime('%Y-%m-%d')
+                # *** تغییر مهم: تبدیل به آبجکت گرگورین برای سازگاری با فرمتر ***
+                gregorian_date = current_date.togregorian() 
                 
-                # بازه زمانی روز (از ۰۰:۰۰ تا فردا ۰۰:۰۰ به وقت تهران، تبدیل شده به UTC)
-                day_start_utc = current_date.togregorian().astimezone(pytz.utc)
+                day_start_utc = gregorian_date.astimezone(pytz.utc)
                 day_end_utc = day_start_utc + timedelta(days=1)
 
-                # دریافت اسنپ‌شات ابتدا و انتهای روز
                 baseline_snap = c.execute(
                     "SELECT hiddify_usage_gb, marzban_usage_gb FROM usage_snapshots WHERE uuid_id = ? AND taken_at < ? ORDER BY taken_at DESC LIMIT 1",
                     (uuid_id, day_start_utc)
@@ -939,13 +990,12 @@ class UsageDB(DatabaseManager):
                     h_end = end_snap['hiddify_usage_gb'] or 0.0
                     m_end = end_snap['marzban_usage_gb'] or 0.0
 
-                    # محاسبه مصرف با در نظر گرفتن احتمال ریست شدن حجم
                     h_usage = h_end - h_start if h_end >= h_start else h_end
                     m_usage = m_end - m_start if m_end >= m_start else m_end
 
                 if h_usage > 0 or m_usage > 0:
                     history.append({
-                        'date': date_str,
+                        'date': gregorian_date, # ذخیره به صورت آبجکت تاریخ
                         'hiddify_usage': round(h_usage, 2),
                         'marzban_usage': round(m_usage, 2),
                         'total_usage': round(h_usage + m_usage, 2)

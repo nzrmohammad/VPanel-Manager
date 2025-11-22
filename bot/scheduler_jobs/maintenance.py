@@ -177,7 +177,7 @@ def run_monthly_vacuum(bot) -> None:
     """
     اسنپ‌شات‌های قدیمی را حذف کرده و در روز اول هر ماه، دیتابیس را بهینه‌سازی می‌کند.
     """
-    db.delete_old_snapshots(days_to_keep=7)
+    db.delete_old_snapshots(days_to_keep=32)
     if datetime.now(pytz.timezone("Asia/Tehran")).day == 1:
         logger.info("SCHEDULER: It's the first day of the month. Running database VACUUM.")
         db.vacuum_db()
