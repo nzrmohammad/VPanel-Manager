@@ -31,6 +31,9 @@ def initialize_handlers(b, conv_dict):
     global bot, admin_conversations
     bot = b
     admin_conversations = conv_dict
+    bot.register_callback_query_handler(daily_checkin_handler, func=lambda call: call.data == "daily_checkin")
+    bot.register_callback_query_handler(lucky_spin_menu_handler, func=lambda call: call.data == "lucky_spin_menu")
+    bot.register_callback_query_handler(do_spin_handler, func=lambda call: call.data == "do_spin")
 
 # =============================================================================
 # 1. Initial Menus & Guides
@@ -797,7 +800,6 @@ def handle_coming_soon(call: types.CallbackQuery):
     bot.answer_callback_query(call.id, text=alert_text, show_alert=True)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "daily_checkin")
 def daily_checkin_handler(call):
     user_id = call.from_user.id
     
@@ -840,7 +842,6 @@ REWARDS_CONFIG = [
     {"name": "۱ گیگابایت حجم 🔥",  "weight": 10, "type": "volume", "value": 1.0},
 ]
 
-@bot.callback_query_handler(func=lambda call: call.data == "lucky_spin_menu")
 def lucky_spin_menu_handler(call):
     """منوی اولیه گردونه برای نمایش قوانین و دکمه شروع"""
     user_id = call.from_user.id
@@ -869,7 +870,6 @@ def lucky_spin_menu_handler(call):
     bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="Markdown")
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "do_spin")
 def do_spin_handler(call):
     """اجرای عملیات چرخش"""
     user_id = call.from_user.id

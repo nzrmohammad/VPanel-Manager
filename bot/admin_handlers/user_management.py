@@ -23,6 +23,7 @@ def initialize_user_management_handlers(b, conv_dict):
     global bot, admin_conversations
     bot = b
     admin_conversations = conv_dict
+    bot.register_callback_query_handler(manual_winback_handler, func=lambda call: call.data.startswith("admin:us_winback:"))
 
 def handle_show_user_summary(call, params):
     """
@@ -1661,9 +1662,6 @@ def handle_churn_send_offer(call: types.CallbackQuery, params: list):
         logger.error(f"Error in handle_churn_send_offer: {e}", exc_info=True)
         bot.answer_callback_query(call.id, "خطای داخلی رخ داد.", show_alert=True)
 
-# در فایل bot/admin_handlers/user_management.py
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin:us_winback:"))
 def manual_winback_handler(call):
     """ارسال پیام دلتنگی و ارجاع به پشتیبانی برای دریافت هدیه"""
     try:
