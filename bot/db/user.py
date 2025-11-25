@@ -272,7 +272,7 @@ class UserDB(DatabaseManager):
     def get_all_user_uuids(self) -> List[Dict[str, Any]]:
         """تمام رکوردهای UUID را برای پنل ادمین برمی‌گرداند."""
         with self._conn() as c:
-            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr, has_access_us, has_access_ro, has_access_supp FROM user_uuids ORDER BY created_at DESC"
+            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_de2, has_access_fr, has_access_tr, has_access_us, has_access_ro, has_access_ir, has_access_supp FROM user_uuids ORDER BY created_at DESC"
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
@@ -295,7 +295,7 @@ class UserDB(DatabaseManager):
             SELECT
                 u.user_id, u.first_name, u.username,
                 uu.id as uuid_id, uu.name as config_name, uu.uuid, uu.is_vip,
-                uu.has_access_de, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_ro, uu.has_access_supp,
+                uu.has_access_de, uu.has_access_de2, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_ro, uu.has_access_ir, uu.has_access_supp,
                 CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
             FROM users u
             JOIN user_uuids uu ON u.user_id = uu.user_id
@@ -309,7 +309,7 @@ class UserDB(DatabaseManager):
 
     def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
         """دسترسی کاربر به یک سرور خاص را به‌روزرسانی می‌کند."""
-        if server not in ['de', 'fr', 'tr', 'us', 'ro', 'supp']:
+        if server not in ['de', 'de2', 'fr', 'tr', 'us', 'ro', 'ir', 'supp']:
             return False
         column_name = f"has_access_{server}"
         with self._conn() as c:
@@ -318,17 +318,19 @@ class UserDB(DatabaseManager):
             
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
-        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 'has_access_supp': False}
+        access_rights = {'has_access_de': False, 'has_access_de2': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 'has_access_ir': False, 'has_access_supp': False}
         user_uuids = self.uuids(user_id)
         if user_uuids:
             # دسترسی بر اساس اولین اکانت ثبت شده تعیین می‌شود
             first_uuid_record = self.uuid_by_id(user_id, user_uuids[0]['id'])
             if first_uuid_record:
                 access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
+                access_rights['has_access_de2'] = first_uuid_record.get('has_access_de2', False)
                 access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
                 access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
                 access_rights['has_access_us'] = first_uuid_record.get('has_access_us', False)
                 access_rights['has_access_ro'] = first_uuid_record.get('has_access_ro', False)
+                access_rights['has_access_ir'] = first_uuid_record.get('has_access_ir', False)
                 access_rights['has_access_supp'] = first_uuid_record.get('has_access_supp', False)
         return access_rights
 

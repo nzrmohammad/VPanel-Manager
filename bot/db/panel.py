@@ -124,7 +124,9 @@ class PanelDB(DatabaseManager):
         def detect_server_type(config_str: str) -> str:
             config_lower = config_str.lower()
             # تشخیص بر اساس پرچم‌ها
-            if "🇩🇪" in config_str or "de-" in config_lower or "#de" in config_lower:
+            if "🇮🇷" in config_str or "🇮🇷-" in config_lower or "#🇮🇷" in config_lower:
+                return '🇮🇷'            
+            elif "🇩🇪" in config_str or "de-" in config_lower or "#de" in config_lower:
                 return 'de'
             elif "🇫🇷" in config_str or "fr-" in config_lower or "#fr" in config_lower:
                 return 'fr'
@@ -198,7 +200,7 @@ class PanelDB(DatabaseManager):
 
     def set_template_server_type(self, template_id: int, server_type: str):
         """نوع سرور یک قالب را تنظیم می‌کند."""
-        if server_type not in ['de', 'fr', 'tr', 'us', 'ro', 'supp', 'none']:
+        if server_type not in ['ir', 'de', 'de2', 'fr', 'tr', 'us', 'ro', 'supp', 'none']:
             return
         with self._conn() as c:
             c.execute("UPDATE config_templates SET server_type = ? WHERE id = ?", (server_type, template_id))
@@ -222,11 +224,13 @@ class PanelDB(DatabaseManager):
         with self._conn() as c:
             c.execute("""
                 UPDATE user_uuids SET
-                    has_access_de = ?, has_access_fr = ?, has_access_tr = ?,
+                    has_access_ir = ?, has_access_de = ?, has_access_de2 = ?, has_access_fr = ?, has_access_tr = ?,
                     has_access_us = ?, has_access_ro = ?, has_access_supp = ?
                 WHERE id = ?
             """, (
+                int(template.get('has_access_ir', False)),
                 int(template.get('has_access_de', False)),
+                int(template.get('has_access_de2', False)),
                 int(template.get('has_access_fr', False)),
                 int(template.get('has_access_tr', False)),
                 int(template.get('has_access_us', False)),

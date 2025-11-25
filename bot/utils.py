@@ -408,7 +408,9 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     if not user_record:
         return None
 
+    has_access_ir = user_record.get('has_access_ir', False)
     has_access_de = user_record.get('has_access_de', False)
+    has_access_de2 = user_record.get('has_access_de2', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     has_access_us = user_record.get('has_access_us', False)
@@ -481,7 +483,9 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
         if info_config:
             final_configs_to_process.append(info_config)
 
+    has_access_ir = user_record.get('has_access_ir', False)
     has_access_de = user_record.get('has_access_de', False)
+    has_access_de2 = user_record.get('has_access_de2', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     has_access_us = user_record.get('has_access_us', False)
@@ -501,12 +505,14 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
         server_type = tpl.get('server_type', 'none')
         
         if (is_special and not is_user_vip) or \
-           (server_type == 'de' and not has_access_de) or \
-           (server_type == 'fr' and not has_access_fr) or \
-           (server_type == 'tr' and not has_access_tr) or \
-           (server_type == 'us' and not has_access_us) or \
-           (server_type == 'ro' and not has_access_ro) or \
-           (server_type == 'supp' and not has_access_supp):
+            (server_type == 'ir' and not has_access_ir) or \
+            (server_type == 'de' and not has_access_de) or \
+            (server_type == 'de2' and not has_access_de2) or \
+            (server_type == 'fr' and not has_access_fr) or \
+            (server_type == 'tr' and not has_access_tr) or \
+            (server_type == 'us' and not has_access_us) or \
+            (server_type == 'ro' and not has_access_ro) or \
+            (server_type == 'supp' and not has_access_supp):
             continue
         eligible_templates.append(tpl)
 

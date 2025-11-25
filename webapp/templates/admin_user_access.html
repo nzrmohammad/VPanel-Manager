@@ -68,11 +68,14 @@
                 <label for="serverFilter">سرور:</label>
                 <select id="serverFilter">
                     <option value="all">همه</option>
+                    <option value="ir">شامل ایران 🇮🇷</option>
                     <option value="de">شامل آلمان 🇩🇪</option>
+                    <option value="de2">شامل آلمان (No Frag) 🇩🇪</option>
                     <option value="fr">شامل فرانسه 🇫🇷</option>
                     <option value="tr">شامل ترکیه 🇹🇷</option>
                     <option value="us">شامل آمریکا 🇺🇸</option>
                     <option value="ro">شامل رومانی 🇷🇴</option>
+                    <option value="supp">شامل فنلاند 🇫🇴</option>
                 </select>
             </div>
         </div>
@@ -83,14 +86,15 @@
                     <tr>
                         <th>کاربر تلگرام</th>
                         <th>نام کاربر (در پنل)</th>
-                        <th>پنل‌های فعال</th>
                         <th>VIP ⭐</th>
+                        <th>ایران 🇮🇷</th>
+                        <th>آلمان 🇩🇪</th>
                         <th>آلمان 🇩🇪</th>
                         <th>فرانسه 🇫🇷</th>
                         <th>ترکیه 🇹🇷</th>
                         <th>آمریکا 🇺🇸</th>
                         <th>رومانی 🇷🇴</th>
-                        <th>پشتیبان</th>
+                        <th>پشتیبان 🇫🇮</th>
                     </tr>
                 </thead>
                 <tbody id="user-table-body">
@@ -98,20 +102,17 @@
                         <tr data-uuid-id="{{ user.uuid_id }}" data-uuid="{{ user.uuid }}">
                             <td><span>{{ user.first_name or 'کاربر' }} (<code>{{ user.user_id }}</code>)</span></td>
                             <td><span>{{ user.config_name }}</span></td>
-                            <td class="panel-display-cell">
-                                <span style="font-size: 1.1em;">
-                                    {% if user.has_access_de %}🇩🇪{% endif %}
-                                    {% if user.has_access_fr %}🇫🇷{% endif %}
-                                    {% if user.has_access_tr %}🇹🇷{% endif %}
-                                    {% if user.has_access_us %}🇺🇸{% endif %}
-                                    {% if user.has_access_ro %}🇷🇴{% endif %}
-                                </span>
-                            </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="toggle-vip" {% if user.is_vip %}checked{% endif %}><span class="slider"></span></label>
                             </td>
                             <td class="access-toggle-cell">
+                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="ir" {% if user.has_access_ir %}checked{% endif %}><span class="slider"></span></label>
+                            </td>                            
+                            <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="de" {% if user.has_access_de %}checked{% endif %}><span class="slider"></span></label>
+                            </td>
+                            <td class="access-toggle-cell">
+                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="de2" {% if user.has_access_de2 %}checked{% endif %}><span class="slider"></span></label>
                             </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="fr" {% if user.has_access_fr %}checked{% endif %}><span class="slider"></span></label>

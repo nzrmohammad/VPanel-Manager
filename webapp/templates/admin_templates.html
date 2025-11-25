@@ -112,7 +112,9 @@
                                 <td style="text-align: center;"><span class="status-badge {{ 'status-active' if tpl.is_active else 'status-inactive' }}">{{ 'فعال' if tpl.is_active else 'غیرفعال' }}</span></td>
                                 
                                 <td class="server-type-selector" style="text-align: center;">
+                                    <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'ir'}}" data-type="ir" title="سرور ایران">🇮🇷</button>
                                     <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'de'}}" data-type="de" title="سرور آلمان">🇩🇪</button>
+                                    <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'de2'}}" data-type="de2" title="سرور آلمان بدون فرگمنت">🇩🇪2</button>
                                     <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'fr'}}" data-type="fr" title="سرور فرانسه">🇫🇷</button>
                                     <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'tr'}}" data-type="tr" title="سرور ترکیه">🇹🇷</button>
                                     <button class="action-btn server-type-btn {{'active' if tpl.server_type == 'us'}}" data-type="us" title="سرور آمریکا">🇺🇸</button>
