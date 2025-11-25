@@ -125,7 +125,7 @@ class PanelDB(DatabaseManager):
             config_lower = config_str.lower()
             # تشخیص بر اساس پرچم‌ها
             if "🇮🇷" in config_str or "🇮🇷-" in config_lower or "#🇮🇷" in config_lower:
-                return '🇮🇷'            
+                return 'ir'            
             elif "🇩🇪" in config_str or "de-" in config_lower or "#de" in config_lower:
                 return 'de'
             elif "🇫🇷" in config_str or "fr-" in config_lower or "#fr" in config_lower:

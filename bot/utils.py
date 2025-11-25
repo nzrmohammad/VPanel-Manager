@@ -423,14 +423,16 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     hiddify_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'hiddify'), None)
     marzban_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'marzban'), None)
 
-    if has_access_de and hiddify_info:
+    if (has_access_de or has_access_de2) and hiddify_info:
         usage = hiddify_info.get('current_usage_GB', 0)
         limit = hiddify_info.get('usage_limit_GB', 0)
         limit_str = f"{limit:.0f}" if limit > 0 else '∞'
         parts.append(f"🇩🇪 {usage:.0f}/{limit_str}GB")
 
-    if (has_access_fr or has_access_tr or has_access_us or has_access_ro or has_access_supp) and marzban_info:
+    if (has_access_ir or has_access_fr or has_access_tr or has_access_us or has_access_ro or has_access_supp) and marzban_info:
         flags = []
+        if has_access_ir:
+            flags.append("🇮🇷")
         if has_access_fr:
             flags.append("🇫🇷")
         if has_access_tr:
