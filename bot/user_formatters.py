@@ -882,7 +882,8 @@ def fmt_purchase_summary(info_before: dict, info_after: dict, plan: dict, lang_c
 def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
     """
     (نسخه ماهانه - کپی شده از گزارش هفتگی)
-    گزارش ماهانه را با تفکik مصرف، مقایسه با ماه قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
+    گزارش ماهانه را با تفکیک مصرف، مقایسه با ماه قبل و خلاصه‌ای هوشمند فرمت‌بندی می‌کند.
+    شامل محاسبه هزینه اینترنت بر اساس مصرف.
     """
     if not user_infos:
         return ""
@@ -903,15 +904,23 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
         user_id = user_record.get('user_id')
         name = info.get("name", get_string('unknown_user', lang_code))
 
-        # 1. تغییر کلیدی: فراخوانی تابع ماهانه به جای هفتگی
+        # 1. دریافت تاریخچه مصرف
         daily_history = db.get_user_monthly_usage_history_by_panel(uuid_id)
         current_month_usage = sum(item['total_usage'] for item in daily_history)
+
+        # --- محاسبه هزینه ---
+        total_h_usage = sum(item.get('hiddify_usage', 0.0) for item in daily_history)
+        total_m_usage = sum(item.get('marzban_usage', 0.0) for item in daily_history)
+        
+        # قیمت‌ها: آلمان ۲ تومان، بقیه ۳ تومان
+        estimated_cost = (total_h_usage * 2) + (total_m_usage * 3)
+        # -------------------
 
         account_lines = []
         if len(user_infos) > 1:
             account_lines.append(f"*{escape_markdown(get_string('fmt_report_account_header', lang_code).format(name=name))}*")
 
-        # نمایش مصرف روزانه به تفکیک (این حلقه بدون تغییر باقی می‌ماند)
+        # نمایش مصرف روزانه به تفکیک
         for item in reversed(daily_history):
             total_daily = item['total_usage']
             if total_daily > 0.001:
@@ -934,7 +943,7 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
                     if user_record.get('has_access_us'): flags.append("🇺🇸")
                     if user_record.get('has_access_ro'): flags.append("🇷🇴")
                     if user_record.get('has_access_supp'): flags.append("🇫🇮")
-                    flag_str = "".join(flags) if flags else "🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮" # Fallback
+                    flag_str = "".join(flags) if flags else "🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮" 
                     breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
 
                 if breakdown_parts:
@@ -942,13 +951,16 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
 
         # فوتر مصرف کل
         usage_footer_str = format_daily_usage(current_month_usage)
-        # 2. تغییر متن: استفاده از کلید زبان جدید (یا می‌توانید متن فعلی را تغییر دهید)
-        footer_template = get_string("monthly_usage_header", lang_code) # فرض می‌کنیم کلید "monthly_usage_header" را اضافه می‌کنید
+        footer_template = get_string("monthly_usage_header", lang_code) 
         final_footer_line = f"{footer_template} {usage_footer_str}"
         account_lines.append(f'\n\n*{escape_markdown(final_footer_line)}*')
 
+        # --- نمایش هزینه ---
+        cost_str = f"{estimated_cost:,.0f}"
+        account_lines.append(f"💰 *هزینه مصرفی :* {escape_markdown(cost_str)} تومان")
+        # -------------------
+
         # بخش دستاوردها
-        # 3. تغییر منطق: محاسبه شروع ماه شمسی به جای هفته
         now_shamsi_for_ach = jdatetime.datetime.now(tz=tehran_tz)
         month_start_shamsi = now_shamsi_for_ach.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         month_start_utc = month_start_shamsi.togregorian().astimezone(pytz.utc)
@@ -969,9 +981,6 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
             busiest_day_info = max(daily_history, key=lambda x: x['total_usage'])
             busiest_day_name = day_names[jdatetime.datetime.fromgregorian(date=busiest_day_info['date']).weekday()]
 
-            total_h_usage = sum(d.get('hiddify_usage', 0.0) for d in daily_history)
-            total_m_usage = sum(d.get('marzban_usage', 0.0) for d in daily_history)
-
             most_used_server = "سرور اصلی"
             if total_h_usage >= total_m_usage and user_record.get('has_access_de'):
                 most_used_server = "آلمان 🇩🇪"
@@ -986,22 +995,18 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
                 if flags:
                     most_used_server = "".join(flags)
 
-            # 4. تغییر کلیدی: فراخوانی تابع ماهانه
             time_of_day_stats = db.get_monthly_usage_by_time_of_day(uuid_id)
             busiest_period_key = max(time_of_day_stats, key=time_of_day_stats.get) if any(v > 0 for v in time_of_day_stats.values()) else None
             period_map = {"morning": "صبح ☀️", "afternoon": "بعد از ظهر 🏙️", "evening": "عصر 🌆", "night": "شب 🦉"}
             busiest_period_name = period_map.get(busiest_period_key, 'ساعات مختلف')
 
-            # 5. تغییر کلیدی: فراخوانی تابع ماهانه
             previous_month_usage = db.get_previous_month_usage(uuid_id)
             comparison_text = ""
             if previous_month_usage > 0.01:
                 usage_change_percent = ((current_month_usage - previous_month_usage) / previous_month_usage) * 100
                 change_word = "بیشتر" if usage_change_percent >= 0 else "کمتر"
-                # 6. تغییر متن: "هفته قبل" به "ماه قبل"
                 comparison_text = f"این مصرف *{escape_markdown(f'{abs(usage_change_percent):.0f}%')}* {escape_markdown(change_word)} از ماه قبل بود\\. "
 
-            # 7. تغییر متن: "این هفته" به "این ماه"
             summary_message = (
                 f"{separator}\n"
                 f"سلام {escape_markdown(name)}\n"
@@ -1013,6 +1018,4 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
 
         accounts_reports.append("\n".join(account_lines))
 
-    # 8. تغییر هدر اصلی (اگر چند اکانت وجود داشته باشد)
-    # این بخش در فایل `reports.py` مدیریت می‌شود، پس اینجا `return` می‌کنیم
     return "\n\n".join(accounts_reports)
