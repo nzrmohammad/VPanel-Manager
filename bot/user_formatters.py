@@ -22,7 +22,9 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
         return escape_markdown(get_string("fmt_err_getting_info", lang_code))
 
     user_record = db.get_user_uuid_record(info.get("uuid", ""))
+    has_access_ir = user_record.get('has_access_ir', False) if user_record else False
     has_access_de = user_record.get('has_access_de', False) if user_record else False
+    has_access_de2 = user_record.get('has_access_de2', False) if user_record else False
     has_access_fr = user_record.get('has_access_fr', False) if user_record else False
     has_access_tr = user_record.get('has_access_tr', False) if user_record else False
     has_access_us = user_record.get('has_access_us', False) if user_record else False
@@ -43,9 +45,10 @@ def fmt_one(info: dict, daily_usage_dict: dict, lang_code: str) -> str:
     
     def format_panel_details(panel_data, daily_usage, panel_type):
         flags = ""
-        if panel_type == 'hiddify' and has_access_de:
+        if panel_type == 'hiddify' and (has_access_de or has_access_de2):
             flags = "🇩🇪"
         elif panel_type == 'marzban':
+            if has_access_ir: flags += "🇮🇷"
             if has_access_fr: flags += "🇫🇷"
             if has_access_tr: flags += "🇹🇷"
             if has_access_us: flags += "🇺🇸"
@@ -185,10 +188,11 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             marzban_info = next((p.get('data', {}) for p in info.get('breakdown', {}).values() if p.get('type') == 'marzban'), {})
 
             account_lines.append(f"📊 حجم‌کل : {escape_markdown(f'{info.get("usage_limit_GB", 0):.2f} GB')}")
-            if access_rights.get('has_access_de') and hiddify_info:
+            if (access_rights.get('has_access_de') or access_rights.get('has_access_de2')) and hiddify_info: 
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('usage_limit_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
+            if (access_rights.get('has_access_ir') or access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
+                if access_rights.get('has_access_ir'): flags.append("🇮🇷")
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
                 if access_rights.get('has_access_ro'): flags.append("🇷🇴")
@@ -196,10 +200,11 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('usage_limit_GB', 0)))}")
 
             account_lines.append(f"🔥 حجم‌مصرف شده : {escape_markdown(f'{info.get("current_usage_GB", 0):.2f} GB')}")
-            if access_rights.get('has_access_de') and hiddify_info:
+            if (access_rights.get('has_access_de') or access_rights.get('has_access_de2')) and hiddify_info: 
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('current_usage_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
+            if (access_rights.get('has_access_ir') or access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
+                if access_rights.get('has_access_ir'): flags.append("🇮🇷")
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
                 if access_rights.get('has_access_ro'): flags.append("🇷🇴")
@@ -207,10 +212,11 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
                 account_lines.append(f"{''.join(flags)} : {escape_markdown(format_daily_usage(marzban_info.get('current_usage_GB', 0)))}")
 
             account_lines.append(f"📥 حجم‌باقی‌مانده : {escape_markdown(f'{max(0, info.get("usage_limit_GB", 0) - info.get("current_usage_GB", 0)):.2f} GB')}")
-            if access_rights.get('has_access_de') and hiddify_info:
+            if (access_rights.get('has_access_de') or access_rights.get('has_access_de2')) and hiddify_info: 
                 account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(hiddify_info.get('remaining_GB', 0)))}")
-            if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
+            if (access_rights.get('has_access_ir') or access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and marzban_info:
                 flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
+                if access_rights.get('has_access_ir'): flags.append("🇮🇷")
                 if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                 if access_rights.get('has_access_us'): flags.append("🇺🇸")
                 if access_rights.get('has_access_ro'): flags.append("🇷🇴")
@@ -220,10 +226,11 @@ def fmt_user_report(user_infos: list, lang_code: str) -> str:
             # این بخش مصرف روزانه را به گزارش اضافه می‌کند
             if sum(daily_usage_dict.values()) > 0.001:
                 account_lines.append("⚡️ حجم مصرف شده امروز:")
-                if access_rights.get('has_access_de') and daily_usage_dict.get('hiddify',0) > 0.001:
+                if (access_rights.get('has_access_de') or access_rights.get('has_access_de2')) and daily_usage_dict.get('hiddify',0) > 0.001:
                     account_lines.append(f"🇩🇪 : {escape_markdown(format_daily_usage(daily_usage_dict.get('hiddify',0)))}")
-                if (access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and daily_usage_dict.get('marzban',0) > 0.001:
+                if (access_rights.get('has_access_ir') or access_rights.get('has_access_fr') or access_rights.get('has_access_tr') or access_rights.get('has_access_us') or access_rights.get('has_access_ro') or access_rights.get('has_access_supp')) and daily_usage_dict.get('marzban',0) > 0.001:
                     flags = ["🇫🇷" for _ in range(1) if access_rights.get('has_access_fr')]
+                    if access_rights.get('has_access_ir'): flags.append("🇮🇷")
                     if access_rights.get('has_access_tr'): flags.append("🇹🇷")
                     if access_rights.get('has_access_us'): flags.append("🇺🇸")
                     if access_rights.get('has_access_ro'): flags.append("🇷🇴")
@@ -306,12 +313,13 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
                     breakdown_parts.append(f"🇩🇪 {format_daily_usage(h_usage_day)}")
                 if m_usage_day > 0.001:
                     flags = []
+                    if user_record.get('has_access_ir'): flags.append("🇮🇷")
                     if user_record.get('has_access_fr'): flags.append("🇫🇷")
                     if user_record.get('has_access_tr'): flags.append("🇹🇷")
                     if user_record.get('has_access_us'): flags.append("🇺🇸")
                     if user_record.get('has_access_ro'): flags.append("🇷🇴")
                     if user_record.get('has_access_supp'): flags.append("🇫🇮")
-                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸🇷🇴" # Fallback
+                    flag_str = "".join(flags) if flags else "🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮" # Fallback
                     breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
                 
                 if breakdown_parts:
@@ -350,6 +358,7 @@ def fmt_user_weekly_report(user_infos: list, lang_code: str) -> str:
             else:
                 # پرچم‌ها را بدون متن اضافی کنار هم قرار می‌دهیم
                 flags = []
+                if user_record.get('has_access_ir'): flags.append("🇮🇷")
                 if user_record.get('has_access_fr'): flags.append("🇫🇷")
                 if user_record.get('has_access_tr'): flags.append("🇹🇷")
                 if user_record.get('has_access_us'): flags.append("🇺🇸")
@@ -569,7 +578,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     user_id = db.get_user_id_by_uuid(user_uuid)
     wallet_balance = 0.0
     achievement_points = 0
-    access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False}
+    access_rights = {'has_access_ir': False, 'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 'has_access_supp': False}
     vip_text = ""
     user_badges = []
 
@@ -607,7 +616,9 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     
     # --- 5. ساخت متن سرورها ---
     access_flags = []
+    if access_rights.get('has_access_ir'): access_flags.append("🇮🇷")
     if access_rights.get('has_access_de'): access_flags.append("🇩🇪")
+    if access_rights.get('has_access_de2'): access_flags.append("🇩🇪")
     if access_rights.get('has_access_fr'): access_flags.append("🇫🇷")
     if access_rights.get('has_access_tr'): access_flags.append("🇹🇷")
     if access_rights.get('has_access_us'): access_flags.append("🇺🇸")
@@ -640,6 +651,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # --- 7. منطق تفکیک اطلاعات بر اساس سرور ---
     marzban_flags_list = []
+    if access_rights.get('has_access_ir'): marzban_flags_list.append("🇮🇷")
     if access_rights.get('has_access_fr'): marzban_flags_list.append("🇫🇷")
     if access_rights.get('has_access_tr'): marzban_flags_list.append("🇹🇷")
     if access_rights.get('has_access_us'): marzban_flags_list.append("🇺🇸")
@@ -650,7 +662,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # A. حجم کل
     lines.append(f"📦 حجم کل : *{escape_markdown(f'{total_limit_gb:.2f}')} GB*")
-    if hiddify_info and access_rights.get('has_access_de'):
+    if hiddify_info and (access_rights.get('has_access_de') or access_rights.get('has_access_de2')):
         limit = hiddify_info.get('usage_limit_GB', 0)
         lines.append(f"  🇩🇪 {escape_markdown(f'{limit:.2f} GB')}")
     if marzban_info and marzban_flag_str:
@@ -659,7 +671,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # B. مجموع مصرف شده
     lines.append(f"🔥 مجموع مصرف شده: *{escape_markdown(f'{total_usage_gb:.2f}')} GB*")
-    if hiddify_info and access_rights.get('has_access_de'):
+    if hiddify_info and (access_rights.get('has_access_de') or access_rights.get('has_access_de2')):
         usage = hiddify_info.get('current_usage_GB', 0)
         lines.append(f"  🇩🇪 {escape_markdown(f'{usage:.2f} GB')}")
     if marzban_info and marzban_flag_str:
@@ -668,7 +680,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # C. مجموع باقیمانده
     lines.append(f"📥 مجموع باقیمانده: *{escape_markdown(f'{total_remaining_gb:.2f}')} GB*")
-    if hiddify_info and access_rights.get('has_access_de'):
+    if hiddify_info and (access_rights.get('has_access_de') or access_rights.get('has_access_de2')):
         remaining = hiddify_info.get('remaining_GB', 0)
         lines.append(f"  🇩🇪 {escape_markdown(f'{remaining:.2f} GB')}")
     if marzban_info and marzban_flag_str:
@@ -677,7 +689,7 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
 
     # D. مصرف امروز
     lines.append(f"⚡️ مصرف امروز : *{total_daily_usage_str}*")
-    if hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001 and access_rights.get('has_access_de'):
+    if hiddify_info and daily_usage_dict.get('hiddify', 0) > 0.001 and (access_rights.get('has_access_de') or access_rights.get('has_access_de2')):
         daily_h = daily_usage_dict['hiddify']
         lines.append(f"  🇩🇪 {escape_markdown(format_daily_usage(daily_h))}")
     if marzban_info and daily_usage_dict.get('marzban', 0) > 0.001 and marzban_flag_str:
@@ -826,6 +838,7 @@ def fmt_purchase_summary(info_before: dict, info_after: dict, plan: dict, lang_c
     ]
 
     marzban_flags = []
+    if user_access.get('has_access_ir'): marzban_flags.append("🇮🇷")
     if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
@@ -915,12 +928,13 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
                     breakdown_parts.append(f"🇩🇪 {format_daily_usage(h_usage_day)}")
                 if m_usage_day > 0.001:
                     flags = []
+                    if user_record.get('has_access_ir'): flags.append("🇮🇷")
                     if user_record.get('has_access_fr'): flags.append("🇫🇷")
                     if user_record.get('has_access_tr'): flags.append("🇹🇷")
                     if user_record.get('has_access_us'): flags.append("🇺🇸")
                     if user_record.get('has_access_ro'): flags.append("🇷🇴")
                     if user_record.get('has_access_supp'): flags.append("🇫🇮")
-                    flag_str = "".join(flags) if flags else "🇫🇷🇹🇷🇺🇸🇷🇴" # Fallback
+                    flag_str = "".join(flags) if flags else "🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮" # Fallback
                     breakdown_parts.append(f"{flag_str} {format_daily_usage(m_usage_day)}")
 
                 if breakdown_parts:
@@ -963,6 +977,7 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
                 most_used_server = "آلمان 🇩🇪"
             else:
                 flags = []
+                if user_record.get('has_access_ir'): flags.append("🇮🇷")
                 if user_record.get('has_access_fr'): flags.append("🇫🇷")
                 if user_record.get('has_access_tr'): flags.append("🇹🇷")
                 if user_record.get('has_access_us'): flags.append("🇺🇸")

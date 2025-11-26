@@ -77,6 +77,8 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
         display_name_with_flags = panel_display_name
         if panel_type == 'marzban' and user_uuid_record:
             flags = []
+            if user_uuid_record.get('has_access_ir'):
+                flags.append("🇮🇷")            
             if user_uuid_record.get('has_access_fr'):
                 flags.append("🇫🇷")
             if user_uuid_record.get('has_access_tr'):
@@ -101,7 +103,7 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
         ]
 
     panel_order = ['hiddify', 'marzban']
-    panel_display_map = {'hiddify': '🇩🇪', 'marzban': '🇫🇷🇹🇷'}
+    panel_display_map = {'hiddify': '🇩🇪', 'marzban': '🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮'}
 
     for p_type in panel_order:
         panel_info = next((p for p in breakdown.values() if p.get('type') == p_type), None)
@@ -615,7 +617,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
             f"💳 پرداخت‌های امروز : *{payments_today_count}*",
             f"⚡️ *مصرف کل امروز :* {escape_markdown(format_daily_usage(total_daily_all))}",
             f" 🇩🇪 : `{escape_markdown(format_daily_usage(total_daily_hiddify))}`",
-            f" 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
+            f" 🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮 : `{escape_markdown(format_daily_usage(total_daily_marzban))}`"
         ]
 
         if top_consumer_today["usage"] > 0.01:
@@ -639,7 +641,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 if h_usage > 0.001: usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(h_usage))}")
                 m_usage = daily_dict.get('marzban', 0.0)
                 if m_usage > 0.001 and user_db_record:
-                    flags = [f for f, has in [("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'), ("🇷🇴", 'has_access_ro'), ("🇫🇮", 'has_access_supp')] if user_db_record.get(has)]
+                    flags = [f for f, has in [("🇮🇷", 'has_access_ir'), ("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'), ("🇷🇴", 'has_access_ro'), ("🇫🇮", 'has_access_supp')] if user_db_record.get(has)]
                     if flags: usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(m_usage))}")
 
                 usage_str = escape_markdown(" | ").join(usage_parts)
@@ -680,8 +682,8 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
 
             warning_map = {
                 "low_data_hiddify": "کمبود حجم 🇩🇪", "volume_depleted_hiddify": "اتمام حجم 🇩🇪",
-                "low_data_marzban": "کمبود حجم 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮", "volume_depleted_marzban": "اتمام حجم 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮",
-                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮",
+                "low_data_marzban": "کمبود حجم 🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮", "volume_depleted_marzban": "اتمام حجم 🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮",
+                "expiry_hiddify": "در آستانه انقضا 🇩🇪", "expiry_marzban": "در آستانه انقضا 🇮🇷🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮",
                 "expired": "منقضی شده", "inactive_user_reminder": "یادآوری عدم فعالیت",
                 "unusual_daily_usage_admin_alert": "مصرف غیرعادی (به ادمین)",
                 "too_many_devices_admin_alert": "تعداد دستگاه بالا (به ادمین)"
@@ -1083,6 +1085,7 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     ]
     
     marzban_flags = []
+    if user_access.get('has_access_ir'): marzban_flags.append("🇮🇷")
     if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
@@ -1098,7 +1101,7 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     sorted_before = sorted(info_before.get('breakdown', {}).items(), key=sort_key)
     for panel_name, panel_details in sorted_before:
         panel_type = panel_details.get('type')
-        if (panel_type == 'hiddify' and user_access.get('has_access_de')) or \
+        if (panel_type == 'hiddify' and (user_access.get('has_access_de') or user_access.get('has_access_de2'))) or \
            (panel_type == 'marzban' and dynamic_marzban_flags):
             p_data = panel_details.get('data', {})
             limit = p_data.get('usage_limit_GB', 0)
@@ -1112,7 +1115,7 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     sorted_after = sorted(info_after.get('breakdown', {}).items(), key=sort_key)
     for panel_name, panel_details in sorted_after:
         panel_type = panel_details.get('type')
-        if (panel_type == 'hiddify' and user_access.get('has_access_de')) or \
+        if (panel_type == 'hiddify' and (user_access.get('has_access_de') or user_access.get('has_access_de2'))) or \
            (panel_type == 'marzban' and dynamic_marzban_flags):
             p_data = panel_details.get('data', {})
             limit = p_data.get('usage_limit_GB', 0)
