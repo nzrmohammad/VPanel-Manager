@@ -366,14 +366,22 @@ def show_addons_page(call: types.CallbackQuery):
             kb.add(types.InlineKeyboardButton("حجم 🇹🇷", callback_data="noop"))
             for btn in create_addon_buttons(data_addons_tr):
                 kb.add(btn)
-    
+
+    # نمایش بسته‌های حجم فنلاند
+    if access_rights.get('has_access_supp'):
+        data_addons_fi = [a for a in all_addons if a.get("type") == "data_fi"]
+        if data_addons_fi:
+            kb.add(types.InlineKeyboardButton("حجم 🇫🇮", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_fi):
+                kb.add(btn)
+
     # نمایش بسته‌های زمانی (برای همه کاربران)
     time_addons = [a for a in all_addons if a.get("type") == "time"]
     if time_addons:
         kb.add(types.InlineKeyboardButton("زمان", callback_data="noop"))
         for btn in create_addon_buttons(time_addons):
             kb.add(btn)
-    
+
     kb.add(types.InlineKeyboardButton(f"🔙 {get_string('back', lang_code)}", callback_data="view_plans"))
     _safe_edit(uid, msg_id, prompt, reply_markup=kb)
 
@@ -453,7 +461,7 @@ def confirm_addon_purchase(call: types.CallbackQuery):
     addon_details = []
     
     # تعیین پرچم بر اساس نوع بسته
-    flag_map = {'data_de': '🇩🇪', 'data_fr': '🇫🇷', 'data_tr': '🇹🇷', 'data_us': '🇺🇸', 'data_ro': '🇷🇴', 'time': '⏰'}
+    flag_map = {'data_de': '🇩🇪', 'data_fr': '🇫🇷', 'data_tr': '🇹🇷', 'data_us': '🇺🇸', 'data_ro': '🇷🇴', 'data_fi': '🇫🇮', 'time': '⏰'}
     flag = flag_map.get(addon_type, '🏳️')
     
     # اضافه کردن جزئیات بر اساس نوع بسته

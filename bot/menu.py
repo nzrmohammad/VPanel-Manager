@@ -128,6 +128,7 @@ class Menu:
         btn_germany = types.InlineKeyboardButton(f"🇩🇪 {get_string('btn_cat_de', lang_code)}", callback_data="show_plans:germany")
         btn_france = types.InlineKeyboardButton(f"🇫🇷 {get_string('btn_cat_fr', lang_code)}", callback_data="show_plans:france")
         btn_turkey = types.InlineKeyboardButton(f"🇹🇷 {get_string('btn_cat_tr', lang_code)}", callback_data="show_plans:turkey")
+        btn_finland = types.InlineKeyboardButton(f"🇫🇮 {get_string('btn_cat_fi', lang_code)}", callback_data="show_plans:finland")
         btn_usa = types.InlineKeyboardButton(f"🇺🇸 آمریکا", callback_data="show_plans:usa")
         btn_romania = types.InlineKeyboardButton(f"🇷🇴 رومانی", callback_data="show_plans:romania")
         btn_combined = types.InlineKeyboardButton(f"🚀 {get_string('btn_cat_combined', lang_code)}", callback_data="show_plans:combined")
@@ -141,9 +142,9 @@ class Menu:
         # چیدمان جدید دکمه‌ها
         kb.add(btn_usa, btn_france)
         kb.add(btn_turkey, btn_romania)
-        kb.add(btn_combined, btn_germany)
-        kb.add(btn_addons, btn_achievement_shop)
-        kb.add(btn_payment_methods)
+        kb.add(btn_finland, btn_germany)
+        kb.add(btn_combined, btn_addons)
+        kb.add(btn_payment_methods, btn_achievement_shop)
         kb.add(btn_back)
         return kb
 
@@ -158,6 +159,7 @@ class Menu:
         has_tr_access = access.get('has_access_tr', False)
         has_us_access = access.get('has_access_us', False)
         has_ro_access = access.get('has_access_ro', False)
+        has_supp_access = access.get('has_access_supp', False)
 
         day_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if v.get('days', 0) > 0}
         lottery_items = {k: v for k, v in ACHIEVEMENT_SHOP_ITEMS.items() if 'lottery' in k}
@@ -172,7 +174,8 @@ class Menu:
                 (target == 'fr' and has_fr_access) or
                 (target == 'tr' and has_tr_access) or
                 (target == 'us' and has_us_access) or
-                (target == 'ro' and has_ro_access)):
+                (target == 'ro' and has_ro_access) or
+                (target == 'supp' and has_supp_access)):
                 show_item = True
 
             if show_item:
@@ -362,16 +365,19 @@ class Menu:
                 types.InlineKeyboardButton(f"🇹🇷 {get_status_emoji('data_warning_tr')} ", callback_data="toggle_data_warning_tr")
             )
 
-        if access.get('has_access_us'): # Add this block
+        if access.get('has_access_us'):
             data_warning_buttons.append(
                 types.InlineKeyboardButton(f"🇺🇸 {get_status_emoji('data_warning_us')} ", callback_data="toggle_data_warning_us")
             )
 
-        if access.get('has_access_ro'): # Add this block
+        if access.get('has_access_ro'):
             data_warning_buttons.append(
                 types.InlineKeyboardButton(f"🇷🇴 {get_status_emoji('data_warning_ro')} ", callback_data="toggle_data_warning_ro")
             )
-
+        if access.get('has_access_supp'):
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"🇫🇮 {get_status_emoji('data_warning_supp')} ", callback_data="toggle_data_warning_supp")
+            )
         if data_warning_buttons:
             kb.row(*data_warning_buttons)
 

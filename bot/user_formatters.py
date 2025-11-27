@@ -403,7 +403,8 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
         "france": "fmt_plan_type_france",
         "turkey": "fmt_plan_type_turkey",
         "usa" : "fmt_plan_type_usa",
-        "romania": "fmt_plan_type_romania"
+        "romania": "fmt_plan_type_romania",
+        "finland": "fmt_plan_type_finland"
     }
     type_title = get_string(type_map.get(plan_type, "fmt_plan_type_general"), lang_code)
     
@@ -415,7 +416,7 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
 
     if plan_type == "combined":
         lines.append(escape_markdown(get_string('plan_guide_combined', lang_code)))
-    elif plan_type in ["germany", "france", "turkey", "usa", "romania"]:
+    elif plan_type in ["germany", "france", "turkey", "usa", "romania", "finland"]:
         lines.append(escape_markdown(get_string('plan_guide_dedicated', lang_code)))
 
     separator = "`────────────────────`"
@@ -438,6 +439,8 @@ def fmt_service_plans(plans_to_show: list, plan_type: str, lang_code: str) -> st
             details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_us"])}')
         elif plan_type == 'romania' and plan.get('volume_ro'):
             details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_ro"])}')
+        elif plan_type == 'finland' and plan.get('volume_supp'):
+            details.append(f'*{get_string("fmt_plan_label_volume", lang_code)}:* {escape_markdown(plan["volume_supp"])}')            
         elif plan_type == 'combined':
             if plan.get('volume_de'):
                 # details.append(f'*{get_string("fmt_plan_label_germany", lang_code)}:* {escape_markdown(plan["volume_de"])}')
@@ -957,7 +960,7 @@ def fmt_user_monthly_report(user_infos: list, lang_code: str) -> str:
 
         # --- نمایش هزینه ---
         cost_str = f"{estimated_cost:,.0f}"
-        account_lines.append(f"💰 *هزینه مصرفی :* {escape_markdown(cost_str)} تومان")
+        account_lines.append(f"💰 *هزینه مصرفی :* {escape_markdown(cost_str)} هزار تومان")
         # -------------------
 
         # بخش دستاوردها

@@ -215,6 +215,8 @@ ACHIEVEMENT_SHOP_ITEMS = {
     "buy_us_25gb":      {"name": "۲۵ گیگ (🇺🇸)", "cost": 220, "gb": 25, "target": "us"},
     "buy_ro_15gb":      {"name": "۱۵ گیگ (🇷🇴)", "cost": 150, "gb": 15, "target": "ro"},
     "buy_ro_25gb":      {"name": "۲۵ گیگ (🇷🇴)", "cost": 220, "gb": 25, "target": "ro"},
+    "buy_fi_10gb":      {"name": "۱۰ گیگ (🇫🇮)", "cost": 120, "gb": 10, "target": "fi"},
+    "buy_fi_30gb":      {"name": "۳۰ گیگ (🇫🇮)", "cost": 300, "gb": 30, "target": "fi"},
 
     "buy_lottery_ticket": {"name": "🎟️ بلیط قرعه‌کشی", "cost": 100, "target": "all"},
 }
@@ -241,6 +243,11 @@ ACCESS_TEMPLATES = {
     'ro': {
         'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 
         'has_access_us': False, 'has_access_ro': True, 'has_access_supp': False
+    },
+    'fi': {
+        'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 
+        'has_access_us': False, 'has_access_ro': False, 'has_access_fi': True,
+        'has_access_supp': False
     },
 
     # --- پلن ترکیبی (آلمان، فرانسه، ترکیه) ---

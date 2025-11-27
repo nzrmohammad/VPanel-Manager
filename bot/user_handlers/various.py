@@ -503,7 +503,7 @@ def handle_shop_callbacks(call: types.CallbackQuery):
 
             target_panel_type = None
             if target == 'de': target_panel_type = 'hiddify'
-            elif target in ['fr', 'tr', 'us', 'ro']: target_panel_type = 'marzban'
+            elif target in ['fr', 'tr', 'us', 'ro', 'supp']: target_panel_type = 'marzban'
             
             # اعمال تغییرات شبیه‌سازی شده روی info_after
             for panel_details in info_after.get('breakdown', {}).values():
@@ -610,7 +610,7 @@ def handle_shop_callbacks(call: types.CallbackQuery):
                     target_panel_type = None
                     if target == 'de':
                         target_panel_type = 'hiddify'
-                    elif target in ['fr', 'tr', 'us', 'ro']:
+                    elif target in ['fr', 'tr', 'us', 'ro', 'supp']:
                         target_panel_type = 'marzban'
 
                     purchase_successful = combined_handler.modify_user_on_all_panels(
@@ -766,7 +766,13 @@ def handle_connection_doctor(call: types.CallbackQuery):
         if access_rights.get('has_access_us'):
             icon, text = get_load_indicator(activity_stats.get('marzban_us', 0), total_active_users)
             report_lines.append(f"  {icon} سرور آمریکا 🇺🇸: *{escape_markdown(text)}*")
-            
+        if access_rights.get('has_access_ro'):
+            icon, text = get_load_indicator(activity_stats.get('marzban_us', 0), total_active_users)
+            report_lines.append(f"  {icon} سرور رومانی 🇷🇴: *{escape_markdown(text)}*")     
+        if access_rights.get('has_access_supp'):
+            icon, text = get_load_indicator(activity_stats.get('marzban_fi', 0), total_active_users)
+            report_lines.append(f"  {icon} سرور فنلاند 🇫🇮: *{escape_markdown(text)}*")
+
     except Exception as e:
         logger.error(f"Error getting activity stats for doctor: {e}")
 
