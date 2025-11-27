@@ -246,8 +246,7 @@ ACCESS_TEMPLATES = {
     },
     'fi': {
         'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 
-        'has_access_us': False, 'has_access_ro': False, 'has_access_fi': True,
-        'has_access_supp': False
+        'has_access_us': False, 'has_access_ro': False, 'has_access_supp': True
     },
 
     # --- پلن ترکیبی (آلمان، فرانسه، ترکیه) ---

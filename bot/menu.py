@@ -175,7 +175,7 @@ class Menu:
                 (target == 'tr' and has_tr_access) or
                 (target == 'us' and has_us_access) or
                 (target == 'ro' and has_ro_access) or
-                (target == 'supp' and has_supp_access)):
+                (target == 'fi' and has_supp_access)):
                 show_item = True
 
             if show_item:
