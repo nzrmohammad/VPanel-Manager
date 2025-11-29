@@ -688,7 +688,7 @@ class UsageDB(DatabaseManager):
             logger.info(f"Report generation finished. Found {len(sorted_consumers)} top consumers and {len(daily_winners_dict)} daily winners.")
 
             return {
-                'top_15_overall': unique_consumers[:15],
+                'top_20_overall': unique_consumers[:20],
                 'top_daily': daily_winners_dict
             }
 

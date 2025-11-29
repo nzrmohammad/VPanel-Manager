@@ -297,27 +297,27 @@
         "type": "finland",
         "volume_supp": "۲۰ گیگابایت",
         "duration": "۳۰ روز",
-        "price": 80000
+        "price": 70000
     },
     {
         "name": "FI Standard 🇫🇮",
         "type": "finland",
         "volume_supp": "۳۰ گیگابایت",
         "duration": "۳۰ روز",
-        "price": 120000
+        "price": 110000
     },
     {
         "name": "FI Pro 🇫🇮",
         "type": "finland",
         "volume_supp": "۵۰ گیگابایت",
         "duration": "۳۰ روز",
-        "price": 200000
+        "price": 180000
     },
     {
         "name": "FI Premium 🇫🇮",
         "type": "finland",
         "volume_supp": "۱۰۰ گیگابایت",
         "duration": "۳۰ روز",
-        "price": 400000
+        "price": 300000
     }
 ]

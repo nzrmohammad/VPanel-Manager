@@ -127,7 +127,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             # یک شناسه هشدار منحصر به فرد برای هر پنل ایجاد می‌کنیم
                             warning_type_key = f'expiry_{panel_type}'
                             if not db.has_recent_warning(uuid_id_in_db, warning_type_key):
-                                server_name = "🇩🇪" if panel_type == 'hiddify' else "🇫🇷🇹🇷🇺🇸"
+                                server_name = "🇩🇪" if panel_type == 'hiddify' else "🇫🇷🇹🇷🇺🇸🇷🇴🇫🇮🇮🇷"
                                 msg_template = (f"{EMOJIS['warning']} *هشدار انقضای اکانت*\n\n"
                                                 f"سرویس شما در پنل *{server_name}* تا *{{expire_days}}* روز دیگر منقضی می‌شود\\.")
                                 # ✨ ساخت و افزودن دکمه‌ها
@@ -238,6 +238,8 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                     should_warn_tr = user_settings.get('data_warning_tr') and uuid_record.get('has_access_tr')
                     should_warn_us = user_settings.get('data_warning_us') and uuid_record.get('has_access_us')
                     should_warn_ro = user_settings.get('data_warning_ro') and uuid_record.get('has_access_ro')
+                    should_warn_ir = user_settings.get('data_warning_ir') and uuid_record.get('has_access_ir')
+                    should_warn_fi = user_settings.get('data_warning_supp') and uuid_record.get('has_access_supp')
                     
                     if should_warn_fr or should_warn_tr or should_warn_us:
                         limit, usage = marzban_info.get('usage_limit_GB', 0.0), marzban_info.get('current_usage_GB', 0.0)
@@ -248,6 +250,8 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                             if should_warn_tr: server_names.append("ترکیه 🇹🇷")
                             if should_warn_us: server_names.append("آمریکا 🇺🇸")
                             if should_warn_ro: server_names.append("رومانی 🇷🇴")
+                            if should_warn_ir: server_names.append("ایران 🇮🇷")
+                            if should_warn_fi: server_names.append("فنلاند 🇫🇮")
                             server_display_name = " / ".join(server_names)
 
                             if WARNING_USAGE_THRESHOLD <= usage_percent < 100 and not db.has_recent_warning(uuid_id_in_db, 'low_data_marzban'):

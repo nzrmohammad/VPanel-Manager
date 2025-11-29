@@ -175,12 +175,12 @@ def fmt_weekly_admin_summary(report_data: dict) -> str:
     
     lines = ["🏆 *گزارش هفتگی پرمصرف‌ترین کاربران*"]
     lines.append("`──────────────────`")
-    lines.append("🥇 *۱۵ کاربر برتر این هفته:*")
+    lines.append("🥇 *۲۰ کاربر برتر این هفته:*")
 
-    if not report_data.get('top_15_overall'):
+    if not report_data.get('top_20_overall'):
         lines.append(escape_markdown("هیچ مصرفی در این هفته ثبت نشده است."))
     else:
-        for i, user in enumerate(report_data['top_15_overall']):
+        for i, user in enumerate(report_data['top_20_overall']):
             usage_str = format_daily_usage(user['total_usage'])
             lines.append(f"`{i+1}.` *{escape_markdown(user['name'])}*: {escape_markdown(usage_str)}")
 
