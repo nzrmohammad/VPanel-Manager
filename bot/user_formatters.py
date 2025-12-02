@@ -577,13 +577,22 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     user_uuid = info.get("uuid", "")
     uuid_escaped = escape_markdown(user_uuid)
     
-    # --- اطلاعات مالی و دستاوردها از دیتابیس ---
-    user_id = db.get_user_id_by_uuid(user_uuid)
+    # متغیرهای پیش‌فرض
+    referral_count = 0
+    join_date = "نامشخص"
     wallet_balance = 0.0
     achievement_points = 0
-    access_rights = {'has_access_ir': False, 'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 'has_access_supp': False}
     vip_text = ""
     user_badges = []
+    # حقوق دسترسی پیش‌فرض
+    access_rights = {
+        'has_access_ir': False, 'has_access_de': False, 'has_access_fr': False, 
+        'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 
+        'has_access_supp': False
+    }
+
+    # --- اطلاعات مالی و دستاوردها از دیتابیس ---
+    user_id = db.get_user_id_by_uuid(user_uuid)
 
     if user_id:
         user_db_data = db.user(user_id)
@@ -591,11 +600,23 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
             wallet_balance = user_db_data.get('wallet_balance', 0.0)
             achievement_points = user_db_data.get('achievement_points', 0)
         
-        access_rights = db.get_user_access_rights(user_id)
-        user_uuid_record = db.uuids(user_id)[0] if db.uuids(user_id) else {}
-        if user_uuid_record.get('is_vip'):
-            vip_text = f"👑 کاربر ویژه : ✅"
+        # تعداد زیرمجموعه
+        referral_list = db.get_referred_users(user_id)
+        referral_count = len(referral_list)
+
+        # تاریخ عضویت و وضعیت VIP
+        user_uuids_list = db.uuids(user_id)
+        if user_uuids_list:
+             # [0] یعنی اولین (قدیمی‌ترین) سرویس = تاریخ عضویت
+             first_service_date = user_uuids_list[0].get('created_at')
+             if first_service_date:
+                 join_date = to_shamsi(first_service_date, include_time=False)
+             
+             # بررسی VIP بودن (معمولا روی یکی از سرویس‌ها ست شود کافیست، اینجا اولی چک شده)
+             if user_uuids_list[0].get('is_vip'):
+                vip_text = f"👑 کاربر ویژه : ✅"
         
+        access_rights = db.get_user_access_rights(user_id)
         user_badges = db.get_user_achievements(user_id)
 
     # --- 2. آمار کلی ---
@@ -641,6 +662,12 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
     
     lines.append(f"💰 موجودی : *{wallet_balance:,.0f} تومان*")
     lines.append(f"🏆 امتیاز : *{achievement_points}*")
+
+    if referral_count > 0:
+        lines.append(f"👥 زیرمجموعه : *{referral_count} نفر*")
+    
+    # انتقال تاریخ عضویت به بیرون از شرط زیرمجموعه (اصلاح شده)
+    lines.append(f"📅 عضویت : *{escape_markdown(join_date)}*")
 
     # --- بخش جدید: نمایش دستاوردها ---
     if user_badges:
@@ -704,17 +731,19 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
         user_agents = db.get_user_agents_for_uuid(uuid_id)
         if user_agents:
             lines.append("📱 *دستگاه‌های متصل:*")
-            for agent in user_agents[:3]: # نمایش حداکثر ۳ دستگاه
+            for agent in user_agents[:5]: 
                 parsed = parse_user_agent(agent['user_agent'])
                 if parsed:
                     client_name = escape_markdown(parsed.get('client', 'Unknown'))
+                    last_seen_time = escape_markdown(to_shamsi(agent['last_seen'], include_time=True))
                     details = []
                     if parsed.get('version'):
                         details.append(f"v{escape_markdown(parsed['version'])}")
                     if parsed.get('os'):
                         details.append(escape_markdown(parsed['os']))
+                    
                     details_str = f" \\({', '.join(details)}\\)" if details else ""
-                    lines.append(f" `└─` *{client_name}*{details_str}")
+                    lines.append(f" `└─` *{client_name}*{details_str} 🕒 {last_seen_time}")
 
     # --- 8. بخش پایانی ---
     lines.append("")
