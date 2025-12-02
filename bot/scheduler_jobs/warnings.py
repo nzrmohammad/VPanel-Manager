@@ -241,7 +241,7 @@ def check_for_warnings(bot, target_user_id: int = None) -> None:
                     should_warn_ir = user_settings.get('data_warning_ir') and uuid_record.get('has_access_ir')
                     should_warn_fi = user_settings.get('data_warning_supp') and uuid_record.get('has_access_supp')
                     
-                    if should_warn_fr or should_warn_tr or should_warn_us:
+                    if should_warn_fr or should_warn_tr or should_warn_us or should_warn_ro or should_warn_ir or should_warn_fi:
                         limit, usage = marzban_info.get('usage_limit_GB', 0.0), marzban_info.get('current_usage_GB', 0.0)
                         if limit > 0:
                             usage_percent = (usage / limit) * 100

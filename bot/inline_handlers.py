@@ -11,7 +11,7 @@ from .bot_instance import bot
 from .config import ADMIN_IDS, ADMIN_SUPPORT_CONTACT
 from . import combined_handler
 from .database import db
-from .user_formatters import fmt_inline_result, fmt_smart_list_inline_result, fmt_service_plans
+from .user_formatters import fmt_inline_result, fmt_smart_list_inline_result, fmt_service_plans, fmt_user_weekly_report, fmt_user_monthly_report
 from .admin_formatters import fmt_card_info_inline
 from .utils import load_service_plans, escape_markdown
 from .language import get_string
@@ -117,7 +117,9 @@ def handle_user_inline_query(inline_query: types.InlineQuery):
                     "germany": "🇩🇪 ----- پلن‌های آلمان -----",
                     "france": "🇫🇷 ----- پلن‌های فرانسه -----",
                     "turkey": "🇹🇷 ----- پلن‌های ترکیه -----",
-                    "usa": "🇺🇸 ----- پلن‌های آمریکا -----"
+                    "usa": "🇺🇸 ----- پلن‌های آمریکا -----",
+                    "romania": "🇷🇴 ----- پلن‌های رومانی -----",
+                    "finland": "🇫🇮 ----- پلن‌های فنلاند -----"
                 }
 
                 for p_type, header_title in type_map.items():
@@ -182,12 +184,13 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
         InlineKeyboardButton("3. Happ (Android)", url="https://github.com/Happ-proxy/happ-android/releases/download/3.5.0/Happ_beta.apk"),
         # iOS
         InlineKeyboardButton("1. Streisand (iOS)", url="https://apps.apple.com/us/app/streisand/id6450534064"),
-        InlineKeyboardButton("2. Hiddify (iOS)", url="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532"),
-        InlineKeyboardButton("3. V2Box (iOS)", url="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690"),
-        InlineKeyboardButton("4. Shadowrocket (iOS)", url="https://apps.apple.com/us/app/shadowrocket/id932747118"),
+        InlineKeyboardButton("2. Happ (iOS)", url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215"),
+        InlineKeyboardButton("3. Hiddify (iOS)", url="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532"),
+        InlineKeyboardButton("4. V2Box (iOS)", url="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690"),
+        InlineKeyboardButton("5. Shadowrocket (iOS)", url="https://apps.apple.com/us/app/shadowrocket/id932747118"),
         # Windows
         InlineKeyboardButton("1. Hiddify (Windows)", url="https://github.com/hiddify/hiddify-next/releases/download/v2.0.5/Hiddify-Windows-Portable-x64.zip"),
-        InlineKeyboardButton("2. V2rayN (Windows)", url="https://github.com/2dust/v2rayN/releases/download/7.15.7/v2rayN-windows-64-SelfContained.zip")
+        InlineKeyboardButton("2. V2rayN (Windows)", url="https://github.com/2dust/v2rayN/releases/download/7.16.4/v2rayN-windows-64-SelfContained.zip")
     )
     query = inline_query.query.strip().lower()
     results = []
@@ -195,6 +198,47 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
     lang_code = db.get_user_language(user_id)
     
     try:
+        # --- ۱. اضافه کردن منطق تولید گزارش (این بخش را قبل از شرط if query.startswith('>') اضافه کنید) ---
+        if query.startswith('show_report:'):
+            parts = query.split(':')
+            report_type = parts[1]
+            user_uuid = parts[2]
+            
+            # دریافت اطلاعات کاربر
+            info = combined_handler.get_combined_user_info(user_uuid)
+            
+            if info:
+                # تولید متن گزارش بر اساس نوع درخواست
+                text = ""
+                title = ""
+                if report_type == 'weekly':
+                    text = fmt_user_weekly_report([info], lang_code)
+                    title = "گزارش هفتگی"
+                elif report_type == 'monthly':
+                    text = fmt_user_monthly_report([info], lang_code)
+                    title = "گزارش ماهانه"
+                
+                if text:
+                    results.append(types.InlineQueryResultArticle(
+                        id=f'report_{report_type}_{user_uuid}',
+                        title=f"ارسال {title} برای {info.get('name')}",
+                        description=f"برای ارسال {title} در چت کلیک کنید.",
+                        input_message_content=types.InputTextMessageContent(
+                            message_text=text, 
+                            parse_mode="MarkdownV2"
+                        )
+                    ))
+                else:
+                    results.append(types.InlineQueryResultArticle(
+                        id='no_data',
+                        title="داده‌ای یافت نشد",
+                        description="اطلاعات مصرف کافی برای تهیه گزارش موجود نیست.",
+                        input_message_content=types.InputTextMessageContent("داده‌ای یافت نشد.")
+                    ))
+            
+            bot.answer_inline_query(inline_query.id, results, cache_time=5)
+            return
+        
         if query.startswith('copy_link:'):
             parts = query.split(':')
             link_type = parts[1]
@@ -261,6 +305,15 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
                     InlineKeyboardButton(text="📋 Base64", switch_inline_query_current_chat=b64_switch_query)
                 )
 
+                # --- ۲. اضافه کردن دکمه‌های گزارش (بخش جدید) ---
+                weekly_switch = f"show_report:weekly:{user.get('uuid', '')}"
+                monthly_switch = f"show_report:monthly:{user.get('uuid', '')}"
+                
+                keyboard.add(
+                    InlineKeyboardButton(text="📊 Weekly", switch_inline_query_current_chat=weekly_switch),
+                    InlineKeyboardButton(text="🗓 Monthly", switch_inline_query_current_chat=monthly_switch)
+                )
+
                 results.append(types.InlineQueryResultArticle(
                     id=str(user.get('uuid') or i), 
                     title=f"👤 {user.get('name', 'کاربر ناشناس')}",
@@ -325,6 +378,8 @@ def handle_admin_inline_query(inline_query: types.InlineQuery):
                 "france": ("🇫🇷 ارسال پلن‌های فرانسه", "france"),
                 "turkey": ("🇹🇷 ارسال پلن‌های ترکیه", "turkey"),
                 "usa": ("🇺🇸 ارسال پلن‌های آمریکا", "usa"),
+                "romania": ("🇷🇴 ارسال پلن‌های رومانی", "romania"),
+                "finland": ("🇫🇮 ارسال پلن‌های فنلاند", "finland"),
             }
 
             for key, (title, plan_type) in type_map.items():
