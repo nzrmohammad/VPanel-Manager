@@ -52,7 +52,7 @@ def handle_toggle_setting(call: types.CallbackQuery):
     
     # لیست تمام تنظیمات معتبر که می‌توانند تغییر کنند
     valid_settings = [
-        'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
+        'daily_reports', 'weekly_reports', 'monthly_reports', 'expiry_warnings', 'show_info_config',
         'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
         'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us',
         'data_warning_ro', 'data_warning_supp'

@@ -345,6 +345,10 @@ class Menu:
             types.InlineKeyboardButton(
                 f"📅 {get_string('weekly_report', lang_code)} {get_status_emoji('weekly_reports')}",
                 callback_data="toggle_weekly_reports"
+            ),
+            types.InlineKeyboardButton(
+                f"📆 {get_string('monthly_report', lang_code)} {get_status_emoji('monthly_reports')}",
+                callback_data="toggle_monthly_reports"
             )
         )
 

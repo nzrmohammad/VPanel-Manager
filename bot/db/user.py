@@ -51,24 +51,25 @@ class UserDB(DatabaseManager):
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         """تنظیمات مختلف کاربر را برمی‌گرداند."""
         with self._conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, monthly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, data_warning_ro, data_warning_supp, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 row_dict = dict(row)
                 return {k: bool(v) for k, v in row_dict.items()}
             # مقادیر پیش‌فرض در صورت عدم وجود کاربر
             return {
-                'daily_reports': True, 'weekly_reports': True, 'expiry_warnings': True,
+                'daily_reports': True, 'weekly_reports': True, 'monthly_reports': True, 'expiry_warnings': True,
                 'data_warning_de': True, 'data_warning_fr': True, 'data_warning_tr': True,
-                'data_warning_us': True, 'show_info_config': True,
+                'data_warning_us': True, 'data_warning_ro': True, 'data_warning_supp': True, 'show_info_config': True,
                 'auto_delete_reports': False, 'achievement_alerts': True, 'promotional_alerts': True
             }
 
     def update_user_setting(self, user_id: int, setting: str, value: bool) -> None:
         """یک تنظیم خاص کاربر را به‌روزرسانی می‌کند."""
         valid_settings = [
-            'daily_reports', 'weekly_reports', 'expiry_warnings', 'show_info_config',
+            'daily_reports', 'weekly_reports', 'monthly_reports', 'expiry_warnings', 'show_info_config',
             'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
-            'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us'
+            'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us',
+            'data_warning_ro', 'data_warning_supp'
         ]
         if setting in valid_settings:
             with self._conn() as c:
