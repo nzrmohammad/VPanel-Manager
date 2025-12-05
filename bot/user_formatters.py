@@ -604,17 +604,24 @@ def fmt_inline_result(info: dict) -> tuple[str, str]:
         referral_list = db.get_referred_users(user_id)
         referral_count = len(referral_list)
 
-        # تاریخ عضویت و وضعیت VIP
-        user_uuids_list = db.uuids(user_id)
-        if user_uuids_list:
-             # [0] یعنی اولین (قدیمی‌ترین) سرویس = تاریخ عضویت
-             first_service_date = user_uuids_list[0].get('created_at')
-             if first_service_date:
-                 join_date = to_shamsi(first_service_date, include_time=False)
+        current_uuid_record = db.get_user_uuid_record(user_uuid)
+        if current_uuid_record:
+             # استفاده از تاریخ ایجاد همین سرویس خاص
+             service_created_at = current_uuid_record.get('created_at')
+             if service_created_at:
+                 join_date = to_shamsi(service_created_at, include_time=False)
              
-             # بررسی VIP بودن (معمولا روی یکی از سرویس‌ها ست شود کافیست، اینجا اولی چک شده)
-             if user_uuids_list[0].get('is_vip'):
+             # بررسی VIP بودن همین سرویس
+             if current_uuid_record.get('is_vip'):
                 vip_text = f"👑 کاربر ویژه : ✅"
+        elif user_id:
+             # (Fallback) اگر به هر دلیلی رکورد پیدا نشد، از روش قبلی استفاده کن
+             user_uuids_list = db.uuids(user_id)
+             if user_uuids_list:
+                 first_service_date = user_uuids_list[0].get('created_at')
+                 if first_service_date:
+                     join_date = to_shamsi(first_service_date, include_time=False)
+        # -----------------------------------------------------------------
         
         access_rights = db.get_user_access_rights(user_id)
         user_badges = db.get_user_achievements(user_id)
