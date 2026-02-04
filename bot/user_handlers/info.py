@@ -351,6 +351,20 @@ def show_addons_page(call: types.CallbackQuery):
             for btn in create_addon_buttons(data_addons_us):
                 kb.add(btn)
 
+    if access_rights.get('has_access_al'):
+        data_addons_al = [a for a in all_addons if a.get("type") == "data_al"]
+        if data_addons_al:
+            kb.add(types.InlineKeyboardButton("حجم 🇦🇱", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_al):
+                kb.add(btn)
+
+    if access_rights.get('has_access_nl'):
+        data_addons_nl = [a for a in all_addons if a.get("type") == "data_nl"]
+        if data_addons_nl:
+            kb.add(types.InlineKeyboardButton("حجم 🇳🇱", callback_data="noop"))
+            for btn in create_addon_buttons(data_addons_nl):
+                kb.add(btn)
+
     # نمایش بسته‌های حجم رومانی
     if access_rights.get('has_access_ro'):
         data_addons_ro = [a for a in all_addons if a.get("type") == "data_ro"]
@@ -450,6 +464,8 @@ def confirm_addon_purchase(call: types.CallbackQuery):
             if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
             if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
             if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+            if user_main_uuid_record.get('has_access_al'): marzban_flags.append("🇦🇱")
+            if user_main_uuid_record.get('has_access_nl'): marzban_flags.append("🇳🇱")
             if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
             flag = "".join(marzban_flags)
 
@@ -486,6 +502,8 @@ def confirm_addon_purchase(call: types.CallbackQuery):
             if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
             if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
             if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+            if user_main_uuid_record.get('has_access_al'): marzban_flags.append("🇦🇱")
+            if user_main_uuid_record.get('has_access_nl'): marzban_flags.append("🇳🇱")
             if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
             flag = "".join(marzban_flags)
 

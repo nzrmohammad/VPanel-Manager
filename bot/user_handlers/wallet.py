@@ -297,6 +297,8 @@ def confirm_purchase(call: types.CallbackQuery, plan_name: str, uuid_id: int):
     if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+    if user_main_uuid_record.get('has_access_al'): marzban_flags.append("🇦🇱")
+    if user_main_uuid_record.get('has_access_nl'): marzban_flags.append("🇳🇱")
     dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else "🏳️"
 
     def sort_key(panel_item):
@@ -752,6 +754,8 @@ def confirm_gift_purchase(call: types.CallbackQuery, plan_name: str):
     if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+    if user_main_uuid_record.get('has_access_al'): marzban_flags.append("🇦🇱")
+    if user_main_uuid_record.get('has_access_nl'): marzban_flags.append("🇳🇱")
     dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else "🏳️"
 
     import copy

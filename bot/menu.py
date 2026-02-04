@@ -158,6 +158,8 @@ class Menu:
         has_fr_access = access.get('has_access_fr', False)
         has_tr_access = access.get('has_access_tr', False)
         has_us_access = access.get('has_access_us', False)
+        has_al_access = access.get('has_access_al', False)
+        has_nl_access = access.get('has_access_nl', False)
         has_ro_access = access.get('has_access_ro', False)
         has_supp_access = access.get('has_access_supp', False)
 
@@ -174,6 +176,8 @@ class Menu:
                 (target == 'fr' and has_fr_access) or
                 (target == 'tr' and has_tr_access) or
                 (target == 'us' and has_us_access) or
+                (target == 'al' and has_al_access) or
+                (target == 'nl' and has_nl_access) or
                 (target == 'ro' and has_ro_access) or
                 (target == 'fi' and has_supp_access)):
                 show_item = True
@@ -372,6 +376,16 @@ class Menu:
         if access.get('has_access_us'):
             data_warning_buttons.append(
                 types.InlineKeyboardButton(f"🇺🇸 {get_status_emoji('data_warning_us')} ", callback_data="toggle_data_warning_us")
+            )
+
+        if access.get('has_access_al'):
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"🇦🇱 {get_status_emoji('data_warning_al')} ", callback_data="toggle_data_warning_al")
+            )
+
+        if access.get('has_access_nl'):
+            data_warning_buttons.append(
+                types.InlineKeyboardButton(f"🇳🇱 {get_status_emoji('data_warning_nl')} ", callback_data="toggle_data_warning_nl")
             )
 
         if access.get('has_access_ro'):

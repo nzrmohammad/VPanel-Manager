@@ -51,7 +51,7 @@ class UserDB(DatabaseManager):
     def get_user_settings(self, user_id: int) -> Dict[str, bool]:
         """تنظیمات مختلف کاربر را برمی‌گرداند."""
         with self._conn() as c:
-            row = c.execute("SELECT daily_reports, weekly_reports, monthly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, data_warning_ro, data_warning_supp, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
+            row = c.execute("SELECT daily_reports, weekly_reports, monthly_reports, expiry_warnings, data_warning_de, data_warning_fr, data_warning_tr, data_warning_us, data_warning_al, data_warning_nl, data_warning_ro, data_warning_supp, show_info_config, auto_delete_reports, achievement_alerts, promotional_alerts FROM users WHERE user_id=?", (user_id,)).fetchone()
             if row:
                 row_dict = dict(row)
                 return {k: bool(v) for k, v in row_dict.items()}
@@ -59,7 +59,7 @@ class UserDB(DatabaseManager):
             return {
                 'daily_reports': True, 'weekly_reports': True, 'monthly_reports': True, 'expiry_warnings': True,
                 'data_warning_de': True, 'data_warning_fr': True, 'data_warning_tr': True,
-                'data_warning_us': True, 'data_warning_ro': True, 'data_warning_supp': True, 'show_info_config': True,
+                'data_warning_us': True, 'data_warning_al': True, 'data_warning_nl': True, 'data_warning_ro': True, 'data_warning_supp': True, 'show_info_config': True,
                 'auto_delete_reports': False, 'achievement_alerts': True, 'promotional_alerts': True
             }
 
@@ -69,7 +69,7 @@ class UserDB(DatabaseManager):
             'daily_reports', 'weekly_reports', 'monthly_reports', 'expiry_warnings', 'show_info_config',
             'auto_delete_reports', 'achievement_alerts', 'promotional_alerts',
             'data_warning_de', 'data_warning_fr', 'data_warning_tr', 'data_warning_us',
-            'data_warning_ro', 'data_warning_supp'
+            'data_warning_al', 'data_warning_nl', 'data_warning_ro', 'data_warning_supp'
         ]
         if setting in valid_settings:
             with self._conn() as c:
@@ -273,7 +273,7 @@ class UserDB(DatabaseManager):
     def get_all_user_uuids(self) -> List[Dict[str, Any]]:
         """تمام رکوردهای UUID را برای پنل ادمین برمی‌گرداند."""
         with self._conn() as c:
-            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_de2, has_access_fr, has_access_tr, has_access_us, has_access_ro, has_access_ir, has_access_supp FROM user_uuids ORDER BY created_at DESC"
+            query = "SELECT id, user_id, uuid, name, is_active, created_at, is_vip, has_access_de, has_access_fr, has_access_tr, has_access_us, has_access_al, has_access_nl, has_access_ro, has_access_ir, has_access_supp FROM user_uuids ORDER BY created_at DESC"
             rows = c.execute(query).fetchall()
             return [dict(r) for r in rows]
 
@@ -296,7 +296,7 @@ class UserDB(DatabaseManager):
             SELECT
                 u.user_id, u.first_name, u.username,
                 uu.id as uuid_id, uu.name as config_name, uu.uuid, uu.is_vip,
-                uu.has_access_de, uu.has_access_de2, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_ro, uu.has_access_ir, uu.has_access_supp,
+                uu.has_access_de, uu.has_access_fr, uu.has_access_tr, uu.has_access_us, uu.has_access_al, uu.has_access_nl, uu.has_access_ro, uu.has_access_ir, uu.has_access_supp,
                 CASE WHEN mm.hiddify_uuid IS NOT NULL THEN 1 ELSE 0 END as is_on_marzban
             FROM users u
             JOIN user_uuids uu ON u.user_id = uu.user_id
@@ -310,7 +310,7 @@ class UserDB(DatabaseManager):
 
     def update_user_server_access(self, uuid_id: int, server: str, status: bool) -> bool:
         """دسترسی کاربر به یک سرور خاص را به‌روزرسانی می‌کند."""
-        if server not in ['de', 'de2', 'fr', 'tr', 'us', 'ro', 'ir', 'supp']:
+        if server not in ['de', 'fr', 'tr', 'us', 'al', 'nl', 'ro', 'ir', 'supp']:
             return False
         column_name = f"has_access_{server}"
         with self._conn() as c:
@@ -319,17 +319,18 @@ class UserDB(DatabaseManager):
             
     def get_user_access_rights(self, user_id: int) -> dict:
         """حقوق دسترسی کاربر به پنل‌های مختلف را برمی‌گرداند."""
-        access_rights = {'has_access_de': False, 'has_access_de2': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_ro': False, 'has_access_ir': False, 'has_access_supp': False}
+        access_rights = {'has_access_de': False, 'has_access_fr': False, 'has_access_tr': False, 'has_access_us': False, 'has_access_al': False, 'has_access_nl': False,  'has_access_ro': False, 'has_access_ir': False, 'has_access_supp': False}
         user_uuids = self.uuids(user_id)
         if user_uuids:
             # دسترسی بر اساس اولین اکانت ثبت شده تعیین می‌شود
             first_uuid_record = self.uuid_by_id(user_id, user_uuids[0]['id'])
             if first_uuid_record:
                 access_rights['has_access_de'] = first_uuid_record.get('has_access_de', False)
-                access_rights['has_access_de2'] = first_uuid_record.get('has_access_de2', False)
                 access_rights['has_access_fr'] = first_uuid_record.get('has_access_fr', False)
                 access_rights['has_access_tr'] = first_uuid_record.get('has_access_tr', False)
                 access_rights['has_access_us'] = first_uuid_record.get('has_access_us', False)
+                access_rights['has_access_al'] = first_uuid_record.get('has_access_al', False)
+                access_rights['has_access_nl'] = first_uuid_record.get('has_access_nl', False)
                 access_rights['has_access_ro'] = first_uuid_record.get('has_access_ro', False)
                 access_rights['has_access_ir'] = first_uuid_record.get('has_access_ir', False)
                 access_rights['has_access_supp'] = first_uuid_record.get('has_access_supp', False)

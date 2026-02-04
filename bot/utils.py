@@ -410,10 +410,11 @@ def create_info_config(user_uuid: str) -> Optional[str]:
 
     has_access_ir = user_record.get('has_access_ir', False)
     has_access_de = user_record.get('has_access_de', False)
-    has_access_de2 = user_record.get('has_access_de2', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     has_access_us = user_record.get('has_access_us', False)
+    has_access_al = user_record.get('has_access_al', False)
+    has_access_nl = user_record.get('has_access_nl', False)
     has_access_ro = user_record.get('has_access_ro', False)
     has_access_supp = user_record.get('has_access_supp', False)
 
@@ -423,13 +424,13 @@ def create_info_config(user_uuid: str) -> Optional[str]:
     hiddify_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'hiddify'), None)
     marzban_info = next((p['data'] for p in breakdown.values() if p.get('type') == 'marzban'), None)
 
-    if (has_access_de or has_access_de2) and hiddify_info:
+    if (has_access_de) and hiddify_info:
         usage = hiddify_info.get('current_usage_GB', 0)
         limit = hiddify_info.get('usage_limit_GB', 0)
         limit_str = f"{limit:.0f}" if limit > 0 else '∞'
         parts.append(f"🇩🇪 {usage:.0f}/{limit_str}GB")
 
-    if (has_access_ir or has_access_fr or has_access_tr or has_access_us or has_access_ro or has_access_supp) and marzban_info:
+    if (has_access_ir or has_access_fr or has_access_tr or has_access_us or has_access_al or has_access_nl or has_access_ro or has_access_supp) and marzban_info:
         flags = []
         if has_access_ir:
             flags.append("🇮🇷")
@@ -439,6 +440,10 @@ def create_info_config(user_uuid: str) -> Optional[str]:
             flags.append("🇹🇷")
         if has_access_us:
             flags.append("🇺🇸")
+        if has_access_al:
+            flags.append("🇦🇱")
+        if has_access_nl:
+            flags.append("🇳🇱")
         if has_access_ro:
             flags.append("🇷🇴")
         if has_access_supp:
@@ -487,10 +492,11 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
 
     has_access_ir = user_record.get('has_access_ir', False)
     has_access_de = user_record.get('has_access_de', False)
-    has_access_de2 = user_record.get('has_access_de2', False)
     has_access_fr = user_record.get('has_access_fr', False)
     has_access_tr = user_record.get('has_access_tr', False)
     has_access_us = user_record.get('has_access_us', False)
+    has_access_al = user_record.get('has_access_al', False)
+    has_access_nl = user_record.get('has_access_nl', False)
     has_access_ro = user_record.get('has_access_ro', False)
     has_access_supp = user_record.get('has_access_supp', False)
     is_user_vip = user_record.get('is_vip', False)
@@ -509,10 +515,11 @@ def generate_user_subscription_configs(user_main_uuid: str, user_id: int) -> lis
         if (is_special and not is_user_vip) or \
             (server_type == 'ir' and not has_access_ir) or \
             (server_type == 'de' and not has_access_de) or \
-            (server_type == 'de2' and not has_access_de2) or \
             (server_type == 'fr' and not has_access_fr) or \
             (server_type == 'tr' and not has_access_tr) or \
             (server_type == 'us' and not has_access_us) or \
+            (server_type == 'al' and not has_access_al) or \
+            (server_type == 'nl' and not has_access_nl) or \
             (server_type == 'ro' and not has_access_ro) or \
             (server_type == 'supp' and not has_access_supp):
             continue

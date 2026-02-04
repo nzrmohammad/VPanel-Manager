@@ -70,10 +70,11 @@
                     <option value="all">همه</option>
                     <option value="ir">شامل ایران 🇮🇷</option>
                     <option value="de">شامل آلمان 🇩🇪</option>
-                    <option value="de2">شامل آلمان (No Frag) 🇩🇪</option>
                     <option value="fr">شامل فرانسه 🇫🇷</option>
                     <option value="tr">شامل ترکیه 🇹🇷</option>
                     <option value="us">شامل آمریکا 🇺🇸</option>
+                    <option value="nl">شامل هلند 🇳🇱</option>
+                    <option value="al">شامل آلبانی 🇦🇱</option>
                     <option value="ro">شامل رومانی 🇷🇴</option>
                     <option value="supp">شامل فنلاند 🇫🇴</option>
                 </select>
@@ -89,10 +90,11 @@
                         <th>VIP ⭐</th>
                         <th>ایران 🇮🇷</th>
                         <th>آلمان 🇩🇪</th>
-                        <th>آلمان 🇩🇪</th>
                         <th>فرانسه 🇫🇷</th>
                         <th>ترکیه 🇹🇷</th>
                         <th>آمریکا 🇺🇸</th>
+                        <th>هلند 🇳🇱</th>
+                        <th>آلبانی 🇦🇱</th>
                         <th>رومانی 🇷🇴</th>
                         <th>پشتیبان 🇫🇮</th>
                     </tr>
@@ -112,9 +114,6 @@
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="de" {% if user.has_access_de %}checked{% endif %}><span class="slider"></span></label>
                             </td>
                             <td class="access-toggle-cell">
-                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="de2" {% if user.has_access_de2 %}checked{% endif %}><span class="slider"></span></label>
-                            </td>
-                            <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="fr" {% if user.has_access_fr %}checked{% endif %}><span class="slider"></span></label>
                             </td>
                             <td class="access-toggle-cell">
@@ -122,6 +121,12 @@
                             </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="us" {% if user.has_access_us %}checked{% endif %}><span class="slider"></span></label>
+                            </td>
+                            <td class="access-toggle-cell">
+                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="nl" {% if user.has_access_nl %}checked{% endif %}><span class="slider"></span></label>
+                            </td>
+                            <td class="access-toggle-cell">
+                                <label class="switch"><input type="checkbox" class="access-toggle" data-server="al" {% if user.has_access_al %}checked{% endif %}><span class="slider"></span></label>
                             </td>
                             <td class="access-toggle-cell">
                                 <label class="switch"><input type="checkbox" class="access-toggle" data-server="ro" {% if user.has_access_ro %}checked{% endif %}><span class="slider"></span></label>

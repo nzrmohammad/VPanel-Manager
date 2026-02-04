@@ -134,6 +134,10 @@ class PanelDB(DatabaseManager):
                 return 'tr'
             elif "🇺🇸" in config_str or "us-" in config_lower or "#us" in config_lower:
                 return 'us'
+            elif "🇳🇱" in config_str or "🇳🇱-" in config_lower or "#🇳🇱" in config_lower:
+                return 'nl'
+            elif "🇦🇱" in config_str or "🇦🇱-" in config_lower or "#🇦🇱" in config_lower:
+                return 'al'
             elif "🇷🇴" in config_str or "ro-" in config_lower or "#ro" in config_lower:
                 return 'ro'
             # تشخیص کانفیگ‌های پشتیبانی
@@ -224,16 +228,17 @@ class PanelDB(DatabaseManager):
         with self._conn() as c:
             c.execute("""
                 UPDATE user_uuids SET
-                    has_access_ir = ?, has_access_de = ?, has_access_de2 = ?, has_access_fr = ?, has_access_tr = ?,
-                    has_access_us = ?, has_access_ro = ?, has_access_supp = ?
+                    has_access_ir = ?, has_access_de = ?, has_access_fr = ?, has_access_tr = ?,
+                    has_access_us = ?, has_access_al  = ?, has_access_nl  = ?, has_access_ro = ?, has_access_supp = ?
                 WHERE id = ?
             """, (
                 int(template.get('has_access_ir', False)),
                 int(template.get('has_access_de', False)),
-                int(template.get('has_access_de2', False)),
                 int(template.get('has_access_fr', False)),
                 int(template.get('has_access_tr', False)),
                 int(template.get('has_access_us', False)),
+                int(template.get('has_access_al', False)),
+                int(template.get('has_access_nl', False)),
                 int(template.get('has_access_ro', False)),
                 int(template.get('has_access_supp', False)),
                 uuid_id

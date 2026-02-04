@@ -85,6 +85,10 @@ def fmt_admin_user_summary(info: dict, db_user: Optional[dict] = None) -> str:
                 flags.append("🇹🇷")
             if user_uuid_record.get('has_access_us'):
                 flags.append("🇺🇸")
+            if user_uuid_record.get('has_access_al'):
+                flags.append("🇦🇱")
+            if user_uuid_record.get('has_access_nl'):
+                flags.append("🇳🇱")
             if user_uuid_record.get('has_access_ro'):
                 flags.append("🇷🇴")
             if user_uuid_record.get('has_access_supp'):
@@ -641,7 +645,7 @@ def fmt_admin_report(all_users_from_api: list, db_manager) -> str:
                 if h_usage > 0.001: usage_parts.append(f"🇩🇪 {escape_markdown(format_daily_usage(h_usage))}")
                 m_usage = daily_dict.get('marzban', 0.0)
                 if m_usage > 0.001 and user_db_record:
-                    flags = [f for f, has in [("🇮🇷", 'has_access_ir'), ("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'), ("🇷🇴", 'has_access_ro'), ("🇫🇮", 'has_access_supp')] if user_db_record.get(has)]
+                    flags = [f for f, has in [("🇮🇷", 'has_access_ir'), ("🇫🇷", 'has_access_fr'), ("🇹🇷", 'has_access_tr'), ("🇺🇸", 'has_access_us'),("🇦🇱", 'has_access_al'),("🇳🇱", 'has_access_nl'), ("🇷🇴", 'has_access_ro'), ("🇫🇮", 'has_access_supp')] if user_db_record.get(has)]
                     if flags: usage_parts.append(f"{''.join(flags)} {escape_markdown(format_daily_usage(m_usage))}")
 
                 usage_str = escape_markdown(" | ").join(usage_parts)
@@ -1089,6 +1093,8 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     if user_access.get('has_access_fr'): marzban_flags.append("🇫🇷")
     if user_access.get('has_access_tr'): marzban_flags.append("🇹🇷")
     if user_access.get('has_access_us'): marzban_flags.append("🇺🇸")
+    if user_access.get('has_access_al'): marzban_flags.append("🇦🇱")
+    if user_access.get('has_access_nl'): marzban_flags.append("🇳🇱")
     if user_access.get('has_access_ro'): marzban_flags.append("🇷🇴")
     if user_access.get('has_access_supp'): marzban_flags.append("🇫🇮")
     dynamic_marzban_flags = "".join(marzban_flags) if marzban_flags else ""
@@ -1101,7 +1107,7 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     sorted_before = sorted(info_before.get('breakdown', {}).items(), key=sort_key)
     for panel_name, panel_details in sorted_before:
         panel_type = panel_details.get('type')
-        if (panel_type == 'hiddify' and (user_access.get('has_access_de') or user_access.get('has_access_de2'))) or \
+        if (panel_type == 'hiddify' and (user_access.get('has_access_de'))) or \
            (panel_type == 'marzban' and dynamic_marzban_flags):
             p_data = panel_details.get('data', {})
             limit = p_data.get('usage_limit_GB', 0)
@@ -1115,7 +1121,7 @@ def fmt_admin_purchase_notification(user_info: dict, plan: dict, new_balance: fl
     sorted_after = sorted(info_after.get('breakdown', {}).items(), key=sort_key)
     for panel_name, panel_details in sorted_after:
         panel_type = panel_details.get('type')
-        if (panel_type == 'hiddify' and (user_access.get('has_access_de') or user_access.get('has_access_de2'))) or \
+        if (panel_type == 'hiddify' and (user_access.get('has_access_de'))) or \
            (panel_type == 'marzban' and dynamic_marzban_flags):
             p_data = panel_details.get('data', {})
             limit = p_data.get('usage_limit_GB', 0)

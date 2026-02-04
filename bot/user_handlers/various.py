@@ -538,6 +538,8 @@ def handle_shop_callbacks(call: types.CallbackQuery):
                      if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
                      if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
                      if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+                     if user_main_uuid_record.get('has_access_al'): marzban_flags.append("🇦🇱")
+                     if user_main_uuid_record.get('has_access_nl'): marzban_flags.append("🇳🇱")
                      if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
                      flag = "".join(marzban_flags)
                 
@@ -560,6 +562,8 @@ def handle_shop_callbacks(call: types.CallbackQuery):
                      if user_main_uuid_record.get('has_access_fr'): marzban_flags.append("🇫🇷")
                      if user_main_uuid_record.get('has_access_tr'): marzban_flags.append("🇹🇷")
                      if user_main_uuid_record.get('has_access_us'): marzban_flags.append("🇺🇸")
+                     if user_main_uuid_record.get('has_access_al'): marzban_flags.append("🇦🇱")
+                     if user_main_uuid_record.get('has_access_nl'): marzban_flags.append("🇳🇱")
                      if user_main_uuid_record.get('has_access_ro'): marzban_flags.append("🇷🇴")
                      flag = "".join(marzban_flags)
 
@@ -766,6 +770,12 @@ def handle_connection_doctor(call: types.CallbackQuery):
         if access_rights.get('has_access_us'):
             icon, text = get_load_indicator(activity_stats.get('marzban_us', 0), total_active_users)
             report_lines.append(f"  {icon} سرور آمریکا 🇺🇸: *{escape_markdown(text)}*")
+        if access_rights.get('has_access_al'):
+            icon, text = get_load_indicator(activity_stats.get('marzban_us', 0), total_active_users)
+            report_lines.append(f"  {icon} سرور آلبانی 🇦🇱: *{escape_markdown(text)}*")
+        if access_rights.get('has_access_nl'):
+            icon, text = get_load_indicator(activity_stats.get('marzban_us', 0), total_active_users)
+            report_lines.append(f"  {icon} سرور هلند 🇳🇱: *{escape_markdown(text)}*")
         if access_rights.get('has_access_ro'):
             icon, text = get_load_indicator(activity_stats.get('marzban_us', 0), total_active_users)
             report_lines.append(f"  {icon} سرور رومانی 🇷🇴: *{escape_markdown(text)}*")     
